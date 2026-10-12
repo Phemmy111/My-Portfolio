@@ -1,0 +1,50 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getInquiries, updateInquiryStatus, deleteInquiry } from "@/lib/admin-store";
+
+function checkAuth(req: NextRequest): boolean {
+  const session = req.cookies.get("femi_admin_session");
+  return session?.value === "authenticated_session_token";
+}
+
+export async function GET(req: NextRequest) {
+  if (!checkAuth(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const inquiries = getInquiries();
+  return NextResponse.json({ inquiries });
+}
+
+export async function PATCH(req: NextRequest) {
+  if (!checkAuth(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id, status } = await req.json();
+    if (!id || !status) {
+      return NextResponse.json({ error: "ID and status required" }, { status: 400 });
+    }
+
+    const updated = updateInquiryStatus(id, status);
+    return NextResponse.json({ inquiry: updated });
+  } catch {
+    return NextResponse.json({ error: "Failed to update inquiry" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  if (!checkAuth(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+
+  if (!id) {
+    return NextResponse.json({ error: "Inquiry ID required" }, { status: 400 });
+  }
+
+  const deleted = deleteInquiry(id);
+  return NextResponse.json({ success: deleted });
+}

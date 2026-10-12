@@ -1,0 +1,195 @@
+import { neon } from "@neondatabase/serverless";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not set. Add it to .env.local");
+}
+
+const sql = neon(process.env.DATABASE_URL);
+
+// ==============================================================
+// DATABASE SCHEMA SETUP
+// Run this once to create the tables in your Neon database
+// ==============================================================
+export async function createTables() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS leads (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      company    TEXT,
+      email      TEXT NOT NULL,
+      service_needed TEXT,
+      status     TEXT DEFAULT 'new',
+      niche      TEXT,
+      notes      TEXT,
+      draft_subject TEXT,
+      draft_body    TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_contacted_at TIMESTAMPTZ
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS proposals (
+      id                  TEXT PRIMARY KEY,
+      platform            TEXT NOT NULL,
+      job_title           TEXT NOT NULL,
+      job_description     TEXT NOT NULL,
+      angle               TEXT,
+      generated_proposal  TEXT NOT NULL,
+      relevant_projects   TEXT[],
+      created_at          TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS inquiries (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      email      TEXT NOT NULL,
+      service    TEXT,
+      message    TEXT NOT NULL,
+      status     TEXT DEFAULT 'unread',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+
+  console.log("✅ Neon DB tables verified/created");
+}
+
+// ==============================================================
+// LEADS
+// ==============================================================
+export async function dbGetLeads() {
+  return await sql`SELECT * FROM leads ORDER BY created_at DESC`;
+}
+
+export async function dbAddLead(lead: {
+  id: string;
+  name: string;
+  company?: string;
+  email: string;
+  service_needed?: string;
+  status?: string;
+  niche?: string;
+  notes?: string;
+  draft_subject?: string;
+  draft_body?: string;
+}) {
+  const [row] = await sql`
+    INSERT INTO leads (id, name, company, email, service_needed, status, niche, notes, draft_subject, draft_body)
+    VALUES (${lead.id}, ${lead.name}, ${lead.company ?? ""}, ${lead.email},
+            ${lead.service_needed ?? "Web Development"}, ${lead.status ?? "new"},
+            ${lead.niche ?? ""}, ${lead.notes ?? ""},
+            ${lead.draft_subject ?? ""}, ${lead.draft_body ?? ""})
+    RETURNING *
+  `;
+  return row;
+}
+
+export async function dbUpdateLead(id: string, updates: Record<string, any>) {
+  // Build dynamic SET clause
+  const setClauses = Object.entries(updates)
+    .map(([k, _v], i) => `${k} = $${i + 2}`)
+    .join(", ");
+  const values = [id, ...Object.values(updates)];
+  // Neon tagged template doesn't support fully dynamic queries, so we do selective updates:
+  const { status, notes, draft_subject, draft_body, last_contacted_at } = updates;
+  const [row] = await sql`
+    UPDATE leads SET
+      status = COALESCE(${status ?? null}, status),
+      notes  = COALESCE(${notes ?? null}, notes),
+      draft_subject = COALESCE(${draft_subject ?? null}, draft_subject),
+      draft_body    = COALESCE(${draft_body ?? null}, draft_body),
+      last_contacted_at = COALESCE(${last_contacted_at ?? null}::timestamptz, last_contacted_at)
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return row;
+}
+
+export async function dbDeleteLead(id: string) {
+  await sql`DELETE FROM leads WHERE id = ${id}`;
+  return true;
+}
+
+// ==============================================================
+// PROPOSALS
+// ==============================================================
+export async function dbGetProposals() {
+  return await sql`SELECT * FROM proposals ORDER BY created_at DESC`;
+}
+
+export async function dbSaveProposal(prop: {
+  id: string;
+  platform: string;
+  job_title: string;
+  job_description: string;
+  angle: string;
+  generated_proposal: string;
+  relevant_projects: string[];
+}) {
+  const [row] = await sql`
+    INSERT INTO proposals (id, platform, job_title, job_description, angle, generated_proposal, relevant_projects)
+    VALUES (${prop.id}, ${prop.platform}, ${prop.job_title}, ${prop.job_description},
+            ${prop.angle}, ${prop.generated_proposal}, ${prop.relevant_projects})
+    RETURNING *
+  `;
+  return row;
+}
+
+export async function dbDeleteProposal(id: string) {
+  await sql`DELETE FROM proposals WHERE id = ${id}`;
+  return true;
+}
+
+// ==============================================================
+// INQUIRIES
+// ==============================================================
+export async function dbGetInquiries() {
+  return await sql`SELECT * FROM inquiries ORDER BY created_at DESC`;
+}
+
+export async function dbAddInquiry(inq: {
+  id: string;
+  name: string;
+  email: string;
+  service: string;
+  message: string;
+}) {
+  const [row] = await sql`
+    INSERT INTO inquiries (id, name, email, service, message)
+    VALUES (${inq.id}, ${inq.name}, ${inq.email}, ${inq.service}, ${inq.message})
+    RETURNING *
+  `;
+  return row;
+}
+
+export async function dbUpdateInquiryStatus(id: string, status: string) {
+  const [row] = await sql`
+    UPDATE inquiries SET status = ${status} WHERE id = ${id} RETURNING *
+  `;
+  return row;
+}
+
+export async function dbDeleteInquiry(id: string) {
+  await sql`DELETE FROM inquiries WHERE id = ${id}`;
+  return true;
+}
+
+// ==============================================================
+// STATS
+// ==============================================================
+export async function dbGetStats() {
+  const [stats] = await sql`
+    SELECT
+      (SELECT COUNT(*) FROM leads)::int                                    AS total_leads,
+      (SELECT COUNT(*) FROM leads WHERE status != 'closed')::int           AS active_leads,
+      (SELECT COUNT(*) FROM leads WHERE status = 'converted')::int         AS converted_leads,
+      (SELECT COUNT(*) FROM proposals)::int                                AS total_proposals,
+      (SELECT COUNT(*) FROM inquiries)::int                                AS total_inquiries,
+      (SELECT COUNT(*) FROM inquiries WHERE status = 'unread')::int        AS unread_inquiries
+  `;
+  return stats;
+}
+
+export { sql };
