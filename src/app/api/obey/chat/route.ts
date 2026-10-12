@@ -3,6 +3,7 @@ import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-age
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 import { generateColdEmail, generateGigProposal } from "@/lib/gig-generator";
+import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { neon } from "@neondatabase/serverless";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
@@ -302,17 +303,29 @@ export async function POST(req: NextRequest) {
     }
 
     // =========================================================================
-    // 9. DEFAULT / CONVERSATIONAL ASSISTANT BRAIN
+    // 9. DYNAMIC AI CONVERSATIONAL BRAIN (Gemini -> OpenRouter -> Grok -> Groq -> Local)
     // =========================================================================
+    const systemPrompt = `You are Obey, an autonomous AI executive assistant and operations manager for Femi Adeleke.
+Femi is a world-class Full-Stack Developer & Automation Architect based in Nigeria (working globally).
+Femi's key projects & credentials:
+- AutoLearn Spot: Founder & developer of scalable edtech and automated portal.
+- OKIKI Electronics Store: Modern high-performance Next.js & Tailwind e-commerce platform.
+- PassMark UTME Prep App & UniVibe Mobile.
+- n8n Automation Pipelines: Built webhook-driven WhatsApp bots, CRM auto-sync, automated invoicing, and email workflows.
+- GitHub: https://github.com/Phemmy111 | Portfolio: https://femiadelekeportfolio.vercel.app | Phone/WhatsApp: 08120934828.
+- Tone: Executive, concise, sharp, polite ("Right away Femi", "Here is what I prepared", "Understood boss").
+- Never invent false credentials. Give practical, technical, and commercial insights. Always remind Femi that you can scout live Upwork jobs, hunt real B2B decision-makers, or draft cold outreach on command.`;
+
+    const aiRes = await executeAICompletion({
+      systemPrompt,
+      userPrompt: trimmed,
+    });
+
     return NextResponse.json({
-      reply: `Hello Femi! I'm **Obey**, your autonomous personal assistant. I'm connected to your Neon PostgreSQL database, Gmail SMTP, and live freelance feeds.\n\nHere are some things you can ask me:\n\n` +
-        `• *"Scout Upwork jobs for Next.js & n8n"*\n` +
-        `• *"Hunt B2B leads in logistics or e-commerce"*\n` +
-        `• *"What tasks are waiting for my approval?"*\n` +
-        `• *"Show me our CRM pipeline stats"*\n` +
-        `• *"Approve obey-[id]"*\n` +
-        `• *"Draft a cold email for an e-commerce brand"*\n\n` +
-        `What shall we execute next?`,
+      reply: aiRes.text,
+      provider: aiRes.provider,
+      model: aiRes.model,
+      fallbackTriggered: aiRes.fallbackTriggered,
     });
   } catch (err: any) {
     console.error("Obey chat error:", err);

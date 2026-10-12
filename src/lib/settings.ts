@@ -1,0 +1,89 @@
+import { neon } from "@neondatabase/serverless";
+
+const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
+const sql = neon(dbUrl);
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+  updated_at?: string;
+}
+
+export const KNOWN_KEYS = [
+  "GEMINI_API_KEY",
+  "APOLLO_API_KEY",
+  "OPENROUTER_API_KEY",
+  "GROK_API_KEY",
+  "OPENAI_API_KEY",
+  "GROQ_API_KEY",
+  "UPWORK_FEED_URL",
+  "CRM_WEBHOOK_URL",
+] as const;
+
+export type KnownKey = typeof KNOWN_KEYS[number];
+
+/**
+ * Retrieves a single setting, prioritizing database then process.env
+ */
+export async function getSetting(key: string): Promise<string> {
+  try {
+    const rows = await sql`SELECT value FROM agent_settings WHERE key = ${key} LIMIT 1` as Array<{ value: string }>;
+    if (rows && rows.length > 0 && rows[0].value?.trim()) {
+      return rows[0].value.trim();
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch setting ${key} from DB, falling back to env:`, err);
+  }
+
+  return (process.env[key] || "").trim();
+}
+
+/**
+ * Saves or updates a setting in the persistent database
+ */
+export async function setSetting(key: string, value: string): Promise<void> {
+  await sql`
+    INSERT INTO agent_settings (key, value, updated_at)
+    VALUES (${key}, ${value.trim()}, CURRENT_TIMESTAMP)
+    ON CONFLICT (key) DO UPDATE
+    SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+  `;
+}
+
+/**
+ * Retrieves all known settings with sensitive values masked for UI display
+ */
+export async function getAllSettingsMasked(): Promise<Record<string, { value: string; isSet: boolean; masked: string }>> {
+  const result: Record<string, { value: string; isSet: boolean; masked: string }> = {};
+
+  let dbRows: Array<{ key: string; value: string }> = [];
+  try {
+    dbRows = await sql`SELECT key, value FROM agent_settings` as Array<{ key: string; value: string }>;
+  } catch (err) {
+    console.warn("Failed to load settings table:", err);
+  }
+
+  const dbMap = new Map(dbRows.map((r) => [r.key, r.value]));
+
+  for (const k of KNOWN_KEYS) {
+    const val = (dbMap.get(k) || process.env[k] || "").trim();
+    const isSet = Boolean(val);
+
+    let masked = "";
+    if (isSet) {
+      if (val.length <= 8) {
+        masked = "••••••••";
+      } else {
+        masked = `${val.slice(0, 4)}••••••••${val.slice(-4)}`;
+      }
+    }
+
+    result[k] = {
+      value: val, // raw value
+      isSet,
+      masked,
+    };
+  }
+
+  return result;
+}

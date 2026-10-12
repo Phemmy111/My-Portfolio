@@ -13,6 +13,8 @@ export interface B2BLeadProspect {
   specificPainPoint: string;
 }
 
+import { getSetting } from "./settings";
+
 /**
  * Searches for real B2B decision makers via Apollo API or verified business directory
  */
@@ -20,7 +22,7 @@ export async function huntRealB2BLeads(options?: {
   industry?: string;
   location?: string;
 }): Promise<B2BLeadProspect[]> {
-  const apiKey = process.env.APOLLO_API_KEY;
+  const apiKey = await getSetting("APOLLO_API_KEY");
 
   if (apiKey) {
     try {

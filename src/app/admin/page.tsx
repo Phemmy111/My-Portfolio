@@ -31,11 +31,13 @@ import {
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
 import ObeyChatConsole from "@/components/ObeyChatConsole";
 import ObeyFloatingAssistant from "@/components/ObeyFloatingAssistant";
+import AISettingsModal from "@/components/AISettingsModal";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey">("leads");
   const [loading, setLoading] = useState(true);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Agent Obey state
   const [agentTasks, setAgentTasks] = useState<any[]>([]);
@@ -329,6 +331,15 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs"
+              title="Configure AI Models & Fallback Keys"
+            >
+              <Zap size={13} className="text-emerald-500" />
+              <span>AI & Fallback Settings</span>
+            </button>
+
             <a
               href="/"
               target="_blank"
@@ -926,6 +937,14 @@ export default function AdminDashboardPage() {
                     <Mail size={15} className="text-amber-400" />
                     Hunt Real B2B Decision-Makers
                   </button>
+
+                  <button
+                    onClick={() => setShowSettingsModal(true)}
+                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-emerald-500/40 hover:border-emerald-400 transition-all sm:ml-auto"
+                  >
+                    <Zap size={15} className="text-emerald-400" />
+                    ⚙️ AI & Fallback Keys
+                  </button>
                 </div>
 
                 <p className="text-xs text-zinc-500 font-semibold pt-1">
@@ -1362,6 +1381,13 @@ export default function AdminDashboardPage() {
 
       {/* Floating Obey Assistant Drawer (Accessible across all tabs) */}
       <ObeyFloatingAssistant onTaskUpdated={fetchData} />
+
+      {/* AI Models & Fallback Provider Settings Modal */}
+      <AISettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onSaved={fetchData}
+      />
     </div>
   );
 }
