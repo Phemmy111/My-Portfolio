@@ -11,11 +11,16 @@ export interface SystemSetting {
 
 export const KNOWN_KEYS = [
   "GEMINI_API_KEY",
+  "GEMINI_MODEL",
   "APOLLO_API_KEY",
   "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
   "GROK_API_KEY",
+  "GROK_MODEL",
   "OPENAI_API_KEY",
+  "OPENAI_MODEL",
   "GROQ_API_KEY",
+  "GROQ_MODEL",
   "UPWORK_FEED_URL",
   "CRM_WEBHOOK_URL",
 ] as const;

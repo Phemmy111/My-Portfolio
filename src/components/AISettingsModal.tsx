@@ -14,6 +14,7 @@ import {
   Layers,
   ArrowRight,
   Database,
+  ChevronDown,
 } from "lucide-react";
 
 interface AISettingsModalProps {
@@ -29,6 +30,8 @@ interface ProviderSetting {
   placeholder: string;
   docUrl: string;
   category: "ai" | "leads" | "automations";
+  modelKey?: string;
+  defaultModel?: string;
 }
 
 const PROVIDERS: ProviderSetting[] = [
@@ -39,6 +42,8 @@ const PROVIDERS: ProviderSetting[] = [
     placeholder: "AIzaSy... or AQ.Ab8...",
     docUrl: "https://aistudio.google.com/app/apikey",
     category: "ai",
+    modelKey: "GEMINI_MODEL",
+    defaultModel: "gemini-2.5-flash",
   },
   {
     id: "OPENROUTER_API_KEY",
@@ -47,6 +52,8 @@ const PROVIDERS: ProviderSetting[] = [
     placeholder: "sk-or-v1-...",
     docUrl: "https://openrouter.ai/keys",
     category: "ai",
+    modelKey: "OPENROUTER_MODEL",
+    defaultModel: "meta-llama/llama-3.3-70b-instruct",
   },
   {
     id: "GROK_API_KEY",
@@ -55,6 +62,8 @@ const PROVIDERS: ProviderSetting[] = [
     placeholder: "xai-...",
     docUrl: "https://console.x.ai/",
     category: "ai",
+    modelKey: "GROK_MODEL",
+    defaultModel: "grok-2-latest",
   },
   {
     id: "GROQ_API_KEY",
@@ -63,6 +72,8 @@ const PROVIDERS: ProviderSetting[] = [
     placeholder: "gsk_...",
     docUrl: "https://console.groq.com/keys",
     category: "ai",
+    modelKey: "GROQ_MODEL",
+    defaultModel: "llama-3.3-70b-versatile",
   },
   {
     id: "OPENAI_API_KEY",
@@ -71,6 +82,8 @@ const PROVIDERS: ProviderSetting[] = [
     placeholder: "sk-proj-...",
     docUrl: "https://platform.openai.com/api-keys",
     category: "ai",
+    modelKey: "OPENAI_MODEL",
+    defaultModel: "gpt-4o-mini",
   },
   {
     id: "APOLLO_API_KEY",
@@ -104,6 +117,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, { testing: boolean; success?: boolean; message?: string }>>({});
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Fetch current settings
@@ -122,6 +137,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
         }
         setKeys(initialKeys);
         setMaskedInfo(masks);
+
+        // Auto-fetch models for Gemini if key is set
+        if (initialKeys["GEMINI_API_KEY"]) {
+          fetchLiveModelsForProvider("GEMINI_API_KEY", initialKeys["GEMINI_API_KEY"]);
+        }
       }
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -140,6 +160,35 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
     setKeys((prev) => ({ ...prev, [id]: val }));
   };
 
+  const fetchLiveModelsForProvider = async (providerId: string, currentKey?: string) => {
+    const keyVal = currentKey || keys[providerId];
+    if (!keyVal?.trim()) return;
+
+    setFetchingModels((prev) => ({ ...prev, [providerId]: true }));
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "fetch_models", provider: providerId, key: keyVal }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.models && data.models.length > 0) {
+        setAvailableModels((prev) => ({ ...prev, [providerId]: data.models }));
+
+        // If no model was selected yet, set the first one
+        const settingDef = PROVIDERS.find((p) => p.id === providerId);
+        if (settingDef?.modelKey && !keys[settingDef.modelKey]) {
+          setKeys((prev) => ({ ...prev, [settingDef.modelKey!]: data.models[0] }));
+        }
+      }
+    } catch (err) {
+      console.error("Model fetch error:", err);
+    } finally {
+      setFetchingModels((prev) => ({ ...prev, [providerId]: false }));
+    }
+  };
+
   const handleTestConnection = async (providerId: string) => {
     const keyVal = keys[providerId];
     if (!keyVal?.trim()) {
@@ -150,6 +199,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       return;
     }
 
+    const settingDef = PROVIDERS.find((p) => p.id === providerId);
+    const selectedModel = settingDef?.modelKey ? keys[settingDef.modelKey] || settingDef.defaultModel : undefined;
+
     setTestResults((prev) => ({
       ...prev,
       [providerId]: { testing: true },
@@ -159,7 +211,12 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", provider: providerId, key: keyVal }),
+        body: JSON.stringify({
+          action: "test",
+          provider: providerId,
+          key: keyVal,
+          model: selectedModel,
+        }),
       });
       const data = await res.json();
 
@@ -167,6 +224,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
         ...prev,
         [providerId]: { testing: false, success: data.success, message: data.message },
       }));
+
+      // Also trigger a live models refresh if successful
+      if (data.success && settingDef?.modelKey && (!availableModels[providerId] || availableModels[providerId].length === 0)) {
+        fetchLiveModelsForProvider(providerId, keyVal);
+      }
     } catch (err: any) {
       setTestResults((prev) => ({
         ...prev,
@@ -189,7 +251,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       const data = await res.json();
 
       if (data.success) {
-        setStatusMessage("✅ Settings saved to Neon PostgreSQL database!");
+        setStatusMessage("✅ Keys & model selections saved to Neon PostgreSQL database!");
         if (onSaved) onSaved();
         setTimeout(() => setStatusMessage(null), 4000);
       } else {
@@ -219,11 +281,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   AI Brain & Fallback Providers
                 </h3>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500 text-black">
-                  Resilient Waterfall
+                  Live Model Picker
                 </span>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Configure Gemini, OpenRouter, Grok, Apollo, and webhooks. Seamlessly auto-switches if limits hit.
+                Configure live models for Gemini, OpenRouter, Grok, Groq, and Apollo. Auto-switches on high load.
               </p>
             </div>
           </div>
@@ -252,7 +314,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                     <Layers size={14} /> AI LLM Waterfall (Auto-Failover in order)
                   </h4>
                   <span className="text-[11px] text-zinc-500">
-                    If Gemini reaches quota → Falls back to OpenRouter → Grok → Groq → Local
+                    Auto-cascades to next available model if 503 or quota limits occur
                   </span>
                 </div>
 
@@ -260,11 +322,14 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   {PROVIDERS.filter((p) => p.category === "ai").map((p) => {
                     const testState = testResults[p.id];
                     const isSet = maskedInfo[p.id]?.isSet;
+                    const models = availableModels[p.id] || [];
+                    const isFetching = fetchingModels[p.id];
+                    const selectedModel = p.modelKey ? keys[p.modelKey] || p.defaultModel : "";
 
                     return (
                       <div
                         key={p.id}
-                        className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5 transition-all"
+                        className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3 transition-all"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
@@ -293,22 +358,21 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                           </a>
                         </div>
 
+                        {/* API Key Input + Test Button */}
                         <div className="flex items-center gap-2">
-                          <div className="relative flex-1">
-                            <input
-                              type="password"
-                              value={keys[p.id] || ""}
-                              onChange={(e) => handleKeyChange(p.id, e.target.value)}
-                              placeholder={p.placeholder}
-                              className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                            />
-                          </div>
+                          <input
+                            type="password"
+                            value={keys[p.id] || ""}
+                            onChange={(e) => handleKeyChange(p.id, e.target.value)}
+                            placeholder={p.placeholder}
+                            className="flex-1 px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                          />
 
                           <button
                             type="button"
                             onClick={() => handleTestConnection(p.id)}
                             disabled={testState?.testing}
-                            className="px-3 py-2.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold shrink-0 transition-all flex items-center gap-1.5"
+                            className="px-3.5 py-2.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold shrink-0 transition-all flex items-center gap-1.5"
                           >
                             {testState?.testing ? (
                               <>
@@ -321,17 +385,61 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                           </button>
                         </div>
 
-                        {/* Test Feedback */}
+                        {/* Dynamic Real-Time Model Selector Row */}
+                        {p.modelKey && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
+                                <Layers size={12} className="text-emerald-500" /> Model:
+                              </span>
+
+                              {models.length > 0 ? (
+                                <select
+                                  value={selectedModel}
+                                  onChange={(e) => handleKeyChange(p.modelKey!, e.target.value)}
+                                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-900 dark:text-white font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[280px]"
+                                >
+                                  {models.map((m) => (
+                                    <option key={m} value={m}>
+                                      {m}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={selectedModel}
+                                  onChange={(e) => handleKeyChange(p.modelKey!, e.target.value)}
+                                  placeholder={p.defaultModel}
+                                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-[200px]"
+                                />
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => fetchLiveModelsForProvider(p.id)}
+                              disabled={isFetching || !keys[p.id]?.trim()}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold transition-all flex items-center gap-1.5 disabled:opacity-40"
+                              title="Fetch all live active models from provider"
+                            >
+                              <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} />
+                              {isFetching ? "Fetching Live Models..." : "🔄 Fetch Live Models"}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Test Feedback Result */}
                         {testState && !testState.testing && testState.message && (
                           <div
-                            className={`p-2 rounded-xl text-[11px] font-medium flex items-center gap-1.5 ${
+                            className={`p-2.5 rounded-xl text-[11px] font-medium flex items-center gap-2 ${
                               testState.success
                                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                                 : "bg-red-500/10 text-red-500 border border-red-500/20"
                             }`}
                           >
-                            {testState.success ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
-                            {testState.message}
+                            {testState.success ? <CheckCircle2 size={14} className="shrink-0" /> : <AlertCircle size={14} className="shrink-0" />}
+                            <span>{testState.message}</span>
                           </div>
                         )}
                       </div>
@@ -472,7 +580,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex items-center justify-between shrink-0">
           <p className="text-[11px] text-zinc-500">
-            🔒 All keys are stored in your encrypted Neon PostgreSQL cluster.
+            🔒 All keys & models are stored in your encrypted Neon PostgreSQL cluster.
           </p>
 
           <div className="flex items-center gap-2">

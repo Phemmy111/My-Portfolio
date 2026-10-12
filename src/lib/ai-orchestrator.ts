@@ -23,44 +23,52 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   const { systemPrompt = "You are Obey, an autonomous AI executive assistant for Femi Adeleke.", userPrompt, temperature = 0.7, maxTokens = 2048 } = options;
   const errors: string[] = [];
 
-  // 1. Google Gemini
+  // 1. Google Gemini (with model preference and sibling model auto-retry)
   const geminiKey = await getSetting("GEMINI_API_KEY");
   if (geminiKey) {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
-        }),
-      });
+    const preferredModel = (await getSetting("GEMINI_MODEL")) || "gemini-2.5-flash";
+    const candidateModels = [preferredModel];
+    if (preferredModel !== "gemini-2.5-flash-lite") candidateModels.push("gemini-2.5-flash-lite");
+    if (preferredModel !== "gemini-flash-latest") candidateModels.push("gemini-flash-latest");
 
-      if (res.ok) {
-        const data = await res.json();
-        const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidate) {
-          return {
-            text: candidate.trim(),
-            provider: "Google Gemini",
-            model: "gemini-flash-latest",
-            fallbackTriggered: errors.length > 0,
-            errorsEncountered: errors,
-          };
+    for (const modelName of candidateModels) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: { temperature, maxOutputTokens: maxTokens },
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidate) {
+            return {
+              text: candidate.trim(),
+              provider: "Google Gemini",
+              model: modelName,
+              fallbackTriggered: errors.length > 0 || modelName !== preferredModel,
+              errorsEncountered: errors,
+            };
+          }
+        } else {
+          const errText = await res.text();
+          errors.push(`Gemini (${modelName}) HTTP ${res.status}: ${errText.slice(0, 100)}`);
         }
-      } else {
-        const errText = await res.text();
-        errors.push(`Gemini HTTP ${res.status}: ${errText.slice(0, 100)}`);
+      } catch (err: any) {
+        errors.push(`Gemini (${modelName}) exception: ${err.message}`);
       }
-    } catch (err: any) {
-      errors.push(`Gemini exception: ${err.message}`);
     }
   }
 
   // 2. OpenRouter (Multi-model aggregator)
   const openRouterKey = await getSetting("OPENROUTER_API_KEY");
   if (openRouterKey) {
+    const openRouterModel = (await getSetting("OPENROUTER_MODEL")) || "meta-llama/llama-3.3-70b-instruct";
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -71,7 +79,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           "X-Title": "Femi Adeleke AI Agent Obey",
         },
         body: JSON.stringify({
-          model: "meta-llama/llama-3.3-70b-instruct",
+          model: openRouterModel,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -88,7 +96,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           return {
             text: content.trim(),
             provider: "OpenRouter",
-            model: "meta-llama/llama-3.3-70b-instruct",
+            model: openRouterModel,
             fallbackTriggered: true,
             errorsEncountered: errors,
           };
@@ -105,6 +113,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   // 3. xAI / Grok
   const grokKey = await getSetting("GROK_API_KEY");
   if (grokKey) {
+    const grokModel = (await getSetting("GROK_MODEL")) || "grok-2-latest";
     try {
       const res = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
@@ -113,7 +122,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           "Authorization": `Bearer ${grokKey}`,
         },
         body: JSON.stringify({
-          model: "grok-2-latest",
+          model: grokModel,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -130,7 +139,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           return {
             text: content.trim(),
             provider: "xAI (Grok)",
-            model: "grok-2-latest",
+            model: grokModel,
             fallbackTriggered: true,
             errorsEncountered: errors,
           };
@@ -144,9 +153,10 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     }
   }
 
-  // 4. Groq (High-speed Llama)
+  // 4. Groq (High-speed LPU)
   const groqKey = await getSetting("GROQ_API_KEY");
   if (groqKey) {
+    const groqModel = (await getSetting("GROQ_MODEL")) || "llama-3.3-70b-versatile";
     try {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -155,7 +165,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           "Authorization": `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: groqModel,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -172,7 +182,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           return {
             text: content.trim(),
             provider: "Groq",
-            model: "llama-3.3-70b-versatile",
+            model: groqModel,
             fallbackTriggered: true,
             errorsEncountered: errors,
           };
@@ -189,6 +199,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   // 5. OpenAI
   const openAIKey = await getSetting("OPENAI_API_KEY");
   if (openAIKey) {
+    const openAIModel = (await getSetting("OPENAI_MODEL")) || "gpt-4o-mini";
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -197,7 +208,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           "Authorization": `Bearer ${openAIKey}`,
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: openAIModel,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -214,7 +225,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           return {
             text: content.trim(),
             provider: "OpenAI",
-            model: "gpt-4o-mini",
+            model: openAIModel,
             fallbackTriggered: true,
             errorsEncountered: errors,
           };
