@@ -201,6 +201,7 @@ export default function ObeyChatConsole({
   const isExpanded = externalFullscreen !== undefined ? externalFullscreen : internalFullscreen;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -284,7 +285,12 @@ export default function ObeyChatConsole({
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    if (!customText) setInput("");
+    if (!customText) {
+      setInput("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    }
     setLoading(true);
 
     try {
@@ -689,21 +695,32 @@ export default function ObeyChatConsole({
           e.preventDefault();
           handleSend();
         }}
-        className="p-2.5 sm:p-3 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2 shrink-0"
+        className="p-2.5 sm:p-3 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex items-end gap-2 shrink-0"
       >
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Talk to Obey (e.g. 'Good afternoon sir', 'Scout Upwork jobs', 'What to note?')..."
+          onChange={(e) => {
+            setInput(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Talk to Obey (e.g. 'Good afternoon sir', 'Scout Upwork jobs', 'What to note?')... [Shift+Enter for newline]"
           disabled={loading}
-          className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+          rows={1}
+          className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all resize-none max-h-36 min-h-[46px] overflow-y-auto leading-relaxed"
         />
 
         <button
           type="submit"
           disabled={!input.trim() || loading}
-          className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0"
+          className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0 mb-0.5"
         >
           <Send size={17} />
         </button>
