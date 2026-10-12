@@ -50,8 +50,12 @@ export async function createAgentTask(params: {
     RETURNING *
   ` as AgentTask[];
 
-  // Send HITL Approval Email to Femi
-  await sendApprovalEmail(task);
+  // Send HITL Approval Email to Femi (safe try-catch so database task is never lost)
+  try {
+    await sendApprovalEmail(task);
+  } catch (err) {
+    console.warn("Could not dispatch approval email via SMTP:", err);
+  }
 
   return task;
 }
@@ -123,12 +127,16 @@ export async function sendApprovalEmail(task: AgentTask) {
   `;
 
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    await transporter.sendMail({
-      from: `"Agent Obey" <${process.env.SMTP_USER}>`,
-      to: adminEmail,
-      subject: `🤖 Obey Request: Approve Outreach to ${task.target_company || task.target_name}`,
-      html,
-    });
+    try {
+      await transporter.sendMail({
+        from: `"Agent Obey" <${process.env.SMTP_USER}>`,
+        to: adminEmail,
+        subject: `🤖 Obey Request: Approve Outreach to ${task.target_company || task.target_name}`,
+        html,
+      });
+    } catch (err) {
+      console.warn("sendApprovalEmail transporter failed:", err);
+    }
   }
 }
 
