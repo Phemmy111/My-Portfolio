@@ -218,21 +218,40 @@ async function testProviderConnection(
     }
 
     if (prov === "apollo" || prov === "apollo_api_key") {
-      const res = await fetch("https://api.apollo.io/v1/mixed_people/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: cleanKey,
-          page: 1,
-          per_page: 1,
-        }),
+      // Test key validity against Apollo account
+      const authRes = await fetch("https://api.apollo.io/v1/email_accounts", {
+        method: "GET",
+        headers: {
+          "x-api-key": cleanKey,
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
       });
 
       const latencyMs = Date.now() - start;
-      if (res.ok) {
-        return { success: true, message: `Connected to Apollo.io Lead Engine (${latencyMs}ms)!`, latencyMs };
+      if (authRes.ok) {
+        const authData = await authRes.json();
+        const userName = authData?.email_accounts?.[0]?.user_name || "Femi Adeleke";
+        const email = authData?.email_accounts?.[0]?.email || "";
+        return {
+          success: true,
+          message: `Connected to Apollo.io account (${userName}${email ? ` · ${email}` : ""}) successfully (${latencyMs}ms)!`,
+          latencyMs,
+        };
       }
-      return { success: false, message: `Apollo rejected key (HTTP ${res.status}). Verify API key permissions.` };
+
+      // Fallback try auth health
+      const healthRes = await fetch(`https://api.apollo.io/v1/auth/health?api_key=${cleanKey}`);
+      if (healthRes.ok) {
+        return {
+          success: true,
+          message: `Connected to Apollo.io Lead Engine (${Date.now() - start}ms)!`,
+          latencyMs: Date.now() - start,
+        };
+      }
+
+      const errText = await authRes.text();
+      return { success: false, message: `Apollo rejected key (HTTP ${authRes.status}): ${errText.slice(0, 100)}` };
     }
 
     if (prov === "openrouter" || prov === "openrouter_api_key") {

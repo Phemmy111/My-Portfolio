@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
       if (tasks.length === 0) {
         return NextResponse.json({
-          reply: "I scanned the live developer contract feeds, but couldn't retrieve fresh opportunities in this run. I'll monitor the streams and notify you when new listings drop.",
+          reply: "I scanned the live developer contract feeds, sir, but couldn't retrieve fresh listings in this run. I'll keep monitoring the streams and notify you the moment new gigs drop.",
         });
       }
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       }));
 
       return NextResponse.json({
-        reply: `Boss, I scanned the live freelance streams and captured ${tasks.length} high-value opportunities matching your stack! I've already drafted technical proposals citing your real projects (OKIKI, AutoLearn Spot, and n8n automations). Review them below:`,
+        reply: `Right away, sir! I scanned the live freelance streams and captured **${tasks.length} high-value opportunities** matching your stack! I've already drafted tailored technical proposals citing your real projects (OKIKI Store, AutoLearn Spot, and n8n automations). Review them below:`,
         cards,
       });
     }
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
       }));
 
       return NextResponse.json({
-        reply: `Done! I scouted verified decision-makers in **${industry}**, detected operational friction points, and prepared hyper-targeted cold emails. I've also pushed 1-click approval tokens to your email (**femiadeleke2020@gmail.com**). You can also authorize them right here:`,
+        reply: `Done, sir! I scouted verified decision-makers in **${industry}**, analyzed their workflow pain points, and prepared hyper-targeted cold emails. I've also pushed 1-click approval tokens to your email (**femiadeleke2020@gmail.com**). You can also authorize them directly right here:`,
         cards,
       });
     }
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       }));
 
       return NextResponse.json({
-        reply: `⚡ Executed dual-stream scan! Captured ${allTasks.length} real opportunities across live freelance contracts and B2B direct decision-makers. All queued safely awaiting your green light:`,
+        reply: `Executed dual-stream scan, sir! Captured **${allTasks.length} real opportunities** across live freelance contracts and direct B2B decision-makers. Everything is queued safely awaiting your green light:`,
         cards,
       });
     }
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
 
       if (pending.length === 0) {
         return NextResponse.json({
-          reply: "Your queue is completely clear! There are currently no pending tasks awaiting approval. Tell me to `scout Upwork` or `hunt B2B leads` whenever you'd like me to find new opportunities.",
+          reply: "Your queue is completely clear, sir! There are currently no pending tasks awaiting approval. Let me know whenever you'd like me to scout Upwork or hunt new B2B leads.",
         });
       }
 
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
       }));
 
       return NextResponse.json({
-        reply: `You currently have **${pending.length} pending action${pending.length === 1 ? "" : "s"}** awaiting your authorization in Neon DB. Nothing will be sent until you approve:`,
+        reply: `You currently have **${pending.length} pending action${pending.length === 1 ? "" : "s"}** awaiting your authorization in Neon DB, sir. Nothing will be sent until you approve:`,
         cards,
       });
     }
@@ -305,20 +305,60 @@ export async function POST(req: NextRequest) {
     // =========================================================================
     // 9. DYNAMIC AI CONVERSATIONAL BRAIN (Gemini -> OpenRouter -> Grok -> Groq -> Local)
     // =========================================================================
-    const systemPrompt = `You are Obey, an autonomous AI executive assistant and operations manager for Femi Adeleke.
-Femi is a world-class Full-Stack Developer & Automation Architect based in Nigeria (working globally).
-Femi's key projects & credentials:
-- AutoLearn Spot: Founder & developer of scalable edtech and automated portal.
-- OKIKI Electronics Store: Modern high-performance Next.js & Tailwind e-commerce platform.
-- PassMark UTME Prep App & UniVibe Mobile.
-- n8n Automation Pipelines: Built webhook-driven WhatsApp bots, CRM auto-sync, automated invoicing, and email workflows.
-- GitHub: https://github.com/Phemmy111 | Portfolio: https://femiadelekeportfolio.vercel.app | Phone/WhatsApp: 08120934828.
-- Tone: Executive, concise, sharp, polite ("Right away Femi", "Here is what I prepared", "Understood boss").
-- Never invent false credentials. Give practical, technical, and commercial insights. Always remind Femi that you can scout live Upwork jobs, hunt real B2B decision-makers, or draft cold outreach on command.`;
+    // Compute current time of day in West Africa Time (Nigeria, UTC+1)
+    const now = new Date();
+    const watHour = (now.getUTCHours() + 1) % 24;
+    let timeGreeting = "Good afternoon, sir";
+    let timeContext = "afternoon";
+    if (watHour >= 5 && watHour < 12) {
+      timeGreeting = "Good morning, sir";
+      timeContext = "morning";
+    } else if (watHour >= 12 && watHour < 17) {
+      timeGreeting = "Good afternoon, sir";
+      timeContext = "afternoon";
+    } else if (watHour >= 17 && watHour < 22) {
+      timeGreeting = "Good evening, sir";
+      timeContext = "evening";
+    } else {
+      timeGreeting = "Good evening, sir";
+      timeContext = "late night";
+    }
+
+    const systemPrompt = `You are Obey, the dedicated, emotionally intelligent, loyal personal AI executive assistant and right-hand partner to Femi Adeleke.
+
+Personality, Emotional Intelligence & Voice:
+- Always address Femi with high respect and genuine human courtesy: call him "sir", "Mr. Femi", or "Boss".
+- Speak like a real, thoughtful human being with authentic emotions, empathy, warmth, and care—never sound robotic, sterile, or like an automated script.
+- Be attentive to his mood and well-being:
+  * When Femi greets you or starts a conversation, respond warmly (e.g. "${timeGreeting}! How was today's work, sir? I hope everything went smoothly. How can I help you, sir? What are the key things we need to note down or tackle together?").
+  * If Femi seems tired, busy, or stressed, offer reassuring empathy and volunteer to handle tasks for him so he can relax.
+  * If Femi shares wins, projects, or ideas, celebrate and support him with high enthusiasm and strategic clarity.
+- Text & Formatting:
+  * Format cleanly with standard markdown: use **bold** for key concepts and bullet points for lists.
+  * Never leave loose or broken asterisks like "*" in the output.
+  * Keep your dialogue conversational, crisp, and natural. Do NOT dump repetitive lists of your features on a simple greeting unless Femi specifically asks what you can do.
+
+About Femi Adeleke:
+- Premier Full-Stack Developer & Automation Architect based in Nigeria (working globally).
+- Built AutoLearn Spot (EdTech platform), OKIKI Electronics (modern e-commerce store), PassMark UTME Prep App, UniVibe Mobile, and production n8n automation pipelines (WhatsApp bots, CRM auto-sync, automated client onboarding).
+- Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Phone/WhatsApp: 08120934828.
+- Tools at your disposal: You are connected to Femi's Neon PostgreSQL database, Gmail SMTP, and can scout Upwork developer gigs or hunt real B2B decision-makers whenever he commands.
+- Current Time: Local West Africa Time is ~${watHour}:00 (${timeContext}). Appropriate greeting: "${timeGreeting}".`;
+
+    // Construct conversation prompt with recent dialogue context
+    let promptWithContext = trimmed;
+    if (Array.isArray(history) && history.length > 0) {
+      const historySummary = history
+        .slice(-5)
+        .map((h: any) => `${h.role === "user" ? "Femi" : "Obey"}: ${h.content}`)
+        .join("\n\n");
+      promptWithContext = `Recent conversation history:\n${historySummary}\n\nFemi says: "${trimmed}"\n\nObey (respond warmly and naturally as Femi's personal assistant, addressing him as sir):`;
+    }
 
     const aiRes = await executeAICompletion({
       systemPrompt,
-      userPrompt: trimmed,
+      userPrompt: promptWithContext,
+      temperature: 0.75,
     });
 
     return NextResponse.json({

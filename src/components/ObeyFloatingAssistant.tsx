@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bot, X, MessageSquare, Sparkles } from "lucide-react";
+import { Bot, Sparkles } from "lucide-react";
 import ObeyChatConsole from "./ObeyChatConsole";
 
 interface ObeyFloatingAssistantProps {
@@ -10,6 +10,7 @@ interface ObeyFloatingAssistantProps {
 
 export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
     <>
@@ -40,13 +41,24 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
         ) : null}
       </div>
 
-      {/* Floating Modal Drawer */}
+      {/* Floating / Fullscreen Modal Drawer */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[460px] md:w-[500px] shadow-2xl rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div
+          className={
+            isFullscreen
+              ? "fixed inset-0 z-[100] bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200"
+              : "fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[480px] md:w-[520px] shadow-2xl rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200"
+          }
+        >
           <ObeyChatConsole
             onTaskUpdated={onTaskUpdated}
-            onClose={() => setIsOpen(false)}
-            isFloating={true}
+            onClose={() => {
+              setIsFullscreen(false);
+              setIsOpen(false);
+            }}
+            isFloating={!isFullscreen}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
           />
         </div>
       )}

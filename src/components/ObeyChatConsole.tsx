@@ -15,10 +15,11 @@ import {
   Check,
   RefreshCw,
   Clock,
-  ArrowUpRight,
-  ShieldCheck,
   Trash2,
   X,
+  Maximize2,
+  Minimize2,
+  FileText,
 } from "lucide-react";
 
 interface ActionCard {
@@ -44,35 +45,232 @@ interface ObeyChatConsoleProps {
   onTaskUpdated?: () => void;
   onClose?: () => void;
   isFloating?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+}
+
+const CHAT_STORAGE_KEY = "femi_obey_chat_history_v2";
+
+/**
+ * Cleanly renders Markdown text without raw asterisks (*, **),
+ * styling bold, italics, inline code, links, and bullet lists cleanly.
+ */
+function FormattedMessage({ text }: { text: string }) {
+  if (!text) return null;
+
+  const lines = text.split("\n");
+
+  const formatInline = (str: string): React.ReactNode => {
+    // Regex matches inline code `code`, bold **text**, italic *text*, and markdown [links](url)
+    const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+    const parts = str.split(regex);
+
+    return parts.map((part, index) => {
+      if (!part) return null;
+
+      // Inline code
+      if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+        return (
+          <code
+            key={index}
+            className="px-1.5 py-0.5 rounded bg-zinc-200/90 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-mono text-xs font-semibold"
+          >
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+
+      // Bold **text**
+      if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+        return (
+          <strong key={index} className="font-extrabold text-zinc-950 dark:text-white">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+
+      // Italic *text*
+      if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+        return (
+          <em key={index} className="italic text-zinc-700 dark:text-zinc-300">
+            {part.slice(1, -1)}
+          </em>
+        );
+      }
+
+      // Link [text](url)
+      const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
+      if (linkMatch) {
+        return (
+          <a
+            key={index}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-emerald-600 dark:text-emerald-400 underline font-semibold hover:text-emerald-500"
+          >
+            {linkMatch[1]}
+          </a>
+        );
+      }
+
+      return <span key={index}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className="space-y-2 leading-relaxed text-sm">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+          return <div key={idx} className="h-1.5" />;
+        }
+
+        // Headers
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h4 key={idx} className="font-black text-sm text-zinc-950 dark:text-white mt-2">
+              {formatInline(trimmed.slice(4))}
+            </h4>
+          );
+        }
+        if (trimmed.startsWith("## ")) {
+          return (
+            <h3 key={idx} className="font-black text-base text-zinc-950 dark:text-white mt-2">
+              {formatInline(trimmed.slice(3))}
+            </h3>
+          );
+        }
+
+        // Bullet lists
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("• ")) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1 my-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
+              <div className="flex-1">{formatInline(trimmed.slice(2))}</div>
+            </div>
+          );
+        }
+
+        // Numbered lists
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+        if (numMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1 my-0.5">
+              <span className="font-bold text-xs text-emerald-500 mt-0.5 shrink-0">
+                {numMatch[1]}.
+              </span>
+              <div className="flex-1">{formatInline(numMatch[2])}</div>
+            </div>
+          );
+        }
+
+        return <p key={idx}>{formatInline(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function getInitialGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) {
+    return "Good morning, sir! Ready to conquer today?\n\nI'm **Obey**, your personal AI assistant. How can I help you today, sir? What are the key tasks or notes we need to tackle together?";
+  } else if (hour >= 12 && hour < 17) {
+    return "Good afternoon, sir! How is today's work going?\n\nI'm **Obey**, your personal AI assistant. Everything in our operations is steady. How can I help you right now, sir? Are there any specific things we need to note down or work on?";
+  } else {
+    return "Good evening, sir! How was today's work? I hope everything went smoothly.\n\nI'm **Obey**, your personal AI assistant. Everything in our operations is running well. How can I help you tonight, sir? What are the things on your plate that we need to note down or plan for?";
+  }
 }
 
 export default function ObeyChatConsole({
   onTaskUpdated,
   onClose,
   isFloating,
+  isFullscreen: externalFullscreen,
+  onToggleFullscreen,
 }: ObeyChatConsoleProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hello Femi! I'm **Obey**, your autonomous personal assistant. I'm connected to your Neon PostgreSQL database, Gmail SMTP, and live freelance feeds.\n\nTell me what to scout, hunt, or execute, or tap any quick action below.",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [internalFullscreen, setInternalFullscreen] = useState(false);
+
+  const isExpanded = externalFullscreen !== undefined ? externalFullscreen : internalFullscreen;
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // 1. Load chat history from localStorage on initial mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+          setIsLoaded(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load Obey chat history:", e);
+    }
+
+    // Default time-aware human greeting if no history
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant",
+        content: getInitialGreeting(),
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+    setIsLoaded(true);
+  }, []);
+
+  // 2. Persist chat history to localStorage whenever messages change
+  useEffect(() => {
+    if (!isLoaded || messages.length === 0) return;
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+    } catch (e) {
+      console.warn("Failed to save Obey chat history:", e);
+    }
+  }, [messages, isLoaded]);
+
+  // 3. Scroll to bottom on updates
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  // 4. Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isExpanded) {
+        if (onToggleFullscreen) {
+          onToggleFullscreen();
+        } else {
+          setInternalFullscreen(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded, onToggleFullscreen]);
+
+  const toggleFullscreen = () => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+    } else {
+      setInternalFullscreen(!internalFullscreen);
+    }
+  };
 
   const handleSend = async (customText?: string) => {
     const textToSend = customText || input;
@@ -111,7 +309,6 @@ export default function ObeyChatConsole({
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // If tasks were created, trigger parent refresh
         if (data.cards && data.cards.length > 0 && onTaskUpdated) {
           onTaskUpdated();
         }
@@ -124,7 +321,7 @@ export default function ObeyChatConsole({
         {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: `⚠️ Sorry Femi, I hit an unexpected snag: ${err.message || "Network error"}. Please try again.`,
+          content: `⚠️ My apologies, sir. I hit a temporary network snag: ${err.message || "Request timed out"}. Please try sending that again.`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -144,7 +341,6 @@ export default function ObeyChatConsole({
       const data = await res.json();
 
       if (data.success) {
-        // Update local card status
         setMessages((prev) =>
           prev.map((msg) => ({
             ...msg,
@@ -197,21 +393,25 @@ export default function ObeyChatConsole({
   };
 
   const clearChat = () => {
-    setMessages([
+    const fresh: Message[] = [
       {
-        id: "welcome-reset",
+        id: `welcome-${Date.now()}`,
         role: "assistant",
-        content: "Chat cleared! How can I assist you right now, Femi?",
+        content: `Conversation refreshed, sir! How can I help you right now? What are the key things we need to note down or tackle together?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
-    ]);
+    ];
+    setMessages(fresh);
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(fresh));
+    } catch (e) {}
   };
 
-  return (
+  const consoleContent = (
     <div
-      className={`flex flex-col ${
-        isFloating ? "h-[520px] max-h-[calc(100vh-100px)]" : "h-[620px]"
-      } w-full rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden`}
+      className={`flex flex-col w-full h-full rounded-2xl md:rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden ${
+        isExpanded ? "max-w-6xl max-h-[94vh]" : ""
+      }`}
     >
       {/* Console Top Header */}
       <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
@@ -225,27 +425,40 @@ export default function ObeyChatConsole({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-black text-sm text-zinc-950 dark:text-white tracking-tight">
-                Agent Obey · AI Chat Console
+                Agent Obey · AI Personal Assistant
               </h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 Online
               </span>
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
-              Autonomous assistant connected to Neon DB & Gmail SMTP
+              Human-In-The-Loop AI connected to Neon DB & Gmail SMTP
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Fullscreen Enlarge Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            title={isExpanded ? "Exit Fullscreen (Esc)" : "Enlarge to Fullscreen"}
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs flex items-center gap-1 font-semibold"
+          >
+            {isExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            <span className="hidden sm:inline">{isExpanded ? "Exit Fullscreen" : "Fullscreen"}</span>
+          </button>
+
+          {/* Clear Chat Button */}
           <button
             onClick={clearChat}
             title="Clear Conversation"
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs flex items-center gap-1 font-semibold"
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs flex items-center gap-1 font-semibold"
           >
             <Trash2 size={14} />
             <span className="hidden sm:inline">Clear</span>
           </button>
+
+          {/* Close Button */}
           {onClose && (
             <button
               onClick={onClose}
@@ -275,13 +488,14 @@ export default function ObeyChatConsole({
               )}
 
               <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 space-y-3 ${
+                className={`max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-3 space-y-3 ${
                   isUser
                     ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-medium text-sm shadow-md"
                     : "bg-zinc-100 dark:bg-zinc-900/90 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800 text-sm shadow-sm"
                 }`}
               >
-                <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                {/* Clean Markdown Rendering without raw asterisks */}
+                <FormattedMessage text={m.content} />
 
                 {/* Render Embedded Action Cards (if Obey returned cards) */}
                 {m.cards && m.cards.length > 0 && (
@@ -359,24 +573,27 @@ export default function ObeyChatConsole({
                               <a
                                 href={card.link}
                                 target="_blank"
-                                rel="noreferrer"
-                                className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-blue-600 dark:text-blue-400 font-bold text-[11px] flex items-center gap-1 transition-all"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-bold text-[11px] flex items-center gap-1 transition-all"
                               >
-                                <ExternalLink size={13} />
-                                Open Link
+                                View Listing <ExternalLink size={12} />
                               </a>
                             )}
 
-                            {/* HITL Approve / Reject (Only if still pending) */}
-                            {!isExecuted && !isRejected && card.approvalToken && (
+                            {/* Approve / Reject Buttons */}
+                            {card.approvalToken && !isExecuted && !isRejected && (
                               <>
                                 <button
                                   onClick={() => handleApproveCard(card.id, card.approvalToken!)}
                                   disabled={actionInProgress === card.id}
-                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[11px] flex items-center gap-1 shadow-sm transition-all disabled:opacity-50 ml-auto"
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[11px] flex items-center gap-1 transition-all disabled:opacity-50"
                                 >
-                                  <CheckCircle2 size={13} />
-                                  {actionInProgress === card.id ? "Sending..." : "Approve & Send via SMTP"}
+                                  {actionInProgress === card.id ? (
+                                    <RefreshCw size={12} className="animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 size={13} />
+                                  )}
+                                  Authorize & Dispatch
                                 </button>
                                 <button
                                   onClick={() => handleRejectCard(card.id, card.approvalToken!)}
@@ -416,7 +633,7 @@ export default function ObeyChatConsole({
             </div>
             <div className="p-3.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 text-xs text-zinc-500">
               <RefreshCw size={13} className="animate-spin text-emerald-500" />
-              <span>Obey is reasoning & accessing databases...</span>
+              <span>Obey is thinking and preparing your response, sir...</span>
             </div>
           </div>
         )}
@@ -425,7 +642,7 @@ export default function ObeyChatConsole({
       </div>
 
       {/* Quick Suggestion Chips */}
-      <div className="px-3 py-1.5 bg-zinc-50/90 dark:bg-zinc-950/90 border-t border-zinc-200 dark:border-zinc-800/80 overflow-x-auto flex items-center gap-2 no-scrollbar shrink-0">
+      <div className="px-3 py-2 bg-zinc-50/90 dark:bg-zinc-950/90 border-t border-zinc-200 dark:border-zinc-800/80 overflow-x-auto flex items-center gap-2 no-scrollbar shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 shrink-0 flex items-center gap-1">
           <Sparkles size={11} className="text-amber-500" /> Quick:
         </span>
@@ -444,6 +661,13 @@ export default function ObeyChatConsole({
           <Mail size={12} className="text-amber-500" /> Hunt B2B Leads
         </button>
         <button
+          onClick={() => handleSend("What are the things we need to note down today?")}
+          disabled={loading}
+          className="px-3 py-1 rounded-full text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black transition-all shrink-0 flex items-center gap-1"
+        >
+          <FileText size={12} className="text-emerald-500" /> What to Note
+        </button>
+        <button
           onClick={() => handleSend("What tasks are waiting for my approval?")}
           disabled={loading}
           className="px-3 py-1 rounded-full text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black transition-all shrink-0 flex items-center gap-1"
@@ -455,7 +679,7 @@ export default function ObeyChatConsole({
           disabled={loading}
           className="px-3 py-1 rounded-full text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black transition-all shrink-0 flex items-center gap-1"
         >
-          <Zap size={12} className="text-emerald-500" /> Pipeline Stats
+          <Zap size={12} className="text-amber-500" /> Pipeline Stats
         </button>
       </div>
 
@@ -471,7 +695,7 @@ export default function ObeyChatConsole({
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Command Obey (e.g. 'Scout Upwork jobs', 'Hunt B2B leads', 'Show stats')..."
+          placeholder="Talk to Obey (e.g. 'Good afternoon sir', 'Scout Upwork jobs', 'What to note?')..."
           disabled={loading}
           className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
         />
@@ -479,11 +703,34 @@ export default function ObeyChatConsole({
         <button
           type="submit"
           disabled={!input.trim() || loading}
-          className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center shrink-0"
+          className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0"
         >
-          <Send size={18} />
+          <Send size={17} />
         </button>
       </form>
+    </div>
+  );
+
+  // If expanded in standalone / tab mode without parent fullscreen handling
+  if (isExpanded && externalFullscreen === undefined) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200">
+        {consoleContent}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`w-full ${
+        isExpanded
+          ? "h-full"
+          : isFloating
+          ? "h-[540px] max-h-[calc(100vh-100px)]"
+          : "h-[620px]"
+      }`}
+    >
+      {consoleContent}
     </div>
   );
 }
