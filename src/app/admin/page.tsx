@@ -126,13 +126,13 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleRunHunt = async () => {
+  const handleRunHunt = async (actionType: "hunt_all" | "hunt_upwork" | "hunt_b2b" = "hunt_all") => {
     setHunting(true);
     try {
       const res = await fetch("/api/obey/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "hunt" }),
+        body: JSON.stringify({ action: actionType }),
       });
       const data = await res.json();
       if (data.tasks) {
@@ -888,29 +888,47 @@ export default function AdminDashboardPage() {
                   </p>
                 </div>
 
-                <div className="pt-2 flex flex-wrap items-center gap-4">
+                <div className="pt-2 flex flex-wrap items-center gap-3">
                   <button
-                    onClick={handleRunHunt}
+                    onClick={() => handleRunHunt("hunt_all")}
                     disabled={hunting}
-                    className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
+                    className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
                   >
                     {hunting ? (
                       <>
-                        <RefreshCw size={16} className="animate-spin" />
-                        Obey is Hunting Leads...
+                        <RefreshCw size={15} className="animate-spin" />
+                        Scouting Real Opportunities...
                       </>
                     ) : (
                       <>
-                        <Play size={16} fill="currentColor" />
-                        Run Autonomous Lead Hunter Now
+                        <Zap size={15} fill="currentColor" />
+                        ⚡ Run Dual-Stream Scout (All)
                       </>
                     )}
                   </button>
 
-                  <p className="text-xs text-zinc-500 font-semibold">
-                    💡 Dispatches approval emails with 1-click links to femiadeleke2020@gmail.com
-                  </p>
+                  <button
+                    onClick={() => handleRunHunt("hunt_upwork")}
+                    disabled={hunting}
+                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
+                  >
+                    <Briefcase size={15} className="text-blue-400" />
+                    Scout Upwork Live Jobs
+                  </button>
+
+                  <button
+                    onClick={() => handleRunHunt("hunt_b2b")}
+                    disabled={hunting}
+                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
+                  >
+                    <Mail size={15} className="text-amber-400" />
+                    Hunt Real B2B Decision-Makers
+                  </button>
                 </div>
+
+                <p className="text-xs text-zinc-500 font-semibold pt-1">
+                  💡 Obey pulls live Upwork client postings with budgets and verifies B2B emails with 1-click approvals sent to femiadeleke2020@gmail.com
+                </p>
               </div>
             </div>
 

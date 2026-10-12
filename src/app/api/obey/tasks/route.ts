@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAgentTasks, runAutonomousLeadHunter, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
+import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
+import { runUpworkLiveScout } from "@/lib/upwork-scout";
+import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 
 export async function GET() {
   try {
@@ -13,17 +15,37 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { action, id, token } = await req.json();
+    const { action, id, token, industry } = await req.json();
 
-    if (action === "hunt") {
-      const created = await runAutonomousLeadHunter();
-      return NextResponse.json({ 
-        success: true, 
-        message: `Agent Obey hunted and created ${created.length} new targeted approval tasks!`,
-        tasks: created 
+    // 1. Live Upwork Job Scout
+    if (action === "hunt_upwork") {
+      const result = await runUpworkLiveScout();
+      return NextResponse.json(result);
+    }
+
+    // 2. Real B2B / Apollo Lead Hunter
+    if (action === "hunt_b2b") {
+      const result = await runB2BLeadHunter({ industry });
+      return NextResponse.json(result);
+    }
+
+    // 3. Combined Dual-Stream Scan
+    if (action === "hunt" || action === "hunt_all") {
+      const [b2bResult, upworkResult] = await Promise.all([
+        runB2BLeadHunter({ industry }),
+        runUpworkLiveScout(),
+      ]);
+
+      const allTasks = [...(b2bResult.tasks || []), ...(upworkResult.tasks || [])];
+
+      return NextResponse.json({
+        success: true,
+        message: `Obey captured ${allTasks.length} real opportunities across Upwork Live & B2B Decision Makers!`,
+        tasks: allTasks,
       });
     }
 
+    // Task Execution (HITL)
     if (action === "approve" && id && token) {
       const res = await executeAgentTask(id, token);
       return NextResponse.json(res);
