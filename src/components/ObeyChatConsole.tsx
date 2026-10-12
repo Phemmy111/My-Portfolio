@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 
 interface ActionCard {
@@ -41,9 +42,15 @@ interface Message {
 
 interface ObeyChatConsoleProps {
   onTaskUpdated?: () => void;
+  onClose?: () => void;
+  isFloating?: boolean;
 }
 
-export default function ObeyChatConsole({ onTaskUpdated }: ObeyChatConsoleProps) {
+export default function ObeyChatConsole({
+  onTaskUpdated,
+  onClose,
+  isFloating,
+}: ObeyChatConsoleProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -201,15 +208,19 @@ export default function ObeyChatConsole({ onTaskUpdated }: ObeyChatConsoleProps)
   };
 
   return (
-    <div className="flex flex-col h-[650px] rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden">
+    <div
+      className={`flex flex-col ${
+        isFloating ? "h-[520px] max-h-[calc(100vh-100px)]" : "h-[620px]"
+      } w-full rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden`}
+    >
       {/* Console Top Header */}
-      <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between">
+      <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-black shadow-md shadow-emerald-500/20">
-              <Bot size={22} />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-black shadow-md shadow-emerald-500/20">
+              <Bot size={20} />
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-black rounded-full" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-black rounded-full" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -226,18 +237,29 @@ export default function ObeyChatConsole({ onTaskUpdated }: ObeyChatConsoleProps)
           </div>
         </div>
 
-        <button
-          onClick={clearChat}
-          title="Clear Conversation"
-          className="p-2 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs flex items-center gap-1 font-semibold"
-        >
-          <Trash2 size={15} />
-          <span className="hidden sm:inline">Clear</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={clearChat}
+            title="Clear Conversation"
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs flex items-center gap-1 font-semibold"
+          >
+            <Trash2 size={14} />
+            <span className="hidden sm:inline">Clear</span>
+          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Close Chat"
+              className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all ml-1"
+            >
+              <X size={17} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
         {messages.map((m) => {
           const isUser = m.role === "user";
 
@@ -403,7 +425,7 @@ export default function ObeyChatConsole({ onTaskUpdated }: ObeyChatConsoleProps)
       </div>
 
       {/* Quick Suggestion Chips */}
-      <div className="px-4 py-2 bg-zinc-50/60 dark:bg-zinc-950/60 border-t border-zinc-200 dark:border-zinc-800/80 overflow-x-auto flex items-center gap-2 no-scrollbar">
+      <div className="px-3 py-1.5 bg-zinc-50/90 dark:bg-zinc-950/90 border-t border-zinc-200 dark:border-zinc-800/80 overflow-x-auto flex items-center gap-2 no-scrollbar shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 shrink-0 flex items-center gap-1">
           <Sparkles size={11} className="text-amber-500" /> Quick:
         </span>
@@ -443,7 +465,7 @@ export default function ObeyChatConsole({ onTaskUpdated }: ObeyChatConsoleProps)
           e.preventDefault();
           handleSend();
         }}
-        className="p-3 sm:p-4 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2"
+        className="p-2.5 sm:p-3 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2 shrink-0"
       >
         <input
           type="text"

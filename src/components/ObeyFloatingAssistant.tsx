@@ -42,19 +42,12 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
 
       {/* Floating Modal Drawer */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[92vw] sm:w-[480px] md:w-[540px] max-h-[85vh] flex flex-col shadow-2xl rounded-3xl animate-in fade-in slide-in-from-bottom-5 duration-200">
-          <div className="relative">
-            {/* Close Button on top corner */}
-            <button
-              onClick={() => setIsOpen(false)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-white transition-all shadow-md"
-              title="Close Chat"
-            >
-              <X size={16} />
-            </button>
-
-            <ObeyChatConsole onTaskUpdated={onTaskUpdated} />
-          </div>
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[460px] md:w-[500px] shadow-2xl rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <ObeyChatConsole
+            onTaskUpdated={onTaskUpdated}
+            onClose={() => setIsOpen(false)}
+            isFloating={true}
+          />
         </div>
       )}
     </>
