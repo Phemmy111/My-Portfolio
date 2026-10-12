@@ -29,6 +29,8 @@ import {
   Play,
 } from "lucide-react";
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
+import ObeyChatConsole from "@/components/ObeyChatConsole";
+import ObeyFloatingAssistant from "@/components/ObeyFloatingAssistant";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -932,6 +934,23 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            {/* Interactive Chat with Obey AI Assistant */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
+                    <Bot size={20} className="text-emerald-500" />
+                    Interactive Chat with Obey
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    Command Obey conversationally — scout live gigs, hunt B2B prospects, approve actions, or query metrics.
+                  </p>
+                </div>
+              </div>
+
+              <ObeyChatConsole onTaskUpdated={fetchData} />
+            </div>
+
             {/* Connected Apps & Integrations Ecosystem */}
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 mb-3">
@@ -1340,6 +1359,9 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Floating Obey Assistant Drawer (Accessible across all tabs) */}
+      <ObeyFloatingAssistant onTaskUpdated={fetchData} />
     </div>
   );
 }
