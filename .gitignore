@@ -18,3 +18,4 @@ node_modules/
 # Data store (local JSON — use Neon DB in production)
 data/admin-data.json
 .neon
+*.tsbuildinfo
