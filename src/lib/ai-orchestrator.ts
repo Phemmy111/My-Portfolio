@@ -1,4 +1,4 @@
-import { getSetting } from "./settings";
+import { getAIProvidersPool, AIProviderConfig } from "./settings";
 
 export interface AICompletionResult {
   text: string;
@@ -16,226 +16,221 @@ export interface PromptOptions {
 }
 
 /**
- * Executes an AI completion using a resilient multi-provider fallback waterfall.
- * Priority: Gemini -> OpenRouter -> Grok -> Groq -> OpenAI -> Local Fallback
+ * Executes an AI completion across the user-configured multi-key Provider Pool in sequential priority.
+ * Seamlessly fails over from Key 1 -> Key 2 -> Key 3 (even across multiple Gemini or Grok accounts).
  */
 export async function executeAICompletion(options: PromptOptions): Promise<AICompletionResult> {
-  const { systemPrompt = "You are Obey, an autonomous AI executive assistant for Femi Adeleke.", userPrompt, temperature = 0.7, maxTokens = 2048 } = options;
+  const {
+    systemPrompt = "You are Obey, an autonomous AI executive assistant for Femi Adeleke.",
+    userPrompt,
+    temperature = 0.7,
+    maxTokens = 2048,
+  } = options;
+
   const errors: string[] = [];
+  const pool = await getAIProvidersPool();
+  const activeProviders = pool.filter((p) => p.enabled && p.apiKey?.trim());
 
-  // 1. Google Gemini (with model preference and sibling model auto-retry)
-  const geminiKey = await getSetting("GEMINI_API_KEY");
-  if (geminiKey) {
-    const preferredModel = (await getSetting("GEMINI_MODEL")) || "gemini-2.5-flash";
-    const candidateModels = [preferredModel];
-    if (preferredModel !== "gemini-2.5-flash-lite") candidateModels.push("gemini-2.5-flash-lite");
-    if (preferredModel !== "gemini-flash-latest") candidateModels.push("gemini-flash-latest");
+  for (let i = 0; i < activeProviders.length; i++) {
+    const p = activeProviders[i];
 
-    for (const modelName of candidateModels) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`, {
+    try {
+      // 1. Google Gemini
+      if (p.provider === "gemini") {
+        const targetModel = p.model?.trim() || "gemini-2.5-flash";
+        const candidateModels = [targetModel];
+        if (targetModel !== "gemini-2.5-flash-lite") candidateModels.push("gemini-2.5-flash-lite");
+        if (targetModel !== "gemini-flash-latest") candidateModels.push("gemini-flash-latest");
+
+        for (const m of candidateModels) {
+          try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${p.apiKey.trim()}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: { temperature, maxOutputTokens: maxTokens },
+              }),
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (candidate) {
+                return {
+                  text: candidate.trim(),
+                  provider: `${p.name} (${p.provider.toUpperCase()})`,
+                  model: m,
+                  fallbackTriggered: i > 0 || m !== targetModel,
+                  errorsEncountered: errors,
+                };
+              }
+            } else {
+              const errText = await res.text();
+              errors.push(`${p.name} (${m}) HTTP ${res.status}: ${errText.slice(0, 100)}`);
+            }
+          } catch (modelErr: any) {
+            errors.push(`${p.name} (${m}) error: ${modelErr.message}`);
+          }
+        }
+      }
+
+      // 2. OpenRouter
+      if (p.provider === "openrouter") {
+        const targetModel = p.model?.trim() || "meta-llama/llama-3.3-70b-instruct";
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${p.apiKey.trim()}`,
+            "HTTP-Referer": "https://femiadelekeportfolio.vercel.app",
+            "X-Title": "Femi Adeleke AI Agent Obey",
+          },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            generationConfig: { temperature, maxOutputTokens: maxTokens },
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature,
+            max_tokens: maxTokens,
           }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (candidate) {
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
             return {
-              text: candidate.trim(),
-              provider: "Google Gemini",
-              model: modelName,
-              fallbackTriggered: errors.length > 0 || modelName !== preferredModel,
+              text: content.trim(),
+              provider: p.name,
+              model: targetModel,
+              fallbackTriggered: i > 0,
               errorsEncountered: errors,
             };
           }
         } else {
           const errText = await res.text();
-          errors.push(`Gemini (${modelName}) HTTP ${res.status}: ${errText.slice(0, 100)}`);
+          errors.push(`${p.name} HTTP ${res.status}: ${errText.slice(0, 100)}`);
         }
-      } catch (err: any) {
-        errors.push(`Gemini (${modelName}) exception: ${err.message}`);
       }
-    }
-  }
 
-  // 2. OpenRouter (Multi-model aggregator)
-  const openRouterKey = await getSetting("OPENROUTER_API_KEY");
-  if (openRouterKey) {
-    const openRouterModel = (await getSetting("OPENROUTER_MODEL")) || "meta-llama/llama-3.3-70b-instruct";
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openRouterKey}`,
-          "HTTP-Referer": "https://femiadelekeportfolio.vercel.app",
-          "X-Title": "Femi Adeleke AI Agent Obey",
-        },
-        body: JSON.stringify({
-          model: openRouterModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
+      // 3. xAI Grok
+      if (p.provider === "grok") {
+        const targetModel = p.model?.trim() || "grok-2-latest";
+        const res = await fetch("https://api.x.ai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${p.apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature,
+            max_tokens: maxTokens,
+          }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          return {
-            text: content.trim(),
-            provider: "OpenRouter",
-            model: openRouterModel,
-            fallbackTriggered: true,
-            errorsEncountered: errors,
-          };
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            return {
+              text: content.trim(),
+              provider: p.name,
+              model: targetModel,
+              fallbackTriggered: i > 0,
+              errorsEncountered: errors,
+            };
+          }
+        } else {
+          const errText = await res.text();
+          errors.push(`${p.name} HTTP ${res.status}: ${errText.slice(0, 100)}`);
         }
-      } else {
-        const errText = await res.text();
-        errors.push(`OpenRouter HTTP ${res.status}: ${errText.slice(0, 100)}`);
       }
-    } catch (err: any) {
-      errors.push(`OpenRouter exception: ${err.message}`);
-    }
-  }
 
-  // 3. xAI / Grok
-  const grokKey = await getSetting("GROK_API_KEY");
-  if (grokKey) {
-    const grokModel = (await getSetting("GROK_MODEL")) || "grok-2-latest";
-    try {
-      const res = await fetch("https://api.x.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${grokKey}`,
-        },
-        body: JSON.stringify({
-          model: grokModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
+      // 4. Groq
+      if (p.provider === "groq") {
+        const targetModel = p.model?.trim() || "llama-3.3-70b-versatile";
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${p.apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature,
+            max_tokens: maxTokens,
+          }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          return {
-            text: content.trim(),
-            provider: "xAI (Grok)",
-            model: grokModel,
-            fallbackTriggered: true,
-            errorsEncountered: errors,
-          };
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            return {
+              text: content.trim(),
+              provider: p.name,
+              model: targetModel,
+              fallbackTriggered: i > 0,
+              errorsEncountered: errors,
+            };
+          }
+        } else {
+          const errText = await res.text();
+          errors.push(`${p.name} HTTP ${res.status}: ${errText.slice(0, 100)}`);
         }
-      } else {
-        const errText = await res.text();
-        errors.push(`Grok HTTP ${res.status}: ${errText.slice(0, 100)}`);
       }
-    } catch (err: any) {
-      errors.push(`Grok exception: ${err.message}`);
-    }
-  }
 
-  // 4. Groq (High-speed LPU)
-  const groqKey = await getSetting("GROQ_API_KEY");
-  if (groqKey) {
-    const groqModel = (await getSetting("GROQ_MODEL")) || "llama-3.3-70b-versatile";
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${groqKey}`,
-        },
-        body: JSON.stringify({
-          model: groqModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
+      // 5. OpenAI
+      if (p.provider === "openai") {
+        const targetModel = p.model?.trim() || "gpt-4o-mini";
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${p.apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature,
+            max_tokens: maxTokens,
+          }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          return {
-            text: content.trim(),
-            provider: "Groq",
-            model: groqModel,
-            fallbackTriggered: true,
-            errorsEncountered: errors,
-          };
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            return {
+              text: content.trim(),
+              provider: p.name,
+              model: targetModel,
+              fallbackTriggered: i > 0,
+              errorsEncountered: errors,
+            };
+          }
+        } else {
+          const errText = await res.text();
+          errors.push(`${p.name} HTTP ${res.status}: ${errText.slice(0, 100)}`);
         }
-      } else {
-        const errText = await res.text();
-        errors.push(`Groq HTTP ${res.status}: ${errText.slice(0, 100)}`);
       }
     } catch (err: any) {
-      errors.push(`Groq exception: ${err.message}`);
-    }
-  }
-
-  // 5. OpenAI
-  const openAIKey = await getSetting("OPENAI_API_KEY");
-  if (openAIKey) {
-    const openAIModel = (await getSetting("OPENAI_MODEL")) || "gpt-4o-mini";
-    try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openAIKey}`,
-        },
-        body: JSON.stringify({
-          model: openAIModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          return {
-            text: content.trim(),
-            provider: "OpenAI",
-            model: openAIModel,
-            fallbackTriggered: true,
-            errorsEncountered: errors,
-          };
-        }
-      } else {
-        const errText = await res.text();
-        errors.push(`OpenAI HTTP ${res.status}: ${errText.slice(0, 100)}`);
-      }
-    } catch (err: any) {
-      errors.push(`OpenAI exception: ${err.message}`);
+      errors.push(`${p.name} runtime exception: ${err.message}`);
     }
   }
 

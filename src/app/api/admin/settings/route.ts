@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllSettingsMasked, setSetting, KNOWN_KEYS } from "@/lib/settings";
+import {
+  getAllSettingsMasked,
+  setSetting,
+  KNOWN_KEYS,
+  getAIProvidersPool,
+  setAIProvidersPool,
+  AIProviderConfig,
+} from "@/lib/settings";
 
 export async function GET() {
   try {
-    const settings = await getAllSettingsMasked();
-    return NextResponse.json({ success: true, settings });
+    const [settings, pool] = await Promise.all([
+      getAllSettingsMasked(),
+      getAIProvidersPool(),
+    ]);
+    return NextResponse.json({ success: true, settings, pool });
   } catch (err: any) {
     console.error("Settings GET error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -15,37 +25,51 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // 1. Fetch Real-Time Models Action
+    // 1. Save Multi-Key Provider Pool
+    if (body.action === "save_pool" && Array.isArray(body.pool)) {
+      await setAIProvidersPool(body.pool as AIProviderConfig[]);
+      const updatedPool = await getAIProvidersPool();
+      return NextResponse.json({
+        success: true,
+        message: "AI Provider Pool saved to database successfully!",
+        pool: updatedPool,
+      });
+    }
+
+    // 2. Fetch Real-Time Models Action
     if (body.action === "fetch_models") {
       const { provider, key } = body;
       const modelsResult = await fetchProviderLiveModels(provider, key);
       return NextResponse.json(modelsResult);
     }
 
-    // 2. Connection Test Action
+    // 3. Connection Test Action
     if (body.action === "test") {
       const { provider, key, model } = body;
       const testResult = await testProviderConnection(provider, key, model);
       return NextResponse.json(testResult);
     }
 
-    // 3. Save Settings Action
+    // 4. Save General Settings Action
     const { updates } = body;
-    if (!updates || typeof updates !== "object") {
-      return NextResponse.json({ error: "Invalid updates format" }, { status: 400 });
-    }
-
-    for (const [k, v] of Object.entries(updates)) {
-      if (KNOWN_KEYS.includes(k as any) && typeof v === "string") {
-        await setSetting(k, v);
+    if (updates && typeof updates === "object") {
+      for (const [k, v] of Object.entries(updates)) {
+        if (KNOWN_KEYS.includes(k as any) && typeof v === "string") {
+          await setSetting(k, v);
+        }
       }
     }
 
-    const updatedSettings = await getAllSettingsMasked();
+    const [updatedSettings, updatedPool] = await Promise.all([
+      getAllSettingsMasked(),
+      getAIProvidersPool(),
+    ]);
+
     return NextResponse.json({
       success: true,
-      message: "API keys & model preferences saved to persistent database successfully!",
+      message: "API keys & preferences saved to persistent database successfully!",
       settings: updatedSettings,
+      pool: updatedPool,
     });
   } catch (err: any) {
     console.error("Settings POST error:", err);
@@ -62,10 +86,11 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
   }
 
   const cleanKey = key.trim();
+  const prov = provider.toLowerCase();
 
   try {
     // 1. Google Gemini
-    if (provider === "GEMINI_API_KEY") {
+    if (prov === "gemini" || prov === "gemini_api_key") {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
       if (!res.ok) {
         const err = await res.text();
@@ -90,7 +115,7 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
     }
 
     // 2. OpenRouter
-    if (provider === "OPENROUTER_API_KEY") {
+    if (prov === "openrouter" || prov === "openrouter_api_key") {
       const res = await fetch("https://openrouter.ai/api/v1/models", {
         headers: { Authorization: `Bearer ${cleanKey}` },
       });
@@ -103,7 +128,7 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
     }
 
     // 3. Groq
-    if (provider === "GROQ_API_KEY") {
+    if (prov === "groq" || prov === "groq_api_key") {
       const res = await fetch("https://api.groq.com/openai/v1/models", {
         headers: { Authorization: `Bearer ${cleanKey}` },
       });
@@ -116,7 +141,7 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
     }
 
     // 4. xAI Grok
-    if (provider === "GROK_API_KEY") {
+    if (prov === "grok" || prov === "grok_api_key") {
       const res = await fetch("https://api.x.ai/v1/models", {
         headers: { Authorization: `Bearer ${cleanKey}` },
       });
@@ -129,7 +154,7 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
     }
 
     // 5. OpenAI
-    if (provider === "OPENAI_API_KEY") {
+    if (prov === "openai" || prov === "openai_api_key") {
       const res = await fetch("https://api.openai.com/v1/models", {
         headers: { Authorization: `Bearer ${cleanKey}` },
       });
@@ -164,9 +189,10 @@ async function testProviderConnection(
 
   const start = Date.now();
   const cleanKey = key.trim();
+  const prov = provider.toLowerCase();
 
   try {
-    if (provider === "GEMINI_API_KEY") {
+    if (prov === "gemini" || prov === "gemini_api_key") {
       const targetModel = model?.trim() || "gemini-2.5-flash";
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`, {
         method: "POST",
@@ -191,7 +217,7 @@ async function testProviderConnection(
       return { success: false, message: `Gemini rejected key (${res.status}): ${err.slice(0, 100)}` };
     }
 
-    if (provider === "APOLLO_API_KEY") {
+    if (prov === "apollo" || prov === "apollo_api_key") {
       const res = await fetch("https://api.apollo.io/v1/mixed_people/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,7 +235,7 @@ async function testProviderConnection(
       return { success: false, message: `Apollo rejected key (HTTP ${res.status}). Verify API key permissions.` };
     }
 
-    if (provider === "OPENROUTER_API_KEY") {
+    if (prov === "openrouter" || prov === "openrouter_api_key") {
       const targetModel = model?.trim() || "meta-llama/llama-3.3-70b-instruct";
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -231,7 +257,7 @@ async function testProviderConnection(
       return { success: false, message: `OpenRouter rejected test (HTTP ${res.status}).` };
     }
 
-    if (provider === "GROK_API_KEY") {
+    if (prov === "grok" || prov === "grok_api_key") {
       const targetModel = model?.trim() || "grok-2-latest";
       const res = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
@@ -253,7 +279,7 @@ async function testProviderConnection(
       return { success: false, message: `Grok rejected test (HTTP ${res.status}).` };
     }
 
-    if (provider === "GROQ_API_KEY") {
+    if (prov === "groq" || prov === "groq_api_key") {
       const targetModel = model?.trim() || "llama-3.3-70b-versatile";
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -275,7 +301,7 @@ async function testProviderConnection(
       return { success: false, message: `Groq rejected test (HTTP ${res.status}).` };
     }
 
-    if (provider === "OPENAI_API_KEY") {
+    if (prov === "openai" || prov === "openai_api_key") {
       const targetModel = model?.trim() || "gpt-4o-mini";
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",

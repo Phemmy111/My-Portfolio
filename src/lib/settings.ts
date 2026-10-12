@@ -9,7 +9,17 @@ export interface SystemSetting {
   updated_at?: string;
 }
 
+export interface AIProviderConfig {
+  id: string;
+  provider: "gemini" | "openrouter" | "grok" | "groq" | "openai";
+  name: string;
+  apiKey: string;
+  model: string;
+  enabled: boolean;
+}
+
 export const KNOWN_KEYS = [
+  "AI_PROVIDERS_POOL",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
   "APOLLO_API_KEY",
@@ -56,6 +66,95 @@ export async function setSetting(key: string, value: string): Promise<void> {
 }
 
 /**
+ * Retrieves the full AI Providers Pool (multi-key list)
+ */
+export async function getAIProvidersPool(): Promise<AIProviderConfig[]> {
+  try {
+    const raw = await getSetting("AI_PROVIDERS_POOL");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to parse AI_PROVIDERS_POOL:", err);
+  }
+
+  // Fallback / Auto-migration from singular keys
+  const pool: AIProviderConfig[] = [];
+  const geminiKey = await getSetting("GEMINI_API_KEY");
+  const geminiModel = (await getSetting("GEMINI_MODEL")) || "gemini-2.5-flash";
+  if (geminiKey) {
+    pool.push({
+      id: "gemini-default",
+      provider: "gemini",
+      name: "Google Gemini (Primary)",
+      apiKey: geminiKey,
+      model: geminiModel,
+      enabled: true,
+    });
+  }
+
+  const openRouterKey = await getSetting("OPENROUTER_API_KEY");
+  if (openRouterKey) {
+    pool.push({
+      id: "openrouter-default",
+      provider: "openrouter",
+      name: "OpenRouter Fallback",
+      apiKey: openRouterKey,
+      model: (await getSetting("OPENROUTER_MODEL")) || "meta-llama/llama-3.3-70b-instruct",
+      enabled: true,
+    });
+  }
+
+  const grokKey = await getSetting("GROK_API_KEY");
+  if (grokKey) {
+    pool.push({
+      id: "grok-default",
+      provider: "grok",
+      name: "xAI Grok Fallback",
+      apiKey: grokKey,
+      model: (await getSetting("GROK_MODEL")) || "grok-2-latest",
+      enabled: true,
+    });
+  }
+
+  const groqKey = await getSetting("GROQ_API_KEY");
+  if (groqKey) {
+    pool.push({
+      id: "groq-default",
+      provider: "groq",
+      name: "Groq Llama Fallback",
+      apiKey: groqKey,
+      model: (await getSetting("GROQ_MODEL")) || "llama-3.3-70b-versatile",
+      enabled: true,
+    });
+  }
+
+  const openAIKey = await getSetting("OPENAI_API_KEY");
+  if (openAIKey) {
+    pool.push({
+      id: "openai-default",
+      provider: "openai",
+      name: "OpenAI Fallback",
+      apiKey: openAIKey,
+      model: (await getSetting("OPENAI_MODEL")) || "gpt-4o-mini",
+      enabled: true,
+    });
+  }
+
+  return pool;
+}
+
+/**
+ * Saves the AI Providers Pool to Neon DB
+ */
+export async function setAIProvidersPool(pool: AIProviderConfig[]): Promise<void> {
+  await setSetting("AI_PROVIDERS_POOL", JSON.stringify(pool));
+}
+
+/**
  * Retrieves all known settings with sensitive values masked for UI display
  */
 export async function getAllSettingsMasked(): Promise<Record<string, { value: string; isSet: boolean; masked: string }>> {
@@ -76,7 +175,9 @@ export async function getAllSettingsMasked(): Promise<Record<string, { value: st
 
     let masked = "";
     if (isSet) {
-      if (val.length <= 8) {
+      if (k === "AI_PROVIDERS_POOL") {
+        masked = "[Configured Multi-Provider Pool]";
+      } else if (val.length <= 8) {
         masked = "••••••••";
       } else {
         masked = `${val.slice(0, 4)}••••••••${val.slice(-4)}`;
@@ -84,7 +185,7 @@ export async function getAllSettingsMasked(): Promise<Record<string, { value: st
     }
 
     result[k] = {
-      value: val, // raw value
+      value: val,
       isSet,
       masked,
     };
