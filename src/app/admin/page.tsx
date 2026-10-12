@@ -22,13 +22,23 @@ import {
   MessageCircle,
   RefreshCw,
   Zap,
+  Bot,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Play,
 } from "lucide-react";
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries">("leads");
+  const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey">("leads");
   const [loading, setLoading] = useState(true);
+
+  // Agent Obey state
+  const [agentTasks, setAgentTasks] = useState<any[]>([]);
+  const [hunting, setHunting] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   // Data states
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -84,11 +94,12 @@ export default function AdminDashboardPage() {
         return;
       }
 
-      // Fetch leads & stats
-      const [leadsRes, proposalsRes, inquiriesRes] = await Promise.all([
+      // Fetch leads, proposals, inquiries, and Obey tasks
+      const [leadsRes, proposalsRes, inquiriesRes, obeyRes] = await Promise.all([
         fetch("/api/admin/leads"),
         fetch("/api/admin/proposals"),
         fetch("/api/admin/inquiries"),
+        fetch("/api/obey/tasks"),
       ]);
 
       if (leadsRes.ok) {
@@ -104,10 +115,77 @@ export default function AdminDashboardPage() {
         const iData = await inquiriesRes.json();
         setInquiries(iData.inquiries || []);
       }
+      if (obeyRes.ok) {
+        const oData = await obeyRes.json();
+        setAgentTasks(oData.tasks || []);
+      }
     } catch {
       router.push("/admin/login");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunHunt = async () => {
+    setHunting(true);
+    try {
+      const res = await fetch("/api/obey/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "hunt" }),
+      });
+      const data = await res.json();
+      if (data.tasks) {
+        setAgentTasks((prev) => [...data.tasks, ...prev]);
+      }
+    } catch (err) {
+      console.error("Hunt error:", err);
+    } finally {
+      setHunting(false);
+    }
+  };
+
+  const handleApproveTask = async (id: string, token: string) => {
+    setActionInProgress(id);
+    try {
+      const res = await fetch("/api/obey/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve", id, token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAgentTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, status: "executed", execution_result: "Dispatched via Gmail SMTP" } : t
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Approve error:", err);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleRejectTask = async (id: string, token: string) => {
+    setActionInProgress(id);
+    try {
+      const res = await fetch("/api/obey/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject", id, token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAgentTasks((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, status: "rejected" } : t))
+        );
+      }
+    } catch (err) {
+      console.error("Reject error:", err);
+    } finally {
+      setActionInProgress(null);
     }
   };
 
@@ -358,6 +436,23 @@ export default function AdminDashboardPage() {
             Website Inquiries
             {inquiries.some((i) => i.status === "unread") && (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab("obey")}
+            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+              activeTab === "obey"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Bot size={16} className={activeTab === "obey" ? "text-white" : "text-emerald-500"} />
+            Agent Obey (AI Assistant)
+            {agentTasks.some((t) => t.status === "pending_approval") && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-400 text-black">
+                {agentTasks.filter((t) => t.status === "pending_approval").length} pending
+              </span>
             )}
           </button>
         </div>
@@ -757,6 +852,244 @@ export default function AdminDashboardPage() {
                     </p>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB 4: AGENT OBEY (AI PERSONAL ASSISTANT) */}
+        {/* ============================================================ */}
+        {activeTab === "obey" && (
+          <div className="space-y-8">
+            {/* Agent Obey Executive Header Card */}
+            <div className="p-8 rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-zinc-900/40 to-black relative overflow-hidden shadow-xl">
+              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                <Bot size={180} className="text-emerald-400" />
+              </div>
+
+              <div className="relative z-10 space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500 text-black flex items-center gap-1.5 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-black animate-ping" />
+                    Agent Obey · 24/7 Active
+                  </span>
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                    Human-In-The-Loop (HITL) Mode
+                  </span>
+                </div>
+
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    Obey — Your Autonomous AI Operations Assistant
+                  </h2>
+                  <p className="text-sm text-zinc-400 max-w-2xl mt-1 leading-relaxed">
+                    Obey monitors business markets, hunts companies needing your expertise, crafts tailored pitches, and delivers 1-click approval requests directly to your phone. Nothing is sent without your green light.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex flex-wrap items-center gap-4">
+                  <button
+                    onClick={handleRunHunt}
+                    disabled={hunting}
+                    className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
+                  >
+                    {hunting ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin" />
+                        Obey is Hunting Leads...
+                      </>
+                    ) : (
+                      <>
+                        <Play size={16} fill="currentColor" />
+                        Run Autonomous Lead Hunter Now
+                      </>
+                    )}
+                  </button>
+
+                  <p className="text-xs text-zinc-500 font-semibold">
+                    💡 Dispatches approval emails with 1-click links to femiadeleke2020@gmail.com
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Connected Apps & Integrations Ecosystem */}
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 mb-3">
+                Connected Autonomous Ecosystem
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <Mail size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white">Gmail SMTP</p>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Connected (Live)</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <Zap size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white">Neon PostgreSQL</p>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Cloud Persistent</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <Briefcase size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white">Upwork & Fiverr</p>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Proposal Generator</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <MessageCircle size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white">WhatsApp Bot</p>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Configured (08120934828)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pending Approvals Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
+                    <AlertCircle size={18} className="text-amber-500" />
+                    Pending Human Authorization Queue
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-semibold">
+                    Actions found by Obey that will only execute when you click Approve.
+                  </p>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
+                  {agentTasks.filter((t) => t.status === "pending_approval").length} awaiting decision
+                </span>
+              </div>
+
+              {agentTasks.filter((t) => t.status === "pending_approval").length === 0 ? (
+                <div className="p-12 text-center rounded-3xl border border-dashed border-zinc-400 dark:border-zinc-800 bg-white/40 dark:bg-[#080808]/40 space-y-3">
+                  <Bot size={36} className="mx-auto text-zinc-400" />
+                  <p className="font-bold text-zinc-700 dark:text-zinc-300">
+                    No pending actions right now.
+                  </p>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                    Click &ldquo;Run Autonomous Lead Hunter Now&rdquo; above and Obey will search for target businesses and draft cold outreach for your approval.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {agentTasks
+                    .filter((t) => t.status === "pending_approval")
+                    .map((task) => (
+                      <div
+                        key={task.id}
+                        className="p-6 rounded-3xl border border-amber-500/40 bg-white dark:bg-[#080808] shadow-lg space-y-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              Awaiting Your Approval
+                            </span>
+                            <h4 className="font-black text-lg text-zinc-950 dark:text-white mt-1">
+                              {task.title}
+                            </h4>
+                            <p className="text-xs text-zinc-500 font-mono">
+                              Recipient: {task.target_name} ({task.target_email || "Platform direct"})
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleApproveTask(task.id, task.approval_token)}
+                              disabled={actionInProgress === task.id}
+                              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                            >
+                              <CheckCircle2 size={15} />
+                              {actionInProgress === task.id ? "Dispatching..." : "Approve & Send via SMTP"}
+                            </button>
+                            <button
+                              onClick={() => handleRejectTask(task.id, task.approval_token)}
+                              disabled={actionInProgress === task.id}
+                              className="px-4 py-2.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-red-500/20 text-zinc-800 dark:text-zinc-300 hover:text-red-500 font-bold text-xs flex items-center gap-1 transition-all disabled:opacity-50"
+                            >
+                              <XCircle size={15} />
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+
+                        {task.subject && (
+                          <div className="p-3 rounded-xl bg-zinc-100 dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 text-xs">
+                            <span className="font-bold text-zinc-500 uppercase text-[10px] block mb-0.5">Subject Line</span>
+                            <span className="font-semibold text-zinc-900 dark:text-white">{task.subject}</span>
+                          </div>
+                        )}
+
+                        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#101010] border border-zinc-200 dark:border-zinc-800/80 text-xs font-mono leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-300">
+                          {task.payload}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* Executed Action History Log */}
+            <div className="space-y-4 pt-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                Action Execution History
+              </h3>
+
+              {agentTasks.filter((t) => t.status !== "pending_approval").length === 0 ? (
+                <p className="text-xs text-zinc-500 font-semibold">No executed actions in this session yet.</p>
+              ) : (
+                <div className="grid gap-3">
+                  {agentTasks
+                    .filter((t) => t.status !== "pending_approval")
+                    .map((task) => (
+                      <div
+                        key={task.id}
+                        className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-[#080808] flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          {task.status === "executed" ? (
+                            <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                          ) : (
+                            <XCircle size={18} className="text-red-500 shrink-0" />
+                          )}
+                          <div>
+                            <p className="font-bold text-xs text-zinc-950 dark:text-white">{task.title}</p>
+                            <p className="text-[11px] text-zinc-500 font-mono">
+                              {task.target_email || task.target_name} · {task.execution_result || task.status}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            task.status === "executed"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                              : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30"
+                          }`}
+                        >
+                          {task.status}
+                        </span>
+                      </div>
+                    ))}
+                </div>
               )}
             </div>
           </div>

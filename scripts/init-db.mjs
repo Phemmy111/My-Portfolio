@@ -53,6 +53,26 @@ async function main() {
     )
   `;
 
+  console.log("Creating agent_tasks table for Obey...");
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_tasks (
+      id               TEXT PRIMARY KEY,
+      agent_name       TEXT DEFAULT 'Obey',
+      task_type        TEXT NOT NULL,
+      title            TEXT NOT NULL,
+      target_name      TEXT NOT NULL,
+      target_company   TEXT,
+      target_email     TEXT,
+      subject          TEXT,
+      payload          TEXT NOT NULL,
+      status           TEXT DEFAULT 'pending_approval',
+      approval_token   TEXT NOT NULL,
+      execution_result TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      executed_at      TIMESTAMPTZ
+    )
+  `;
+
   console.log("Migrating initial seed data...");
   const [existingLead] = await sql`SELECT COUNT(*)::int as count FROM leads`;
   if (existingLead.count === 0) {
