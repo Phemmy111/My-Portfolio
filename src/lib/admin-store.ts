@@ -7,7 +7,7 @@ export interface Lead {
   company: string;
   email: string;
   serviceNeeded: "Web Development" | "Automation / n8n" | "AI Integration" | "Video / Content" | "Other";
-  status: "new" | "drafted" | "contacted" | "replied" | "converted";
+  status: "new" | "drafted" | "contacted" | "replied" | "converted" | "closed";
   niche: string;
   notes: string;
   draftSubject?: string;
