@@ -1,79 +1,49 @@
-import { getSetting } from "@/lib/settings";
-
 /**
- * Dispatches a WhatsApp notification to Femi's phone
- * Supports Twilio, Meta Cloud API, or custom n8n Webhook
+ * Dispatches a WhatsApp message via the self-hosted Evolution API on Render.
+ *
+ * @param text      - The message body to send.
+ * @param recipient - The E.164 phone number to send TO (e.g. "2348120934828").
+ *                    Defaults to Femi's personal number if omitted.
  */
 export async function sendWhatsAppMessage(
-  text: string
+  text: string,
+  recipient?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const webhookUrl = await getSetting("CRM_WEBHOOK_URL");
-    const waToken = await getSetting("WHATSAPP_API_TOKEN");
-    const waPhone = await getSetting("WHATSAPP_PHONE_NUMBER");
-
-    // 1. Direct Evolution API dispatch (Self-hosted on Render connected to Neon DB)
-    const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    if (evoUrl && waPhone) {
-      try {
-        const cleanPhone = waPhone.replace(/\D/g, "");
-        const res = await fetch(`${evoUrl}/message/sendText/obey-session`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: evoKey,
-          },
-          body: JSON.stringify({
-            number: cleanPhone,
-            text: text,
-          }),
-        });
-        if (res.ok) return { success: true };
-      } catch (err) {
-        console.warn("Direct Evolution API dispatch fallback:", err);
-      }
-    }
+    const instanceName =
+      process.env.EVOLUTION_INSTANCE_NAME || "obey-session";
 
-    // 2. If custom n8n / automation webhook is provided, dispatch payload directly
-    if (webhookUrl && webhookUrl.startsWith("http")) {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channel: "whatsapp",
-          recipient: waPhone || "08120934828",
-          message: text,
-          timestamp: new Date().toISOString(),
-        }),
-      });
-      if (res.ok) return { success: true };
-    }
+    // Femi's personal WhatsApp number — fallback when no recipient supplied
+    const targetPhone = (recipient || "2348120934828").replace(/\D/g, "");
 
-    // 2. If Meta Cloud API token is configured
-    if (waToken && waPhone) {
-      // Meta Graph API WhatsApp call
-      const res = await fetch(`https://graph.facebook.com/v19.0/messages`, {
+    const res = await fetch(
+      `${evoUrl}/message/sendText/${instanceName}`,
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${waToken}`,
+          apikey: evoKey,
         },
         body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: waPhone.replace(/\D/g, ""),
-          type: "text",
-          text: { body: text },
+          number: targetPhone,
+          text,
         }),
-      });
+      }
+    );
 
-      const data = await res.json();
-      if (data.messages) return { success: true };
-      return { success: false, error: data.error?.message || "Meta API error" };
+    if (res.ok) {
+      return { success: true };
     }
 
-    return { success: false, error: "WhatsApp credentials / webhook not configured" };
+    const errBody = await res.text();
+    console.error("[WhatsApp] Evolution API error:", res.status, errBody);
+    return { success: false, error: `HTTP ${res.status}: ${errBody}` };
   } catch (err: any) {
+    console.error("[WhatsApp] sendWhatsAppMessage exception:", err);
     return { success: false, error: err.message };
   }
 }
