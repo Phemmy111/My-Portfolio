@@ -90,6 +90,30 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  // Live WhatsApp QR Code State
+  const [qrData, setQrData] = useState<{ base64?: string; connected?: boolean; loading?: boolean; error?: string }>({});
+
+  const fetchWhatsAppQr = async () => {
+    setQrData((prev) => ({ ...prev, loading: true, error: undefined }));
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "whatsapp_qr" }),
+      });
+      const data = await res.json();
+      if (data.connected) {
+        setQrData({ connected: true, loading: false });
+      } else if (data.base64) {
+        setQrData({ base64: data.base64, connected: false, loading: false });
+      } else {
+        setQrData({ error: data.error || "Could not retrieve QR code", loading: false });
+      }
+    } catch (e: any) {
+      setQrData({ error: e.message, loading: false });
+    }
+  };
+
   // Fetch current settings & pool
   const fetchSettings = async () => {
     setLoading(true);
@@ -865,14 +889,72 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   </div>
 
                   {/* WhatsApp Gateway */}
-                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
-                    <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
-                      💬 WhatsApp Integration (Meta Cloud API / n8n Webhook)
-                    </span>
-                    <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                          💬 WhatsApp Integration (Self-Hosted Evolution API / Baileys)
+                        </span>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Connects directly as a Linked Device to your personal WhatsApp without Meta verification.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        {qrData.connected ? "● Connected & Linked" : "Ready to Pair"}
+                      </span>
+                    </div>
+
+                    {/* Live QR Code Box Inside Modal */}
+                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="space-y-1 text-center sm:text-left">
+                        <p className="text-xs font-black text-zinc-950 dark:text-white">
+                          📱 Scan to Pair Your WhatsApp
+                        </p>
+                        <p className="text-[11px] text-zinc-500 max-w-xs leading-relaxed">
+                          Open WhatsApp on your phone &rarr; <strong>Linked Devices</strong> &rarr; <strong>Link a Device</strong> &rarr; Scan this live QR code.
+                        </p>
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={fetchWhatsAppQr}
+                            disabled={qrData.loading}
+                            className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white text-[11px] font-bold flex items-center gap-1.5 transition-all"
+                          >
+                            <RefreshCw size={11} className={qrData.loading ? "animate-spin" : ""} />
+                            {qrData.loading ? "Generating Live QR..." : "🔄 Refresh QR Code"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white border border-zinc-200 dark:border-zinc-700 shadow-sm min-w-[150px] min-h-[150px]">
+                        {qrData.connected ? (
+                          <div className="text-center p-4">
+                            <span className="text-3xl block mb-2">✅</span>
+                            <p className="text-xs font-black text-emerald-600">WhatsApp Linked!</p>
+                            <p className="text-[10px] text-zinc-500">24/7 Active on Neon DB</p>
+                          </div>
+                        ) : qrData.base64 ? (
+                          <img
+                            src={qrData.base64}
+                            alt="WhatsApp Live Pairing QR"
+                            className="w-36 h-36 object-contain rounded-lg"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={fetchWhatsAppQr}
+                            className="text-center p-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                          >
+                            Click to Display<br />Live QR Code
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3 pt-1">
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                          WhatsApp Phone Number
+                          Your WhatsApp Phone Number
                         </label>
                         <input
                           type="text"
@@ -884,13 +966,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                          Meta Graph API Token (Optional if using n8n)
+                          n8n Webhook / Meta Token (Optional)
                         </label>
                         <input
                           type="password"
                           value={generalKeys.WHATSAPP_API_TOKEN || ""}
                           onChange={(e) => setGeneralKeys((prev) => ({ ...prev, WHATSAPP_API_TOKEN: e.target.value }))}
-                          placeholder="EAAB..."
+                          placeholder="Optional if using Evolution API directly"
                           className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
                         />
                       </div>
