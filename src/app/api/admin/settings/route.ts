@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getAllSettingsMasked,
   setSetting,
+  getSetting,
   KNOWN_KEYS,
   getAIProvidersPool,
   setAIProvidersPool,
