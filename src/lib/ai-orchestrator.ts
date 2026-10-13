@@ -250,23 +250,57 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
 function generateDeterministicAgentResponse(userPrompt: string): string {
   const lower = userPrompt.toLowerCase();
 
+  // AutoLearn Spot
+  if (lower.includes("autolearn") || lower.includes("auto learn") || lower.includes("spot")) {
+    return (
+      "Yes, sir! Of course I know **AutoLearn Spot**! It is your premier EdTech platform and learning portal built to provide students with accessible, high-speed educational tools and curriculum management. It's one of your cornerstone projects alongside OKIKI Store and your n8n automation suites.\n\n" +
+      "Are we looking to review its performance, update features, or reference it in a new proposal, sir? I'm all ears!"
+    );
+  }
+
+  // OKIKI Store
+  if (lower.includes("okiki") || lower.includes("store") || lower.includes("ecommerce") || lower.includes("e-commerce")) {
+    return (
+      "Yes, sir! **OKIKI Electronics Store** is your premier high-performance e-commerce platform engineered with Next.js and Tailwind CSS. It features seamless cart management, blazing fast search, responsive checkout, and rock-solid state management."
+    );
+  }
+
+  // About Femi / Who am I / Projects
+  if (
+    lower.includes("about me") ||
+    lower.includes("who am i") ||
+    lower.includes("who is femi") ||
+    lower.includes("my project") ||
+    lower.includes("my stack") ||
+    lower.includes("what do you know")
+  ) {
+    return (
+      "You are **Femi Adeleke**, sir—a premier Full-Stack Developer & Automation Architect from Nigeria working with global teams. You have engineered high-impact platforms including **AutoLearn Spot**, **OKIKI Electronics Store**, **PassMark UTME Prep App**, and multi-system **n8n automation pipelines** (WhatsApp webhook bots, CRM sync, and automated billing).\n\n" +
+      "I am Obey, your personal AI executive assistant. I have all your project credentials, Neon database state, and outreach tools ready. What shall we tackle next, sir?"
+    );
+  }
+
   if (lower.includes("proposal") || lower.includes("bid")) {
-    return `Here is a custom high-converting technical bid tailored to Femi's verified stack:\n\n` +
+    return (
+      `Here is a custom high-converting technical bid tailored to your verified stack, sir:\n\n` +
       `"I have engineered similar high-performance Next.js and automation systems recently, including OKIKI Store and AutoLearn Spot.\n\n` +
       `My approach:\n` +
       `1. Architecture Alignment: Zero-friction integration with sub-second page transitions.\n` +
       `2. Resilient Pipeline: Fail-safe webhook retries and automated state handling.\n` +
       `3. Production Deployment: Instant Vercel CI/CD and verification.\n\n` +
-      `Portfolio & Code: https://github.com/Phemmy111\nAvailable for a brief alignment call today."`;
+      `Portfolio & Code: https://github.com/Phemmy111\nAvailable for a brief alignment call today."`
+    );
   }
 
   if (lower.includes("email") || lower.includes("cold") || lower.includes("pitch")) {
-    return `Subject: Streamlining manual bottlenecks with automated workflows\n\n` +
+    return (
+      `Subject: Streamlining manual bottlenecks with automated workflows\n\n` +
       `Hi there,\n\nI noticed you might be navigating manual operational workflows between customer inquiries, tracking, and messaging.\n\n` +
       `I help fast-growing teams automate their entire pipeline using n8n and AI agents, cutting repetitive tasks down to zero.\n\n` +
       `Would you be open to a brief 5-minute chat this week to explore how we can optimize this?\n\n` +
-      `Best regards,\nFemi Adeleke\nFull-Stack Developer & Automation Architect`;
+      `Best regards,\nFemi Adeleke\nFull-Stack Developer & Automation Architect`
+    );
   }
 
-  return `I have processed your request across my operational pipeline. You can command me to scout live Upwork jobs, hunt real B2B decision-makers, or review pending approvals anytime.`;
+  return `I am standing by right beside you, sir! Everything across your database, email dispatches, and project records is active. How can I help you right now, sir? Are there specific leads to hunt or tasks to note down?`;
 }

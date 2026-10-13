@@ -71,6 +71,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
   const [providersPool, setProvidersPool] = useState<AIProviderConfig[]>([]);
   const [generalKeys, setGeneralKeys] = useState<Record<string, string>>({
     APOLLO_API_KEY: "",
+    TAVILY_API_KEY: "",
     UPWORK_FEED_URL: "",
     CRM_WEBHOOK_URL: "",
   });
@@ -102,6 +103,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       if (data.settings) {
         setGeneralKeys({
           APOLLO_API_KEY: data.settings.APOLLO_API_KEY?.value || "",
+          TAVILY_API_KEY: data.settings.TAVILY_API_KEY?.value || "",
           UPWORK_FEED_URL: data.settings.UPWORK_FEED_URL?.value || "",
           CRM_WEBHOOK_URL: data.settings.CRM_WEBHOOK_URL?.value || "",
         });
@@ -598,6 +600,43 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                     {testResults["apollo"] && !testResults["apollo"].testing && testResults["apollo"].message && (
                       <p className={`text-[11px] font-medium ${testResults["apollo"].success ? "text-emerald-500" : "text-red-500"}`}>
                         {testResults["apollo"].message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Tavily AI Web Search */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                        <Sparkles size={13} className="text-emerald-500" />
+                        Tavily API Key (Real-Time Live Web Search)
+                      </span>
+                      <a href="https://tavily.com" target="_blank" rel="noreferrer" className="text-[11px] text-emerald-500 hover:underline flex items-center gap-1 font-semibold">
+                        Get Tavily Key <ExternalLink size={11} />
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Enables Obey to search Google and the live web in real time for research, verified company facts, and live information.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={generalKeys.TAVILY_API_KEY || ""}
+                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, TAVILY_API_KEY: e.target.value }))}
+                        placeholder="tvly-..."
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleTestConnection("tavily", "tavily", generalKeys.TAVILY_API_KEY)}
+                        className="px-3 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-xs font-bold"
+                      >
+                        Test Tavily
+                      </button>
+                    </div>
+                    {testResults["tavily"] && !testResults["tavily"].testing && testResults["tavily"].message && (
+                      <p className={`text-[11px] font-medium ${testResults["tavily"].success ? "text-emerald-500" : "text-red-500"}`}>
+                        {testResults["tavily"].message}
                       </p>
                     )}
                   </div>

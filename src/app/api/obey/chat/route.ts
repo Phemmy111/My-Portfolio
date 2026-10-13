@@ -4,6 +4,7 @@ import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 import { generateColdEmail, generateGigProposal } from "@/lib/gig-generator";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
+import { searchTavily } from "@/lib/tavily-search";
 import { neon } from "@neondatabase/serverless";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
@@ -303,7 +304,48 @@ export async function POST(req: NextRequest) {
     }
 
     // =========================================================================
-    // 9. DYNAMIC AI CONVERSATIONAL BRAIN (Gemini -> OpenRouter -> Grok -> Groq -> Local)
+    // 9. INTENT: LIVE WEB SEARCH VIA TAVILY
+    // =========================================================================
+    const isExplicitWebSearch =
+      lower.startsWith("search ") ||
+      lower.startsWith("find online ") ||
+      lower.startsWith("look up ") ||
+      lower.startsWith("lookup ") ||
+      lower.startsWith("google ") ||
+      lower.includes("search online") ||
+      lower.includes("search web") ||
+      lower.includes("search the web") ||
+      lower.includes("search tavily") ||
+      lower.includes("tavily search");
+
+    let liveWebContext = "";
+    if (isExplicitWebSearch) {
+      const cleanSearchQuery = trimmed
+        .replace(/^(search\s+(the\s+web\s+for|online\s+for|tavily\s+for|for)?|find\s+online\s+for|look\s*up\s+for|google\s+)/i, "")
+        .trim();
+
+      const tavilyRes = await searchTavily(cleanSearchQuery || trimmed);
+
+      if (tavilyRes.success && tavilyRes.results.length > 0) {
+        liveWebContext =
+          `Live Tavily Web Search Findings for "${tavilyRes.query}":\n` +
+          tavilyRes.results
+            .slice(0, 4)
+            .map((r, i) => `${i + 1}. [${r.title}](${r.url}): ${r.content}`)
+            .join("\n\n");
+
+        if (tavilyRes.answer) {
+          liveWebContext = `Tavily AI Synthesized Summary: ${tavilyRes.answer}\n\n` + liveWebContext;
+        }
+      } else if (!tavilyRes.success && tavilyRes.error?.includes("not configured")) {
+        return NextResponse.json({
+          reply: `I'm ready to search the live web for you, sir! Please enter your **Tavily API Key** in **⚙️ AI & Fallback Settings** so I can connect to Tavily and search live information across Google and the web for you.`,
+        });
+      }
+    }
+
+    // =========================================================================
+    // 10. DYNAMIC AI CONVERSATIONAL BRAIN (Gemini -> OpenRouter -> Grok -> Groq -> Local)
     // =========================================================================
     // Compute current time of day in West Africa Time (Nigeria, UTC+1)
     const now = new Date();
@@ -339,12 +381,18 @@ Personality, Emotional Intelligence & Voice:
   * Never leave loose or broken asterisks like "*" in the output.
   * Keep your dialogue conversational, crisp, and natural. Do NOT dump repetitive lists of your features on a simple greeting or conversation unless Femi specifically asks what you can do.
 
-About Femi Adeleke:
-- Premier Full-Stack Developer & Automation Architect based in Nigeria (working globally).
-- Built AutoLearn Spot (EdTech platform), OKIKI Electronics (modern e-commerce store), PassMark UTME Prep App, UniVibe Mobile, and production n8n automation pipelines (WhatsApp bots, CRM auto-sync, automated client onboarding).
+Comprehensive Knowledge of Femi Adeleke:
+- Femi Adeleke is a premier Full-Stack Developer & Automation Architect based in Nigeria (working globally).
+- AutoLearn Spot: Femi's flagship EdTech and learning management platform. Accessible, modern educational portal providing structured learning pathways, student tracking, and interactive learning tools. You know this platform intimately.
+- OKIKI Electronics Store: Premium Next.js and Tailwind e-commerce storefront with real-time cart, rapid search, responsive design, and smooth checkout flow.
+- PassMark UTME Prep App: High-speed practice examination and study prep platform for Nigerian students with real-time scoring and analytics.
+- UniVibe Mobile: Campus social community app for university students.
+- n8n Automation Workflows: Built webhook-driven WhatsApp bots, CRM auto-sync, automated client onboarding, and notification sequences.
+- Tech Stack: Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS v4, PostgreSQL / Neon Serverless, Node.js, Python, n8n, Cloudinary, Gmail SMTP, Clerk Auth.
 - Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Phone/WhatsApp: 08120934828.
-- Tools at your disposal: You are connected to Femi's Neon PostgreSQL database, Gmail SMTP, and can scout Upwork developer gigs or hunt real B2B decision-makers whenever he commands.
-- Current Time: Local West Africa Time is ~${watHour}:00 (${timeContext}). Appropriate greeting: "${timeGreeting}".`;
+- Tools at your disposal: You are connected to Femi's Neon PostgreSQL database, Gmail SMTP, Tavily AI web search, and can scout Upwork developer gigs or hunt real B2B decision-makers whenever he commands.
+- Current Time: Local West Africa Time is ~${watHour}:00 (${timeContext}). Appropriate greeting: "${timeGreeting}".
+${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease synthesize and present the above web search results to Femi with clean markdown citations and links.` : ""}`;
 
     // Construct conversation prompt with recent dialogue context
     let promptWithContext = trimmed;

@@ -254,6 +254,29 @@ async function testProviderConnection(
       return { success: false, message: `Apollo rejected key (HTTP ${authRes.status}): ${errText.slice(0, 100)}` };
     }
 
+    if (prov === "tavily" || prov === "tavily_api_key") {
+      const res = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: cleanKey,
+          query: "ping",
+          max_results: 1,
+        }),
+      });
+
+      const latencyMs = Date.now() - start;
+      if (res.ok) {
+        return {
+          success: true,
+          message: `Connected to Tavily AI Live Web Search successfully (${latencyMs}ms)!`,
+          latencyMs,
+        };
+      }
+      const errText = await res.text();
+      return { success: false, message: `Tavily rejected key (HTTP ${res.status}): ${errText.slice(0, 100)}` };
+    }
+
     if (prov === "openrouter" || prov === "openrouter_api_key") {
       const targetModel = model?.trim() || "meta-llama/llama-3.3-70b-instruct";
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
