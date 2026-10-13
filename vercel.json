@@ -1,17 +1,3 @@
 {
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/obey/cron?type=morning",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/obey/cron?type=evening",
-      "schedule": "0 19 * * *"
-    },
-    {
-      "path": "/api/obey/cron?type=gmail",
-      "schedule": "*/30 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
