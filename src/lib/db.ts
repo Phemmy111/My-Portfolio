@@ -270,6 +270,3 @@ export async function dbClearChatMessages() {
     return false;
   }
 }
-
-
-export { sql };

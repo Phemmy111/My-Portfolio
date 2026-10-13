@@ -436,8 +436,8 @@ export default function ObeyChatConsole({
 
   const consoleContent = (
     <div
-      className={`flex flex-col w-full h-full rounded-2xl md:rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden ${
-        isExpanded ? "max-w-6xl max-h-[94vh]" : ""
+      className={`flex flex-col w-full h-full rounded-none sm:rounded-2xl md:rounded-3xl border-0 sm:border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#070707] shadow-2xl overflow-hidden ${
+        isExpanded ? "sm:max-w-6xl sm:max-h-[94vh]" : ""
       }`}
     >
       {/* Console Top Header */}
@@ -752,7 +752,7 @@ export default function ObeyChatConsole({
   // If expanded in standalone / tab mode without parent fullscreen handling
   if (isExpanded && externalFullscreen === undefined) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md p-0 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200">
         {consoleContent}
       </div>
     );
@@ -764,7 +764,7 @@ export default function ObeyChatConsole({
         isExpanded
           ? "h-full"
           : isFloating
-          ? "h-[540px] max-h-[calc(100vh-100px)]"
+          ? "h-[100dvh] sm:h-[620px] sm:max-h-[calc(100vh-100px)]"
           : "h-[620px]"
       }`}
     >

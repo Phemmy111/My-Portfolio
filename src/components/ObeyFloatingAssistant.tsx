@@ -48,7 +48,7 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
           className={
             isFullscreen
               ? "fixed inset-0 z-[100] bg-black/85 backdrop-blur-md p-0 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200"
-              : "fixed inset-0 sm:inset-auto sm:bottom-6 sm:right-6 z-[100] w-full h-[100dvh] sm:w-[480px] md:w-[520px] sm:h-auto shadow-2xl sm:rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200"
+              : "fixed inset-0 sm:inset-auto sm:bottom-6 sm:right-6 z-[100] w-full h-[100dvh] sm:w-[480px] md:w-[520px] sm:h-[620px] shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200 flex"
           }
         >
           <ObeyChatConsole
