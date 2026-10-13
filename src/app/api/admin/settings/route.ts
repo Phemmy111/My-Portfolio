@@ -58,6 +58,17 @@ export async function POST(req: NextRequest) {
       if (token) await setSetting("TELEGRAM_BOT_TOKEN", token);
       if (chatId) await setSetting("TELEGRAM_CHAT_ID", chatId);
 
+      // Auto-register webhook with Telegram so Obey receives all incoming messages from Femi's phone
+      const cleanToken = token || (await getSetting("TELEGRAM_BOT_TOKEN"));
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app";
+      if (cleanToken) {
+        try {
+          await fetch(`https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(`${appUrl}/api/obey/telegram/webhook`)}`);
+        } catch (e) {
+          console.warn("setWebhook error:", e);
+        }
+      }
+
       const res = await sendTelegramMessage(
         "👋 *Hello sir!* This is Obey testing our live phone gateway from your portfolio Command Center.\n\n" +
         "Your phone is successfully paired with Obey! You can now receive proactive briefings, instant lead alerts, and chat with me directly on Telegram whenever you are on the move."
