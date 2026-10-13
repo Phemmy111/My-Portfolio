@@ -1,17 +1,39 @@
 import { neon } from "@neondatabase/serverless";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is not set. Add it to .env.local");
+function getSql() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    return null;
+  }
+  return neon(url);
 }
 
-const sql = neon(process.env.DATABASE_URL);
+// Fallback/standard sql tagged template helper
+export const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null!;
 
 // ==============================================================
 // DATABASE SCHEMA SETUP
 // Run this once to create the tables in your Neon database
 // ==============================================================
 export async function createTables() {
-  await sql`
+  const db = getSql();
+  if (!db) return;
+
+  await db`
+    CREATE TABLE IF NOT EXISTS obey_chat_messages (
+      id         TEXT PRIMARY KEY,
+      role       TEXT NOT NULL,
+      content    TEXT NOT NULL,
+      cards      JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_obey_messages_created_at ON obey_chat_messages (created_at ASC)
+  `;
+
+  await db`
     CREATE TABLE IF NOT EXISTS leads (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL,
@@ -28,7 +50,7 @@ export async function createTables() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS proposals (
       id                  TEXT PRIMARY KEY,
       platform            TEXT NOT NULL,
@@ -41,7 +63,7 @@ export async function createTables() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS inquiries (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL,
@@ -55,6 +77,7 @@ export async function createTables() {
 
   console.log("✅ Neon DB tables verified/created");
 }
+
 
 // ==============================================================
 // LEADS
@@ -191,5 +214,62 @@ export async function dbGetStats() {
   `;
   return stats;
 }
+
+// ==============================================================
+// OBEY CHAT CONVERSATION MEMORY (SYNCED TO NEON DB)
+// ==============================================================
+export async function dbGetChatMessages(limit: number = 100) {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    const rows = await db`
+      SELECT id, role, content, cards, created_at
+      FROM obey_chat_messages
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `;
+    return rows;
+  } catch (err) {
+    console.warn("dbGetChatMessages fallback:", err);
+    return [];
+  }
+}
+
+export async function dbAddChatMessage(msg: {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  cards?: any;
+}) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    const [row] = await db`
+      INSERT INTO obey_chat_messages (id, role, content, cards)
+      VALUES (${msg.id}, ${msg.role}, ${msg.content}, ${msg.cards ? JSON.stringify(msg.cards) : null})
+      ON CONFLICT (id) DO UPDATE SET
+        content = EXCLUDED.content,
+        cards = EXCLUDED.cards
+      RETURNING *
+    `;
+    return row;
+  } catch (err) {
+    console.warn("dbAddChatMessage fallback:", err);
+    return null;
+  }
+}
+
+export async function dbClearChatMessages() {
+  const db = getSql();
+  if (!db) return true;
+  try {
+    await db`DELETE FROM obey_chat_messages`;
+    return true;
+  } catch (err) {
+    console.warn("dbClearChatMessages error:", err);
+    return false;
+  }
+}
+
 
 export { sql };

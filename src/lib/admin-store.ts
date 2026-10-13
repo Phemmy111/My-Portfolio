@@ -43,7 +43,9 @@ interface AdminData {
   inquiries: Inquiry[];
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+// Detect Vercel or read-only production environments
+const isServerless = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+const DATA_DIR = isServerless ? path.join("/tmp", "femi-data") : path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "admin-data.json");
 
 // Initial high-converting seed leads to jumpstart Femi's outreach immediately
@@ -109,28 +111,48 @@ const SEED_DATA: AdminData = {
   ],
 };
 
+// In-memory cache ensures zero crashes even if filesystem is read-only
+let inMemoryStore: AdminData = JSON.parse(JSON.stringify(SEED_DATA));
+
 function ensureDataFile(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(SEED_DATA, null, 2), "utf-8");
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(DATA_FILE)) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(inMemoryStore, null, 2), "utf-8");
+    }
+  } catch (err) {
+    // Graceful fallback to memory store in read-only environment
+    console.warn("[AdminStore] Filesystem fallback to memory:", (err as Error)?.message);
   }
 }
 
 function readData(): AdminData {
-  ensureDataFile();
   try {
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(raw) as AdminData;
-  } catch {
-    return SEED_DATA;
+    ensureDataFile();
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, "utf-8");
+      const parsed = JSON.parse(raw) as AdminData;
+      if (parsed && Array.isArray(parsed.leads)) {
+        inMemoryStore = parsed;
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("[AdminStore] Read fallback to memory:", (err as Error)?.message);
   }
+  return inMemoryStore;
 }
 
 function writeData(data: AdminData): void {
-  ensureDataFile();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  inMemoryStore = data;
+  try {
+    ensureDataFile();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[AdminStore] Write fallback to memory:", (err as Error)?.message);
+  }
 }
 
 // -----------------------------------------------------------------------

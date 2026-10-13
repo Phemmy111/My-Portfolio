@@ -15,11 +15,12 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
   return (
     <>
       {/* Floating Trigger Button */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
         {!isOpen ? (
           <button
             onClick={() => setIsOpen(true)}
-            className="group relative flex items-center gap-2.5 px-4 py-3 rounded-full bg-zinc-950 dark:bg-zinc-900 text-white border border-emerald-500/40 shadow-2xl hover:border-emerald-400 hover:scale-105 active:scale-95 transition-all"
+            className="group relative flex items-center gap-2 sm:gap-2.5 px-3 py-2.5 sm:px-4 sm:py-3 rounded-full bg-zinc-950 dark:bg-zinc-900 text-white border border-emerald-500/40 shadow-2xl hover:border-emerald-400 hover:scale-105 active:scale-95 transition-all"
+            aria-label="Open Obey AI Assistant"
           >
             <div className="relative">
               <div className="w-8 h-8 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold shadow-md shadow-emerald-500/30">
@@ -41,13 +42,13 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
         ) : null}
       </div>
 
-      {/* Floating / Fullscreen Modal Drawer */}
+      {/* Floating (Desktop) / Native-Like Full-Screen (Mobile) Modal Drawer */}
       {isOpen && (
         <div
           className={
             isFullscreen
-              ? "fixed inset-0 z-[100] bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200"
-              : "fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[480px] md:w-[520px] shadow-2xl rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200"
+              ? "fixed inset-0 z-[100] bg-black/85 backdrop-blur-md p-0 sm:p-4 md:p-6 flex items-center justify-center animate-in fade-in duration-200"
+              : "fixed inset-0 sm:inset-auto sm:bottom-6 sm:right-6 z-[100] w-full h-[100dvh] sm:w-[480px] md:w-[520px] sm:h-auto shadow-2xl sm:rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-200"
           }
         >
           <ObeyChatConsole

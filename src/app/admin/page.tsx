@@ -306,9 +306,9 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen bg-[#dfe3e8] dark:bg-black text-zinc-950 dark:text-white font-sans pb-24">
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 bg-[#dfe3e8]/90 dark:bg-black/90 backdrop-blur-md border-b border-zinc-400/40 dark:border-zinc-800">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 shadow-sm shrink-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 shadow-sm shrink-0">
               <Image
                 src="/femi-headshot.webp"
                 alt="Femi Adeleke"
@@ -317,136 +317,136 @@ export default function AdminDashboardPage() {
                 priority
               />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-black text-lg tracking-tight">Femi Adeleke</h1>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-                  Command Center
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="font-black text-sm sm:text-lg tracking-tight truncate">Femi Adeleke</h1>
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                  Command
                 </span>
               </div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 font-semibold">
-                AutoLearn Spot & Freelance Engine
+              <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 font-semibold truncate">
+                Operations & Freelance Engine
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-2">
             <button
               onClick={() => setShowSettingsModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs"
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs"
               title="Configure AI Models & Fallback Keys"
             >
               <Zap size={13} className="text-emerald-500" />
-              <span>AI & Fallback Settings</span>
+              <span className="hidden xs:inline sm:inline">AI Settings</span>
             </button>
 
             <a
               href="/"
               target="_blank"
               rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-zinc-400 dark:border-zinc-800 hover:border-black dark:hover:border-zinc-600 transition-colors"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-zinc-400 dark:border-zinc-800 hover:border-black dark:hover:border-zinc-600 transition-colors"
             >
               <ExternalLink size={13} />
-              View Portfolio
+              Portfolio
             </a>
             <button
               onClick={handleLogout}
-              className="p-2 rounded-lg text-zinc-700 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg text-zinc-700 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
               title="Log out"
             >
-              <LogOut size={18} />
+              <LogOut size={16} className="sm:w-[18px] sm:h-[18px]" />
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-6 pt-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 space-y-5 sm:space-y-8">
         {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
-            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">Total Leads</span>
-              <Mail size={16} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Total Leads</span>
+              <Mail size={14} className="sm:w-4 sm:h-4" />
             </div>
-            <p className="text-3xl font-black">{stats.totalLeads}</p>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-semibold">
-              {stats.activeLeads} active · {stats.convertedLeads} converted
+            <p className="text-2xl sm:text-3xl font-black">{stats.totalLeads}</p>
+            <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 sm:mt-1 font-semibold truncate">
+              {stats.activeLeads} active · {stats.convertedLeads} won
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
-            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">Gig Proposals</span>
-              <Briefcase size={16} />
+          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Gig Proposals</span>
+              <Briefcase size={14} className="sm:w-4 sm:h-4" />
             </div>
-            <p className="text-3xl font-black">{proposals.length}</p>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-semibold">
-              Upwork & Fiverr engines
+            <p className="text-2xl sm:text-3xl font-black">{proposals.length}</p>
+            <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 sm:mt-1 font-semibold truncate">
+              Upwork & Fiverr
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
-            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">Inquiries</span>
-              <Inbox size={16} />
+          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Inquiries</span>
+              <Inbox size={14} className="sm:w-4 sm:h-4" />
             </div>
-            <p className="text-3xl font-black">{inquiries.length}</p>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-semibold">
-              {inquiries.filter((i) => i.status === "unread").length} unread messages
+            <p className="text-2xl sm:text-3xl font-black">{inquiries.length}</p>
+            <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 sm:mt-1 font-semibold truncate">
+              {inquiries.filter((i) => i.status === "unread").length} unread
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
-            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">Stack Status</span>
-              <Zap size={16} className="text-emerald-500" />
+          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Stack Status</span>
+              <Zap size={14} className="text-emerald-500 sm:w-4 sm:h-4" />
             </div>
-            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">Ready & Synced</p>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-semibold">
-              Neon DB / Local Hybrid
+            <p className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 truncate">Ready & Synced</p>
+            <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 sm:mt-1 font-semibold truncate">
+              Neon DB Cloud
             </p>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 border-b border-zinc-300 dark:border-zinc-800 pb-3">
+        {/* Tab Navigation with horizontal overflow scrolling */}
+        <div className="flex items-center gap-1.5 sm:gap-2 border-b border-zinc-300 dark:border-zinc-800 pb-3 overflow-x-auto no-scrollbar scroll-smooth -mx-3 px-3 sm:mx-0 sm:px-0">
           <button
             onClick={() => setActiveTab("leads")}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "leads"
                 ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
                 : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Mail size={16} />
-            Cold Mailing Automator
+            <Mail size={15} />
+            <span>Cold Mailing</span>
             <span className="text-xs opacity-75">({leads.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab("proposals")}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "proposals"
                 ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
                 : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Briefcase size={16} />
-            Freelance Gig Automator (Upwork & Fiverr)
+            <Briefcase size={15} />
+            <span>Gig Automator</span>
             <span className="text-xs opacity-75">({proposals.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab("inquiries")}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "inquiries"
                 ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
                 : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Inbox size={16} />
-            Website Inquiries
+            <Inbox size={15} />
+            <span>Inquiries</span>
             {inquiries.some((i) => i.status === "unread") && (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             )}
@@ -454,16 +454,16 @@ export default function AdminDashboardPage() {
 
           <button
             onClick={() => setActiveTab("obey")}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "obey"
                 ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
                 : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Bot size={16} className={activeTab === "obey" ? "text-white" : "text-emerald-500"} />
-            Agent Obey (AI Assistant)
+            <Bot size={15} className={activeTab === "obey" ? "text-white" : "text-emerald-500"} />
+            <span>Agent Obey</span>
             {agentTasks.some((t) => t.status === "pending_approval") && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-400 text-black">
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-400 text-black">
                 {agentTasks.filter((t) => t.status === "pending_approval").length} pending
               </span>
             )}
@@ -876,46 +876,46 @@ export default function AdminDashboardPage() {
         {activeTab === "obey" && (
           <div className="space-y-8">
             {/* Agent Obey Executive Header Card */}
-            <div className="p-8 rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-zinc-900/40 to-black relative overflow-hidden shadow-xl">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <div className="p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-zinc-900/40 to-black relative overflow-hidden shadow-xl">
+              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none hidden sm:block">
                 <Bot size={180} className="text-emerald-400" />
               </div>
 
-              <div className="relative z-10 space-y-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500 text-black flex items-center gap-1.5 shadow-sm">
+              <div className="relative z-10 space-y-3 sm:space-y-4">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-emerald-500 text-black flex items-center gap-1.5 shadow-sm">
                     <span className="w-2 h-2 rounded-full bg-black animate-ping" />
                     Agent Obey · 24/7 Active
                   </span>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  <span className="text-[11px] sm:text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
                     Human-In-The-Loop (HITL) Mode
                   </span>
                 </div>
 
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    Obey — Your Autonomous AI Operations Assistant
+                  <h2 className="text-xl sm:text-3xl font-black text-white tracking-tight">
+                    Obey — Your Autonomous Operations Assistant
                   </h2>
-                  <p className="text-sm text-zinc-400 max-w-2xl mt-1 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl mt-1 leading-relaxed">
                     Obey monitors business markets, hunts companies needing your expertise, crafts tailored pitches, and delivers 1-click approval requests directly to your phone. Nothing is sent without your green light.
                   </p>
                 </div>
 
-                <div className="pt-2 flex flex-wrap items-center gap-3">
+                <div className="pt-2 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 sm:gap-3">
                   <button
                     onClick={() => handleRunHunt("hunt_all")}
                     disabled={hunting}
-                    className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
+                    className="w-full sm:w-auto px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
                   >
                     {hunting ? (
                       <>
-                        <RefreshCw size={15} className="animate-spin" />
-                        Scouting Real Opportunities...
+                        <RefreshCw size={14} className="animate-spin" />
+                        Scouting Opportunities...
                       </>
                     ) : (
                       <>
-                        <Zap size={15} fill="currentColor" />
-                        ⚡ Run Dual-Stream Scout (All)
+                        <Zap size={14} fill="currentColor" />
+                        ⚡ Run Dual Scout (All)
                       </>
                     )}
                   </button>
@@ -923,26 +923,26 @@ export default function AdminDashboardPage() {
                   <button
                     onClick={() => handleRunHunt("hunt_upwork")}
                     disabled={hunting}
-                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
                   >
-                    <Briefcase size={15} className="text-blue-400" />
-                    Scout Upwork Live Jobs
+                    <Briefcase size={14} className="text-blue-400" />
+                    Scout Upwork Jobs
                   </button>
 
                   <button
                     onClick={() => handleRunHunt("hunt_b2b")}
                     disabled={hunting}
-                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-zinc-700 transition-all disabled:opacity-50"
                   >
-                    <Mail size={15} className="text-amber-400" />
-                    Hunt Real B2B Decision-Makers
+                    <Mail size={14} className="text-amber-400" />
+                    Hunt B2B Leads
                   </button>
 
                   <button
                     onClick={() => setShowSettingsModal(true)}
-                    className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 border border-emerald-500/40 hover:border-emerald-400 transition-all sm:ml-auto"
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-emerald-500/40 hover:border-emerald-400 transition-all sm:ml-auto"
                   >
-                    <Zap size={15} className="text-emerald-400" />
+                    <Zap size={14} className="text-emerald-400" />
                     ⚙️ AI & Fallback Keys
                   </button>
                 </div>

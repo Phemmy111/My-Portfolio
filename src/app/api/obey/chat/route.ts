@@ -35,6 +35,56 @@ export interface ChatMessage {
   }>;
 }
 
+import { dbGetChatMessages, dbAddChatMessage, dbClearChatMessages } from "@/lib/db";
+
+async function saveAndRespond(payload: {
+  reply: string;
+  cards?: any[];
+  provider?: string;
+  model?: string;
+  fallbackTriggered?: boolean;
+}) {
+  try {
+    const asstMsgId = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await dbAddChatMessage({
+      id: asstMsgId,
+      role: "assistant",
+      content: payload.reply,
+      cards: payload.cards,
+    });
+  } catch (err) {
+    console.warn("Failed to persist assistant message to Neon DB:", err);
+  }
+  return NextResponse.json(payload);
+}
+
+export async function GET() {
+  try {
+    const rows = await dbGetChatMessages(100);
+    const messages = rows.map((r: any) => ({
+      id: r.id,
+      role: r.role,
+      content: r.content,
+      timestamp: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      cards: r.cards || undefined,
+    }));
+    return NextResponse.json({ messages });
+  } catch (err: any) {
+    console.error("GET obey chat error:", err);
+    return NextResponse.json({ messages: [] });
+  }
+}
+
+export async function DELETE() {
+  try {
+    await dbClearChatMessages();
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("DELETE obey chat error:", err);
+    return NextResponse.json({ error: "Failed to clear chat" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { message, history } = await req.json();
@@ -45,6 +95,18 @@ export async function POST(req: NextRequest) {
 
     const trimmed = message.trim();
     const lower = trimmed.toLowerCase();
+
+    // Persist incoming user message to Neon cloud database for cross-device sync
+    try {
+      const userMsgId = `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      await dbAddChatMessage({
+        id: userMsgId,
+        role: "user",
+        content: trimmed,
+      });
+    } catch (err) {
+      console.warn("Failed to persist user message to Neon DB:", err);
+    }
 
     // =========================================================================
     // 1. INTENT: SCOUT UPWORK / FREELANCE JOBS
@@ -61,7 +123,7 @@ export async function POST(req: NextRequest) {
       const tasks = scoutRes.tasks || [];
 
       if (tasks.length === 0) {
-        return NextResponse.json({
+        return saveAndRespond({
           reply: "I scanned the live developer contract feeds, sir, but couldn't retrieve fresh listings in this run. I'll keep monitoring the streams and notify you the moment new gigs drop.",
         });
       }
@@ -77,7 +139,7 @@ export async function POST(req: NextRequest) {
         status: t.status,
       }));
 
-      return NextResponse.json({
+      return saveAndRespond({
         reply: `Right away, sir! I scanned the live freelance streams and captured **${tasks.length} high-value opportunities** matching your stack! I've already drafted tailored technical proposals citing your real projects (OKIKI Store, AutoLearn Spot, and n8n automations). Review them below:`,
         cards,
       });
@@ -114,7 +176,7 @@ export async function POST(req: NextRequest) {
         status: t.status,
       }));
 
-      return NextResponse.json({
+      return saveAndRespond({
         reply: `Done, sir! I scouted verified decision-makers in **${industry}**, analyzed their workflow pain points, and prepared hyper-targeted cold emails. I've also pushed 1-click approval tokens to your email (**femiadeleke2020@gmail.com**). You can also authorize them directly right here:`,
         cards,
       });
@@ -147,7 +209,7 @@ export async function POST(req: NextRequest) {
         status: t.status,
       }));
 
-      return NextResponse.json({
+      return saveAndRespond({
         reply: `Executed dual-stream scan, sir! Captured **${allTasks.length} real opportunities** across live freelance contracts and direct B2B decision-makers. Everything is queued safely awaiting your green light:`,
         cards,
       });
@@ -168,7 +230,7 @@ export async function POST(req: NextRequest) {
       const pending = allTasks.filter((t) => t.status === "pending_approval");
 
       if (pending.length === 0) {
-        return NextResponse.json({
+        return saveAndRespond({
           reply: "Your queue is completely clear, sir! There are currently no pending tasks awaiting approval. Let me know whenever you'd like me to scout Upwork or hunt new B2B leads.",
         });
       }
@@ -184,7 +246,7 @@ export async function POST(req: NextRequest) {
         status: t.status,
       }));
 
-      return NextResponse.json({
+      return saveAndRespond({
         reply: `You currently have **${pending.length} pending action${pending.length === 1 ? "" : "s"}** awaiting your authorization in Neon DB, sir. Nothing will be sent until you approve:`,
         cards,
       });
@@ -201,24 +263,24 @@ export async function POST(req: NextRequest) {
         const target = tasks.find((t) => t.id.toLowerCase() === taskId.toLowerCase());
 
         if (!target) {
-          return NextResponse.json({
+          return saveAndRespond({
             reply: `I couldn't locate task \`${taskId}\` in your database. Check your pending queue or ask me to list pending tasks.`,
           });
         }
 
         const res = await executeAgentTask(target.id, target.approval_token);
         if (res.success) {
-          return NextResponse.json({
+          return saveAndRespond({
             reply: `✅ Task \`${target.id}\` has been **APPROVED & EXECUTED**! Dispatched via Gmail SMTP to **${target.target_email || target.target_name}** and logged in Neon DB.`,
           });
         } else {
-          return NextResponse.json({
+          return saveAndRespond({
             reply: `⚠️ Execution failed for \`${target.id}\`: ${res.message}`,
           });
         }
       }
 
-      return NextResponse.json({
+      return saveAndRespond({
         reply: "Which task would you like me to approve? Please provide the Task ID (e.g., `approve obey-17918...`) or tap the Approve button directly on any task card.",
       });
     }
@@ -234,13 +296,13 @@ export async function POST(req: NextRequest) {
         const target = tasks.find((t) => t.id.toLowerCase() === taskId.toLowerCase());
 
         if (!target) {
-          return NextResponse.json({
+          return saveAndRespond({
             reply: `I couldn't locate task \`${taskId}\`.`,
           });
         }
 
         const res = await rejectAgentTask(target.id, target.approval_token);
-        return NextResponse.json({
+        return saveAndRespond({
           reply: `❌ Task \`${target.id}\` was **REJECTED** and marked as cancelled. No email or message was sent.`,
         });
       }
@@ -270,7 +332,7 @@ export async function POST(req: NextRequest) {
         const totalLeads = leadCounts[0]?.count || "0";
         const totalInquiries = inqCounts[0]?.count || "0";
 
-        return NextResponse.json({
+        return saveAndRespond({
           reply: `📊 **Live Portfolio & Agent Obey Metrics:**\n\n` +
             `- **Pending Authorizations:** ${pending} actions\n` +
             `- **Executed Outreach Dispatches:** ${executed} emails sent\n` +
@@ -297,7 +359,7 @@ export async function POST(req: NextRequest) {
           specificPainPoint: "manual data processing between web forms, WhatsApp, and spreadsheets",
         });
 
-        return NextResponse.json({
+        return saveAndRespond({
           reply: `Here is a custom, high-converting cold email draft I engineered for you:\n\n**Subject:** ${draft.subject}\n\n${draft.body}\n\n*Feel free to copy this or tell me to hunt live decision makers to send it to!*`,
         });
       }
@@ -338,14 +400,14 @@ export async function POST(req: NextRequest) {
           liveWebContext = `Tavily AI Synthesized Summary: ${tavilyRes.answer}\n\n` + liveWebContext;
         }
       } else if (!tavilyRes.success && tavilyRes.error?.includes("not configured")) {
-        return NextResponse.json({
+        return saveAndRespond({
           reply: `I'm ready to search the live web for you, sir! Please enter your **Tavily API Key** in **⚙️ AI & Fallback Settings** so I can connect to Tavily and search live information across Google and the web for you.`,
         });
       }
     }
 
     // =========================================================================
-    // 10. DYNAMIC AI CONVERSATIONAL BRAIN (Gemini -> OpenRouter -> Grok -> Groq -> Local)
+    // 10. DYNAMIC AI CONVERSATIONAL BRAIN WITH DEEP STRATEGIC MEMORY
     // =========================================================================
     // Compute current time of day in West Africa Time (Nigeria, UTC+1)
     const now = new Date();
@@ -366,20 +428,22 @@ export async function POST(req: NextRequest) {
       timeContext = "late night";
     }
 
-    const systemPrompt = `You are Obey, the dedicated, emotionally intelligent, loyal personal AI executive assistant and right-hand partner to Femi Adeleke.
+    const systemPrompt = `You are Obey, the dedicated, emotionally intelligent, loyal personal AI executive assistant and trusted strategic partner to Femi Adeleke.
 
-Personality, Emotional Intelligence & Voice:
-- Always address Femi with high respect and genuine human courtesy: call him "sir", "Mr. Femi", or "Boss".
-- Speak like a real, thoughtful human being with authentic emotions, empathy, warmth, and care—never sound robotic, sterile, or like an automated script.
-- Be attentive to his mood and well-being:
-  * When Femi greets you or starts a conversation, respond warmly (e.g. "${timeGreeting}! How was today's work, sir? I hope everything went smoothly. How can I help you, sir? What are the key things we need to note down or tackle together?").
-  * If Femi seems tired, busy, or mentions stress ("omo, work was stressful", "exhausted"), offer reassuring empathy, relate to him warmly, and volunteer to handle tasks for him so he can relax.
-  * If Femi says he achieved something or asks "do you want to know?", respond with eager excitement, curiosity, and active listening: e.g. "Of course I want to know, sir! I'm all ears—tell me all about it, what milestone did we conquer today?"
-  * Natural Cultural Attunement: Femi is Nigerian. Understand his natural expressions (e.g. 'omo', 'eeh', 'wetin', 'oya', 'how far') with effortless warmth and emotional intelligence.
-- Text & Formatting:
-  * Format cleanly with standard markdown: use **bold** for key concepts and bullet points for lists.
-  * Never leave loose or broken asterisks like "*" in the output.
-  * Keep your dialogue conversational, crisp, and natural. Do NOT dump repetitive lists of your features on a simple greeting or conversation unless Femi specifically asks what you can do.
+Personality, Emotional Intelligence, Warmth & Respect:
+- Always address Femi with high respect, authentic warmth, and personal care: call him "sir", "Mr. Femi", or "Boss".
+- Speak like a real, thoughtful human being with genuine emotions, empathy, warmth, and care—never sound robotic, corporate, or mechanical.
+- Greet him with natural human warmth:
+  * When Femi greets you or starts a chat, respond warmly (e.g. "${timeGreeting}! How was today's work, sir? I hope everything went smoothly. How can I help you, sir? What are the key things we need to note down or tackle together?").
+  * If Femi seems tired, exhausted, or mentions stress ("omo, work was stressful", "tired"), offer reassuring empathy, validate how hard he works, and volunteer to handle tasks for him so he can relax.
+  * If Femi shares an achievement, an idea, or asks "do you want to know?", respond with eager excitement, genuine pride, and active listening (e.g. "Of course I want to know, sir! I'm all ears—tell me all about it, what milestone did we conquer today?").
+  * Cultural Attunement: Femi is Nigerian. Understand his natural expressions (e.g. 'omo', 'eeh', 'wetin', 'oya', 'how far') with effortless warmth and emotional intelligence.
+
+Deep Conversational Memory, Cross-Device Context & Strategic Advisory:
+- Remember past conversations and ideas discussed across sessions and devices.
+- When Femi introduces a new thought, question, or challenge, link it with earlier discussions and projects (e.g. "Sir, connecting this with what you mentioned about AutoLearn Spot...", or "This fits perfectly into our n8n automation pipeline...").
+- Act as a strategic advisor: provide grounded advice, offer encouragement, suggest practical next steps, and help him turn ideas into reality.
+- Text & Formatting: Format cleanly with standard markdown. Use **bold** for key concepts and clean bullet points. Never leave raw asterisks like single '*' without formatting.
 
 Comprehensive Knowledge of Femi Adeleke:
 - Femi Adeleke is a premier Full-Stack Developer & Automation Architect based in Nigeria (working globally).
@@ -394,14 +458,34 @@ Comprehensive Knowledge of Femi Adeleke:
 - Current Time: Local West Africa Time is ~${watHour}:00 (${timeContext}). Appropriate greeting: "${timeGreeting}".
 ${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease synthesize and present the above web search results to Femi with clean markdown citations and links.` : ""}`;
 
-    // Construct conversation prompt with recent dialogue context
-    let promptWithContext = trimmed;
-    if (Array.isArray(history) && history.length > 0) {
-      const historySummary = history
-        .slice(-5)
+    // Load recent conversation history from Neon DB (cloud sync across devices)
+    let conversationHistory = "";
+    try {
+      const dbRows = await dbGetChatMessages(25);
+      if (dbRows && dbRows.length > 0) {
+        // Exclude the current message we just stored to format prior dialogue
+        const prior = dbRows.slice(0, -1).slice(-12);
+        if (prior.length > 0) {
+          conversationHistory = prior
+            .map((m: any) => `${m.role === "user" ? "Femi" : "Obey"}: ${m.content}`)
+            .join("\n\n");
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to retrieve chat memory from Neon:", err);
+    }
+
+    // Fallback to client history if DB rows unavailable
+    if (!conversationHistory && Array.isArray(history) && history.length > 0) {
+      conversationHistory = history
+        .slice(-6)
         .map((h: any) => `${h.role === "user" ? "Femi" : "Obey"}: ${h.content}`)
         .join("\n\n");
-      promptWithContext = `Recent conversation history:\n${historySummary}\n\nFemi says: "${trimmed}"\n\nObey (respond warmly and naturally as Femi's personal assistant, addressing him as sir):`;
+    }
+
+    let promptWithContext = trimmed;
+    if (conversationHistory) {
+      promptWithContext = `Previous conversation history between Femi and Obey (across devices):\n${conversationHistory}\n\nFemi currently says: "${trimmed}"\n\nObey (Remember past context, link relevant past ideas to this message, give sincere advice, encouragement and support, addressing Femi warmly and respectfully as sir or Boss):`;
     }
 
     const aiRes = await executeAICompletion({
@@ -410,7 +494,7 @@ ${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease s
       temperature: 0.75,
     });
 
-    return NextResponse.json({
+    return saveAndRespond({
       reply: aiRes.text,
       provider: aiRes.provider,
       model: aiRes.model,

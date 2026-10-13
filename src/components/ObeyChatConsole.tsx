@@ -207,32 +207,46 @@ export default function ObeyChatConsole({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // 1. Load chat history from localStorage on initial mount
+  // 1. Load chat history from localStorage and sync with Neon cloud DB
   useEffect(() => {
+    let localFound = false;
     try {
       const saved = localStorage.getItem(CHAT_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setMessages(parsed);
-          setIsLoaded(true);
-          return;
+          localFound = true;
         }
       }
     } catch (e) {
       console.warn("Failed to load Obey chat history:", e);
     }
 
-    // Default time-aware human greeting if no history
-    setMessages([
-      {
-        id: "welcome",
-        role: "assistant",
-        content: getInitialGreeting(),
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
+    if (!localFound) {
+      setMessages([
+        {
+          id: "welcome",
+          role: "assistant",
+          content: getInitialGreeting(),
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    }
     setIsLoaded(true);
+
+    // Fetch cloud-synced messages from Neon PostgreSQL database
+    fetch("/api/obey/chat")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(data.messages);
+          try {
+            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(data.messages));
+          } catch {}
+        }
+      })
+      .catch((err) => console.warn("Failed to sync Obey cloud chat:", err));
   }, []);
 
   // 2. Persist chat history to localStorage whenever messages change
@@ -398,7 +412,7 @@ export default function ObeyChatConsole({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const clearChat = () => {
+  const clearChat = async () => {
     const fresh: Message[] = [
       {
         id: `welcome-${Date.now()}`,
@@ -411,6 +425,13 @@ export default function ObeyChatConsole({
     try {
       localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(fresh));
     } catch (e) {}
+
+    // Clear cloud chat history on Neon DB
+    try {
+      await fetch("/api/obey/chat", { method: "DELETE" });
+    } catch (e) {
+      console.warn("Failed to clear cloud chat history on Neon DB:", e);
+    }
   };
 
   const consoleContent = (
@@ -420,30 +441,30 @@ export default function ObeyChatConsole({
       }`}
     >
       {/* Console Top Header */}
-      <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-black shadow-md shadow-emerald-500/20">
-              <Bot size={20} />
+      <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-black shadow-md shadow-emerald-500/20">
+              <Bot size={18} className="sm:w-5 sm:h-5" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-black rounded-full" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-black text-sm text-zinc-950 dark:text-white tracking-tight">
-                Agent Obey · AI Personal Assistant
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h3 className="font-black text-xs sm:text-sm text-zinc-950 dark:text-white tracking-tight truncate">
+                Agent Obey
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
                 Online
               </span>
             </div>
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
-              Human-In-The-Loop AI connected to Neon DB & Gmail SMTP
+            <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 font-medium truncate">
+              Personal AI · Neon DB Cloud Synced
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 ml-1 sm:ml-2">
           {/* Fullscreen Enlarge Toggle */}
           <button
             onClick={toggleFullscreen}
@@ -469,7 +490,7 @@ export default function ObeyChatConsole({
             <button
               onClick={onClose}
               title="Close Chat"
-              className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all ml-1"
+              className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all ml-0.5 sm:ml-1"
             >
               <X size={17} />
             </button>

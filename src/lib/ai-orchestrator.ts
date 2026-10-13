@@ -250,6 +250,52 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
 function generateDeterministicAgentResponse(userPrompt: string): string {
   const lower = userPrompt.toLowerCase();
 
+  // Compute current time of day in West Africa Time (Nigeria, UTC+1)
+  const now = new Date();
+  const watHour = (now.getUTCHours() + 1) % 24;
+  let timeGreeting = "Good afternoon, sir";
+  if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
+  else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";
+  else timeGreeting = "Good evening, sir";
+
+  // Greetings & warm human check-in
+  if (
+    lower.includes("hello") ||
+    lower.includes("hi ") ||
+    lower === "hi" ||
+    lower.includes("hey") ||
+    lower.includes("good morning") ||
+    lower.includes("good afternoon") ||
+    lower.includes("good evening") ||
+    lower.includes("how far") ||
+    lower.includes("greeting")
+  ) {
+    return (
+      `${timeGreeting}! How was today's work, sir? I hope everything went smoothly.\n\n` +
+      `How can I help you right now, sir? What are the key things or ideas we need to note down or tackle together?`
+    );
+  }
+
+  // Empathy, stress, and fatigue support
+  if (lower.includes("stress") || lower.includes("tired") || lower.includes("exhaust") || lower.includes("omo")) {
+    return (
+      `Omo, take it easy, sir! You have been putting in tremendous work, Boss. Please make sure to get some rest and breathe.\n\n` +
+      `Don't stress about the pending pipelines—I have everything tracked safely in our Neon cloud database. If there's anything you'd like me to draft, scout, or line up for tomorrow so you can rest today, just say the word, sir!`
+    );
+  }
+
+  // Priorities and "What to note"
+  if (lower.includes("what to note") || lower.includes("things to note") || lower.includes("note down")) {
+    return (
+      `Here are the key operational priorities for us to keep top of mind, sir:\n\n` +
+      `1. **Flagship Portfolios:** Keep **AutoLearn Spot** and **OKIKI Store** prominently cited as live case studies in every client proposal.\n` +
+      `2. **Inflow Streams:** Run our Upwork and B2B scouts to ensure a steady pipeline of contract opportunities.\n` +
+      `3. **Strategic Architecture:** Focus your engineering on scalable n8n workflows and Next.js full-stack systems where your ROI is highest.\n` +
+      `4. **Energy Management:** Prioritize high-impact deliverables and let me handle the outreach drafts and scouting.\n\n` +
+      `What would you like us to focus on next, sir?`
+    );
+  }
+
   // AutoLearn Spot
   if (lower.includes("autolearn") || lower.includes("auto learn") || lower.includes("spot")) {
     return (
