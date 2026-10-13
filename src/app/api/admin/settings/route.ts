@@ -7,6 +7,8 @@ import {
   setAIProvidersPool,
   AIProviderConfig,
 } from "@/lib/settings";
+import { sendTelegramMessage } from "@/lib/telegram-bot";
+import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 
 export async function GET() {
   try {
@@ -48,6 +50,38 @@ export async function POST(req: NextRequest) {
       const { provider, key, model } = body;
       const testResult = await testProviderConnection(provider, key, model);
       return NextResponse.json(testResult);
+    }
+
+    // 4. Test Telegram Phone Connection
+    if (body.action === "test_telegram") {
+      const { token, chatId } = body;
+      if (token) await setSetting("TELEGRAM_BOT_TOKEN", token);
+      if (chatId) await setSetting("TELEGRAM_CHAT_ID", chatId);
+
+      const res = await sendTelegramMessage(
+        "👋 *Hello sir!* This is Obey testing our live phone gateway from your portfolio Command Center.\n\n" +
+        "Your phone is successfully paired with Obey! You can now receive proactive briefings, instant lead alerts, and chat with me directly on Telegram whenever you are on the move."
+      );
+      return NextResponse.json(res);
+    }
+
+    // 5. Test Proactive Briefing Trigger
+    if (body.action === "test_proactive_brief") {
+      const briefType = body.type || "morning";
+      if (briefType === "evening") {
+        const res = await dispatchEveningWrapup();
+        return NextResponse.json(res);
+      } else {
+        const res = await dispatchMorningBriefing();
+        return NextResponse.json(res);
+      }
+    }
+
+    // 6. Test Gmail Reader & Inbox Sync
+    if (body.action === "test_gmail") {
+      const { runGmailInboxSync } = await import("@/lib/gmail-reader");
+      const res = await runGmailInboxSync();
+      return NextResponse.json(res);
     }
 
     // 4. Save General Settings Action

@@ -74,6 +74,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
     TAVILY_API_KEY: "",
     UPWORK_FEED_URL: "",
     CRM_WEBHOOK_URL: "",
+    TELEGRAM_BOT_TOKEN: "",
+    TELEGRAM_CHAT_ID: "",
+    WHATSAPP_PHONE_NUMBER: "",
+    WHATSAPP_API_TOKEN: "",
+    PROACTIVE_MORNING_BRIEF_ENABLED: "true",
+    PROACTIVE_EVENING_CHECKIN_ENABLED: "true",
+    PROACTIVE_INSTANT_ALERTS_ENABLED: "true",
   });
 
   const [loading, setLoading] = useState(true);
@@ -106,6 +113,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
           TAVILY_API_KEY: data.settings.TAVILY_API_KEY?.value || "",
           UPWORK_FEED_URL: data.settings.UPWORK_FEED_URL?.value || "",
           CRM_WEBHOOK_URL: data.settings.CRM_WEBHOOK_URL?.value || "",
+          TELEGRAM_BOT_TOKEN: data.settings.TELEGRAM_BOT_TOKEN?.value || "",
+          TELEGRAM_CHAT_ID: data.settings.TELEGRAM_CHAT_ID?.value || "",
+          WHATSAPP_PHONE_NUMBER: data.settings.WHATSAPP_PHONE_NUMBER?.value || "",
+          WHATSAPP_API_TOKEN: data.settings.WHATSAPP_API_TOKEN?.value || "",
+          PROACTIVE_MORNING_BRIEF_ENABLED: data.settings.PROACTIVE_MORNING_BRIEF_ENABLED?.value || "true",
+          PROACTIVE_EVENING_CHECKIN_ENABLED: data.settings.PROACTIVE_EVENING_CHECKIN_ENABLED?.value || "true",
+          PROACTIVE_INSTANT_ALERTS_ENABLED: data.settings.PROACTIVE_INSTANT_ALERTS_ENABLED?.value || "true",
         });
       }
     } catch (err) {
@@ -227,6 +241,106 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       setTestResults((prev) => ({
         ...prev,
         [entryId]: { testing: false, success: false, message: `Test failed: ${err.message}` },
+      }));
+    }
+  };
+
+  const handleTestTelegram = async () => {
+    setTestResults((prev) => ({
+      ...prev,
+      telegram: { testing: true },
+    }));
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_telegram",
+          token: generalKeys.TELEGRAM_BOT_TOKEN,
+          chatId: generalKeys.TELEGRAM_CHAT_ID,
+        }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        telegram: {
+          testing: false,
+          success: data.success,
+          message: data.success
+            ? "✅ Test message delivered to your Telegram app on your phone!"
+            : `❌ ${data.error || "Failed to reach Telegram"}`,
+        },
+      }));
+    } catch (err: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        telegram: { testing: false, success: false, message: err.message },
+      }));
+    }
+  };
+
+  const handleTestBriefing = async (type: "morning" | "evening") => {
+    setTestResults((prev) => ({
+      ...prev,
+      [type]: { testing: true },
+    }));
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_proactive_brief",
+          type,
+        }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        [type]: {
+          testing: false,
+          success: data.success,
+          message: data.success
+            ? `✅ ${type === "morning" ? "Morning Briefing" : "Evening Check-In"} generated and sent to your phone & email!`
+            : `❌ Failed: ${data.text || "Error"}`,
+        },
+      }));
+    } catch (err: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        [type]: { testing: false, success: false, message: err.message },
+      }));
+    }
+  };
+
+  const handleTestGmail = async () => {
+    setTestResults((prev) => ({
+      ...prev,
+      gmail: { testing: true },
+    }));
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_gmail" }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        gmail: {
+          testing: false,
+          success: data.success,
+          message: data.success
+            ? `✅ Gmail Reader active! Checked inbox & synced ${data.syncedCount || 0} messages.`
+            : `❌ Failed: ${data.error || "Sync error"}`,
+        },
+      }));
+    } catch (err: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        gmail: { testing: false, success: false, message: err.message },
       }));
     }
   };
@@ -663,6 +777,213 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                       placeholder="https://script.google.com/... or https://your-n8n.com/webhook/..."
                       className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: 📱 Phone Apps & Autonomous Proactive Briefings (FO by Wajo.ai Style) */}
+              <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                    📱 Phone Apps & Autonomous Proactivity (Wajo.ai / Fo Style)
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    Proactive 24/7
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Connect your phone apps so Obey can message you first with morning briefings, instant lead alerts, and let you chat or approve tasks while walking or on the go.
+                </p>
+
+                <div className="space-y-3">
+                  {/* Telegram Gateway */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                          ✈️ Telegram Bot Gateway (Free, Instant Phone Connect)
+                        </span>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Get your bot token in 30 seconds from @BotFather on Telegram, and Chat ID from @userinfobot.
+                        </p>
+                      </div>
+                      <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-[11px] text-blue-500 hover:underline flex items-center gap-1 font-semibold shrink-0">
+                        Open @BotFather <ExternalLink size={11} />
+                      </a>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                          Telegram Bot Token
+                        </label>
+                        <input
+                          type="password"
+                          value={generalKeys.TELEGRAM_BOT_TOKEN || ""}
+                          onChange={(e) => setGeneralKeys((prev) => ({ ...prev, TELEGRAM_BOT_TOKEN: e.target.value }))}
+                          placeholder="e.g. 7123456789:AAH..."
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                          Your Telegram Chat ID
+                        </label>
+                        <input
+                          type="text"
+                          value={generalKeys.TELEGRAM_CHAT_ID || ""}
+                          onChange={(e) => setGeneralKeys((prev) => ({ ...prev, TELEGRAM_CHAT_ID: e.target.value }))}
+                          placeholder="e.g. 123456789 (from @userinfobot)"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestTelegram}
+                        disabled={testResults["telegram"]?.testing || !generalKeys.TELEGRAM_BOT_TOKEN || !generalKeys.TELEGRAM_CHAT_ID}
+                        className="px-3 py-1.5 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-40"
+                      >
+                        {testResults["telegram"]?.testing ? (
+                          <>
+                            <RefreshCw size={12} className="animate-spin" />
+                            Sending Ping...
+                          </>
+                        ) : (
+                          "📱 Send Test Ping to My Phone"
+                        )}
+                      </button>
+
+                      {testResults["telegram"] && !testResults["telegram"].testing && testResults["telegram"].message && (
+                        <span className={`text-[11px] font-bold ${testResults["telegram"].success ? "text-emerald-500" : "text-red-500"}`}>
+                          {testResults["telegram"].message}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Gateway */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
+                    <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      💬 WhatsApp Integration (Meta Cloud API / n8n Webhook)
+                    </span>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                          WhatsApp Phone Number
+                        </label>
+                        <input
+                          type="text"
+                          value={generalKeys.WHATSAPP_PHONE_NUMBER || ""}
+                          onChange={(e) => setGeneralKeys((prev) => ({ ...prev, WHATSAPP_PHONE_NUMBER: e.target.value }))}
+                          placeholder="e.g. 2348120934828"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                          Meta Graph API Token (Optional if using n8n)
+                        </label>
+                        <input
+                          type="password"
+                          value={generalKeys.WHATSAPP_API_TOKEN || ""}
+                          onChange={(e) => setGeneralKeys((prev) => ({ ...prev, WHATSAPP_API_TOKEN: e.target.value }))}
+                          placeholder="EAAB..."
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proactive Schedules & Live Trigger Tests */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
+                    <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      ⏰ Autonomous Proactive Timers & Briefings
+                    </span>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-zinc-950 dark:text-white">☀️ 8:00 AM Morning Briefing</span>
+                          <button
+                            type="button"
+                            onClick={() => handleTestBriefing("morning")}
+                            disabled={testResults["morning"]?.testing}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                          >
+                            {testResults["morning"]?.testing ? "Sending..." : "Test Send"}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-zinc-500">
+                          Obey wakes up at 8 AM WAT and messages your phone with today's priorities and fresh leads.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-zinc-950 dark:text-white">🌙 8:00 PM Evening Check-In</span>
+                          <button
+                            type="button"
+                            onClick={() => handleTestBriefing("evening")}
+                            disabled={testResults["evening"]?.testing}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                          >
+                            {testResults["evening"]?.testing ? "Sending..." : "Test Send"}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-zinc-500">
+                          Obey checks in at 8 PM WAT to see how work went, logs your thoughts, and offers support.
+                        </p>
+                      </div>
+                    </div>
+
+                    {(testResults["morning"]?.message || testResults["evening"]?.message) && (
+                      <p className="text-[11px] font-bold text-emerald-500">
+                        {testResults["morning"]?.message || testResults["evening"]?.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Deep 2-Way Gmail Reader & Auto-Reply Gateway */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                          📬 2-Way Gmail Reader & Autonomous Lead Responder
+                        </span>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Obey scans your incoming emails, evaluates project leads, crafts smart responses, and alerts your phone.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        Active via SMTP/IMAP
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestGmail}
+                        disabled={testResults["gmail"]?.testing}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+                      >
+                        {testResults["gmail"]?.testing ? (
+                          <>
+                            <RefreshCw size={12} className="animate-spin" />
+                            Checking Inbox...
+                          </>
+                        ) : (
+                          "📬 Test Scan Inbox & Sync Leads"
+                        )}
+                      </button>
+
+                      {testResults["gmail"] && !testResults["gmail"].testing && testResults["gmail"].message && (
+                        <span className={`text-[11px] font-bold ${testResults["gmail"].success ? "text-emerald-500" : "text-red-500"}`}>
+                          {testResults["gmail"].message}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

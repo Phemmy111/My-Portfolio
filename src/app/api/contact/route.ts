@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addInquiry } from "@/lib/admin-store";
 import { sendAdminInquiryAlert, sendClientAutoReply } from "@/lib/email";
+import { triggerInstantProactiveAlert } from "@/lib/proactive-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +22,14 @@ export async function POST(req: NextRequest) {
       message,
     });
 
-    // 2. Send alerts via SMTP (only if SMTP is configured)
+    // 2. Trigger instant proactive push alert to Femi's phone (Telegram / WhatsApp)
+    triggerInstantProactiveAlert({
+      title: "New Client Inquiry Received!",
+      body: `**From:** ${name} (${email})\n**Service:** ${service || "General Inquiry"}\n**Message:**\n${message}`,
+      link: `${process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app"}/admin`,
+    }).catch((err) => console.warn("Proactive contact alert failed:", err));
+
+    // 3. Send alerts via SMTP (only if SMTP is configured)
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
         // Notify Femi instantly

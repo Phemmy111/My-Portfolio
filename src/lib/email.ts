@@ -139,4 +139,35 @@ export async function sendColdEmail(params: {
   });
 }
 
+export async function sendProactiveBriefingEmail(params: {
+  subject: string;
+  markdownContent: string;
+}) {
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || process.env.SMTP_USER || "femiadeleke2020@gmail.com";
+  const formattedHtml = params.markdownContent
+    .split("\n\n")
+    .map((p) => `<p style="margin: 0 0 12px; font-size: 14px; line-height: 1.7; color: #e4e4e7;">${p.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #ffffff;">$1</strong>').replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || `"Agent Obey" <${process.env.SMTP_USER}>`,
+    to: adminEmail,
+    subject: params.subject,
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; background: #070707; color: #e4e4e7; border-radius: 16px; border: 1px solid #27272a;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #18181b; padding-bottom: 16px;">
+          <h1 style="font-size: 20px; font-weight: 900; color: #10b981; margin: 0;">⚡ Agent Obey · Proactive Operational Briefing</h1>
+        </div>
+        <div style="background: #111113; border: 1px solid #1f1f23; border-radius: 12px; padding: 20px;">
+          ${formattedHtml}
+        </div>
+        <div style="margin-top: 24px; text-align: center;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app"}/admin" style="display: inline-block; background: #10b981; color: #000000; font-weight: 800; text-decoration: none; padding: 10px 20px; border-radius: 10px; font-size: 13px;">Open Command Center</a>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export { transporter };
+
