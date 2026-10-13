@@ -91,21 +91,21 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Live WhatsApp QR Code State
-  const [qrData, setQrData] = useState<{ base64?: string; connected?: boolean; loading?: boolean; error?: string }>({});
+  const [qrData, setQrData] = useState<{ base64?: string; connected?: boolean; loading?: boolean; error?: string; pairingCode?: string }>({});
 
-  const fetchWhatsAppQr = async () => {
+  const fetchWhatsAppQr = async (force: boolean = false) => {
     setQrData((prev) => ({ ...prev, loading: true, error: undefined }));
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "whatsapp_qr" }),
+        body: JSON.stringify({ action: "whatsapp_qr", force }),
       });
       const data = await res.json();
       if (data.connected) {
         setQrData({ connected: true, loading: false });
       } else if (data.base64) {
-        setQrData({ base64: data.base64, connected: false, loading: false });
+        setQrData({ base64: data.base64, connected: false, loading: false, pairingCode: data.pairingCode });
       } else {
         setQrData({ error: data.error || "Could not retrieve QR code", loading: false });
       }
@@ -113,6 +113,16 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
       setQrData({ error: e.message, loading: false });
     }
   };
+
+  // Auto-fetch WhatsApp QR when modal opens & auto-refresh every 8s while not connected
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchWhatsAppQr();
+    const interval = setInterval(() => {
+      fetchWhatsAppQr();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   // Fetch current settings & pool
   const fetchSettings = async () => {
@@ -907,21 +917,39 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                     {/* Live QR Code Box Inside Modal */}
                     <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="space-y-1 text-center sm:text-left">
-                        <p className="text-xs font-black text-zinc-950 dark:text-white">
-                          📱 Scan to Pair Your WhatsApp
-                        </p>
+                        <div className="flex items-center gap-2 justify-center sm:justify-start">
+                          <p className="text-xs font-black text-zinc-950 dark:text-white">
+                            📱 Scan to Pair Your WhatsApp
+                          </p>
+                          <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            Auto-refreshes live
+                          </span>
+                        </div>
                         <p className="text-[11px] text-zinc-500 max-w-xs leading-relaxed">
                           Open WhatsApp on your phone &rarr; <strong>Linked Devices</strong> &rarr; <strong>Link a Device</strong> &rarr; Scan this live QR code.
                         </p>
-                        <div className="pt-2">
+                        {qrData.pairingCode && (
+                          <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-[11px] font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                            Pairing Code: <span className="text-emerald-600 dark:text-emerald-400">{qrData.pairingCode}</span>
+                          </div>
+                        )}
+                        <div className="pt-2 flex items-center gap-2 justify-center sm:justify-start">
                           <button
                             type="button"
-                            onClick={fetchWhatsAppQr}
+                            onClick={() => fetchWhatsAppQr(false)}
                             disabled={qrData.loading}
                             className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white text-[11px] font-bold flex items-center gap-1.5 transition-all"
                           >
                             <RefreshCw size={11} className={qrData.loading ? "animate-spin" : ""} />
-                            {qrData.loading ? "Generating Live QR..." : "🔄 Refresh QR Code"}
+                            {qrData.loading ? "Checking..." : "Refresh"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => fetchWhatsAppQr(true)}
+                            disabled={qrData.loading}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[11px] font-bold transition-all"
+                          >
+                            Reset & New QR
                           </button>
                         </div>
                       </div>
@@ -932,20 +960,31 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                             <span className="text-3xl block mb-2">✅</span>
                             <p className="text-xs font-black text-emerald-600">WhatsApp Linked!</p>
                             <p className="text-[10px] text-zinc-500">24/7 Active on Neon DB</p>
+                            <button
+                              type="button"
+                              onClick={() => fetchWhatsAppQr(true)}
+                              className="mt-2 text-[10px] text-amber-600 hover:underline font-bold"
+                            >
+                              Disconnect & Re-pair
+                            </button>
                           </div>
                         ) : qrData.base64 ? (
-                          <img
-                            src={qrData.base64}
-                            alt="WhatsApp Live Pairing QR"
-                            className="w-36 h-36 object-contain rounded-lg"
-                          />
+                          <div className="text-center">
+                            <img
+                              src={qrData.base64}
+                              alt="WhatsApp Live Pairing QR"
+                              className="w-36 h-36 object-contain rounded-lg"
+                            />
+                            <p className="text-[9px] text-zinc-400 mt-1 font-mono">Scan before expiration</p>
+                          </div>
                         ) : (
                           <button
                             type="button"
-                            onClick={fetchWhatsAppQr}
-                            className="text-center p-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                            onClick={() => fetchWhatsAppQr(false)}
+                            className="text-center p-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex flex-col items-center gap-2"
                           >
-                            Click to Display<br />Live QR Code
+                            <RefreshCw size={16} className={qrData.loading ? "animate-spin" : ""} />
+                            {qrData.loading ? "Loading QR..." : "Click to Display Live QR"}
                           </button>
                         )}
                       </div>

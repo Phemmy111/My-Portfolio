@@ -97,18 +97,27 @@ export async function POST(req: NextRequest) {
     }
 
     // 7. Live WhatsApp QR Code & Pairing Status (Evolution API on Render)
-    if (body.action === "whatsapp_qr") {
+    if (body.action === "whatsapp_qr" || body.action === "whatsapp_reconnect") {
       const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
       const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
       try {
-        // First check connection state
+        if (body.force || body.action === "whatsapp_reconnect") {
+          try {
+            await fetch(`${evoUrl}/instance/restart/obey-session`, {
+              method: "POST",
+              headers: { apikey: evoKey },
+            });
+          } catch {}
+        }
+
+        // Check connection state
         const stateRes = await fetch(`${evoUrl}/instance/connectionState/obey-session`, {
           headers: { apikey: evoKey },
         });
         const stateData = await stateRes.json();
         const isConnected = stateData?.instance?.state === "open";
 
-        if (isConnected) {
+        if (isConnected && !body.force) {
           return NextResponse.json({ success: true, connected: true, state: "open" });
         }
 
@@ -123,6 +132,7 @@ export async function POST(req: NextRequest) {
           connected: false,
           base64: connectData?.base64 || null,
           code: connectData?.code || null,
+          pairingCode: connectData?.pairingCode || null,
         });
       } catch (err: any) {
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });

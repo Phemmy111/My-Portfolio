@@ -1006,15 +1006,24 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-                    <MessageCircle size={18} />
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(true)}
+                  className="p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] flex items-center justify-between text-left hover:border-emerald-500/50 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold group-hover:scale-105 transition-transform">
+                      <MessageCircle size={18} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-zinc-950 dark:text-white">WhatsApp Gateway</p>
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Tap to View Live QR Code</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-zinc-950 dark:text-white">WhatsApp Bot</p>
-                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">● Configured (08120934828)</p>
-                  </div>
-                </div>
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Pair / QR ↗
+                  </span>
+                </button>
               </div>
             </div>
 
