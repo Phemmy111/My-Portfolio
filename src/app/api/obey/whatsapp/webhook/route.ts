@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { dbAddChatMessage, dbGetChatMessages } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
@@ -209,11 +209,13 @@ export async function POST(req: NextRequest) {
 
   console.log(`[WA Webhook] Incoming from ${senderNumber}: "${userText}"`);
 
-  try {
-    await processMessage(senderNumber, userText);
-  } catch (err) {
-    console.error("[WA] processMessage error:", err);
-  }
+  after(async () => {
+    try {
+      await processMessage(senderNumber, userText);
+    } catch (err) {
+      console.error("[WA] processMessage error:", err);
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }
