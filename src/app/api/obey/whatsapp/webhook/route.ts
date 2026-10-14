@@ -13,6 +13,21 @@ export const maxDuration = 60; // seconds — Vercel Hobby allows up to 60s on A
 // Femi's personal WhatsApp number (the one he messages FROM)
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
+function cleanWhatsAppFormatting(text: string): string {
+  return text
+    // Replace markdown bullets like "* *item:*" with "• *item:*"
+    .replace(/^(\s*)\*\s+\*([^*]+)\*:/gm, "$1• *$2:*")
+    .replace(/^(\s*)\*\s+/gm, "$1• ")
+    .replace(/^(\s*)-\s+/gm, "$1• ")
+    // Remove markdown headers (# Title)
+    .replace(/^#{1,6}\s+/gm, "")
+    // Normalize markdown double bolding **text** to WhatsApp single bold *text*
+    .replace(/\*\*([^*]+)\*\*/g, "*$1*")
+    // Fix accidental double asterisk clutter
+    .replace(/\*\s*\*/g, "*")
+    .trim();
+}
+
 async function processMessage(senderNumber: string, userText: string) {
   const lower = userText.toLowerCase();
   let replyTo = (senderNumber || FEMI_PERSONAL_NUMBER).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
@@ -33,14 +48,39 @@ async function processMessage(senderNumber: string, userText: string) {
 
   // Helper: send reply via WhatsApp + save to DB
   async function reply(text: string) {
-    await sendWhatsAppMessage(text, replyTo);
+    const formatted = cleanWhatsAppFormatting(text);
+    await sendWhatsAppMessage(formatted, replyTo);
     try {
       await dbAddChatMessage({
         id: `wa-asst-${Date.now()}`,
         role: "assistant",
-        content: text,
+        content: formatted,
       });
     } catch {}
+  }
+
+  const isFemi = replyTo === FEMI_PERSONAL_NUMBER;
+
+  // Gatekeeper: If someone other than Femi messages the bot
+  if (!isFemi) {
+    const guestPrompt = `You are Obey, the AI executive assistant to Femi Adeleke (full-stack software engineer & automation architect).
+Someone other than Femi is messaging Femi's assistant line on WhatsApp.
+- Be polite, courteous, and highly professional.
+- Protect Femi's private data, financials, and internal credentials. Do NOT disclose confidential metrics or call them "Boss".
+- Offer to take a message, inquire about their project or business needs, or direct them to view Femi's portfolio at https://femiadelekeportfolio.vercel.app.
+- Keep the response concise, polished, and mobile-friendly.`;
+
+    try {
+      const guestRes = await executeAICompletion({
+        systemPrompt: guestPrompt,
+        userPrompt: userText,
+        temperature: 0.5,
+      });
+      await reply(guestRes.text);
+    } catch {
+      await reply("Hello! I am Obey, executive assistant to Femi Adeleke. Mr. Adeleke is currently engaged. Please leave your name and project details, and I will ensure it is reviewed promptly.");
+    }
+    return;
   }
 
   // Command: Scout Upwork
@@ -131,6 +171,10 @@ async function processMessage(senderNumber: string, userText: string) {
   const systemPrompt = `You are Obey, Femi Adeleke's dedicated, emotionally intelligent personal AI executive assistant chatting with him directly on his phone via WhatsApp.
 - Address Femi with high respect and genuine human warmth: call him "sir" or "Boss".
 - Keep your answers clean, supportive, confident, and readable on mobile (short paragraphs, no walls of text).
+- WhatsApp Formatting Guidelines:
+  - Do NOT use markdown bullet asterisks (* item) because they clash with WhatsApp bolding and look ugly. Use clean bullet points (•) or numbers (1.).
+  - Do NOT use markdown headers (# or ##).
+  - Use bolding sparingly (*like this*) only for key names or terms. Never create nested asterisks like * *term*.
 - Provide strategic advice, authentic encouragement, and emotional support.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
 - Current Time: Local West Africa Time ~${watHour}:00. Greeting: "${timeGreeting}".`;
