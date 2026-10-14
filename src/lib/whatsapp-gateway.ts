@@ -17,8 +17,17 @@ export async function sendWhatsAppMessage(
     const instanceName =
       process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
-    // Femi's personal WhatsApp number — fallback when no recipient supplied
-    const targetPhone = (recipient || "2348120934828").replace(/\D/g, "");
+    // Femi's personal WhatsApp number — fallback when no recipient supplied or when recipient is an internal LID
+    let cleaned = (recipient || "2348120934828")
+      .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
+      .replace(/\D/g, "");
+
+    // If cleaned is not a standard international phone number (e.g. 15-digit internal WhatsApp LID or empty), default to Femi's phone
+    if (!cleaned || cleaned.length > 13 || cleaned.length < 10) {
+      cleaned = "2348120934828";
+    }
+
+    const targetPhone = cleaned;
 
     const res = await fetch(
       `${evoUrl}/message/sendText/${instanceName}`,

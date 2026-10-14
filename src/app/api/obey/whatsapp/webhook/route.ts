@@ -15,7 +15,10 @@ const FEMI_PERSONAL_NUMBER = "2348120934828";
 
 async function processMessage(senderNumber: string, userText: string) {
   const lower = userText.toLowerCase();
-  const replyTo = senderNumber || FEMI_PERSONAL_NUMBER;
+  let replyTo = (senderNumber || FEMI_PERSONAL_NUMBER).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+  if (!replyTo || replyTo.length > 13 || replyTo.length < 10) {
+    replyTo = FEMI_PERSONAL_NUMBER;
+  }
 
   // Save incoming message to Neon DB
   try {
@@ -185,7 +188,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us/g, "");
+  let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "");
+
+  // In WhatsApp multi-device, messages to linked accounts arrive with @lid (e.g. 164213964194040@lid).
+  // If incoming JID is an internal WhatsApp LID, or not a valid E.164 phone length,
+  // route directly to Femi's verified personal WhatsApp number (2348120934828):
+  if (senderJid.endsWith("@lid") || senderNumber.length > 13 || senderNumber.length < 10) {
+    senderNumber = FEMI_PERSONAL_NUMBER;
+  }
 
   const userText = (
     data.message?.conversation ||
