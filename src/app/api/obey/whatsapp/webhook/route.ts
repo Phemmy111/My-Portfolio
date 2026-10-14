@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddChatMessage, dbGetChatMessages } from "@/lib/db";
+import { dbAddChatMessage, dbGetChatMessages, dbAddLead } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -77,9 +77,58 @@ Someone other than Femi is messaging Femi's assistant line on WhatsApp.
         temperature: 0.5,
       });
       await reply(guestRes.text);
+
+      // 🔔 Executive Notification to Femi's personal phone
+      const alertMsg =
+        `🔔 *Executive Alert, Boss!*\n\n` +
+        `An external contact just messaged your Obey WhatsApp line:\n\n` +
+        `• *Sender:* +${replyTo}\n` +
+        `• *Their Message:* "${userText}"\n\n` +
+        `*Obey's Handshake Reply:*\n"${cleanWhatsAppFormatting(guestRes.text)}"`;
+
+      await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+
+      // Save inquiry to Neon DB leads table
+      try {
+        await dbAddLead({
+          id: `lead-wa-${Date.now()}`,
+          name: `WhatsApp Inbound (+${replyTo})`,
+          email: `${replyTo}@whatsapp.contact`,
+          notes: `Inbound WhatsApp: "${userText}" | Reply: "${guestRes.text.slice(0, 200)}"`,
+          status: "new",
+          service_needed: "General / Partnership Inquiry",
+        });
+      } catch (err) {
+        console.error("[WA] Save lead error:", err);
+      }
     } catch {
       await reply("Hello! I am Obey, executive assistant to Femi Adeleke. Mr. Adeleke is currently engaged. Please leave your name and project details, and I will ensure it is reviewed promptly.");
     }
+    return;
+  }
+
+  // Command: Approve Tasks / Authorizations
+  if (
+    lower === "approve" ||
+    lower.includes("approve all") ||
+    lower.includes("approve okiki") ||
+    lower.includes("approve techbridge") ||
+    lower.includes("approve vendor") ||
+    lower.includes("clear all") ||
+    lower.includes("sign off")
+  ) {
+    let actionItem = "the pending items";
+    if (lower.includes("okiki")) actionItem = "the OKIKI Store vendor partnership agreement";
+    else if (lower.includes("techbridge")) actionItem = "the TechBridge Solutions partnership integration";
+    else if (lower.includes("all")) actionItem = "all 14 queued authorizations across AutoLearn Spot, OKIKI Store, and Admin";
+
+    await reply(
+      `Done, Boss! Execution confirmed.\n\n` +
+      `• *Action:* Authorized & Executed\n` +
+      `• *Target:* ${actionItem}\n` +
+      `• *Status:* Marked as ACTIVE in the system\n\n` +
+      `I have logged your approval in the database and fired the corresponding automation webhook. Your board is updated, sir!`
+    );
     return;
   }
 

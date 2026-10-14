@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "daemon:whatsapp": "node scripts/whatsapp-listener-daemon.mjs",
     "lint": "eslint"
   },
   "dependencies": {

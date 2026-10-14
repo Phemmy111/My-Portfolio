@@ -1,6 +1,11 @@
+import http from 'http';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon('postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require');
+const PORT = process.env.PORT || 3000;
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require';
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook';
+
+const sql = neon(DATABASE_URL);
 const processingIds = new Set();
 
 async function poll() {
@@ -30,10 +35,10 @@ async function poll() {
     if (userTs > botTs && !processingIds.has(latestUser.id)) {
       processingIds.add(latestUser.id);
       const text = latestUser.message?.conversation || latestUser.message?.extendedTextMessage?.text || '';
-      console.log(`[WA Listener] New unreplied message from user: "${text}" (id: ${latestUser.id})`);
+      console.log(`[WA Listener] New unreplied message: "${text}" (id: ${latestUser.id})`);
 
       try {
-        const res = await fetch('https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook', {
+        const res = await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -42,9 +47,9 @@ async function poll() {
             data: latestUser
           })
         });
-        console.log(`[WA Listener] Dispatched to webhook, response status: ${res.status}`);
+        console.log(`[WA Listener] Webhook triggered. Status: ${res.status}`);
       } catch (err) {
-        console.error('[WA Listener] Webhook dispatch error:', err);
+        console.error('[WA Listener] Webhook dispatch error:', err?.message || err);
         processingIds.delete(latestUser.id);
       }
     }
@@ -53,9 +58,19 @@ async function poll() {
   }
 }
 
-async function main() {
-  console.log('[WA Listener] Real-time WhatsApp Sync Daemon active. Monitoring Neon DB every 2s...');
-  setInterval(poll, 2000);
-}
+// Lightweight HTTP server for Render Free Web Service health checks and keep-alive pings
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    status: 'healthy',
+    service: 'obey-whatsapp-daemon',
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  }));
+});
 
-main().catch(console.error);
+server.listen(PORT, () => {
+  console.log(`[WA Listener] Daemon HTTP server running on port ${PORT}`);
+  console.log('[WA Listener] Real-time WhatsApp sync loop active (2s interval).');
+  setInterval(poll, 2000);
+});
