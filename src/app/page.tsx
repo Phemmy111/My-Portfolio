@@ -6,6 +6,7 @@ import Projects from "@/components/Projects";
 import MusicSection from "@/components/MusicSection";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
+import PublicObeyWidget from "@/components/PublicObeyWidget";
 
 export default function Home() {
   return (
@@ -20,6 +21,7 @@ export default function Home() {
         <Contact />
       </main>
       <Footer />
+      <PublicObeyWidget />
     </>
   );
 }

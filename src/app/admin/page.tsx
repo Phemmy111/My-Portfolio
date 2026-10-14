@@ -27,15 +27,17 @@ import {
   XCircle,
   AlertCircle,
   Play,
+  MessagesSquare,
 } from "lucide-react";
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
 import ObeyChatConsole from "@/components/ObeyChatConsole";
 import ObeyFloatingAssistant from "@/components/ObeyFloatingAssistant";
 import AISettingsModal from "@/components/AISettingsModal";
+import AdminOmnichannelInbox from "@/components/AdminOmnichannelInbox";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey">("leads");
+  const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey" | "inbox">("inbox");
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
@@ -412,6 +414,19 @@ export default function AdminDashboardPage() {
         {/* Tab Navigation with horizontal overflow scrolling */}
         <div className="flex items-center gap-1.5 sm:gap-2 border-b border-zinc-300 dark:border-zinc-800 pb-3 overflow-x-auto no-scrollbar scroll-smooth -mx-3 px-3 sm:mx-0 sm:px-0">
           <button
+            onClick={() => setActiveTab("inbox")}
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
+              activeTab === "inbox"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <MessagesSquare size={15} />
+            <span>Omnichannel Inbox</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </button>
+
+          <button
             onClick={() => setActiveTab("leads")}
             className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "leads"
@@ -469,6 +484,28 @@ export default function AdminDashboardPage() {
             )}
           </button>
         </div>
+
+        {/* ============================================================ */}
+        {/* TAB 0: OMNICHANNEL INBOX (WHATSAPP, TELEGRAM, WEB)           */}
+        {/* ============================================================ */}
+        {activeTab === "inbox" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black tracking-tight flex items-center gap-2">
+                  Omnichannel Conversation Hub
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    Live Sync
+                  </span>
+                </h2>
+                <p className="text-sm text-zinc-700 dark:text-zinc-400 font-medium">
+                  Unified live inbox across WhatsApp, Telegram, and your Website. Read full conversation histories, monitor Obey&apos;s automated replies, and send direct manual messages.
+                </p>
+              </div>
+            </div>
+            <AdminOmnichannelInbox />
+          </div>
+        )}
 
         {/* ============================================================ */}
         {/* TAB 1: COLD MAILING AUTOMATOR */}

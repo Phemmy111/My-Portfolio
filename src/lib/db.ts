@@ -272,7 +272,7 @@ export async function dbClearChatMessages() {
 }
 
 // ==============================================================
-// GUEST WHATSAPP CONVERSATION MEMORY (MULTI-THREADED)
+// GUEST OMNICHANNEL CONVERSATION MEMORY (WHATSAPP, TELEGRAM, WEB)
 // ==============================================================
 export async function createGuestChatTables() {
   const db = getSql();
@@ -283,10 +283,14 @@ export async function createGuestChatTables() {
         id           TEXT PRIMARY KEY,
         phone_number TEXT NOT NULL,
         sender_name  TEXT,
+        channel      TEXT DEFAULT 'whatsapp',
         role         TEXT NOT NULL,
         content      TEXT NOT NULL,
         created_at   TIMESTAMPTZ DEFAULT NOW()
       )
+    `;
+    await db`
+      ALTER TABLE guest_chat_messages ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT 'whatsapp'
     `;
     await db`
       CREATE INDEX IF NOT EXISTS idx_guest_chat_phone ON guest_chat_messages (phone_number, created_at ASC)
@@ -300,6 +304,7 @@ export async function dbAddGuestMessage(params: {
   id: string;
   phone_number: string;
   sender_name?: string;
+  channel?: "whatsapp" | "telegram" | "web";
   role: "user" | "assistant";
   content: string;
 }) {
@@ -307,9 +312,10 @@ export async function dbAddGuestMessage(params: {
   if (!db) return null;
   try {
     await createGuestChatTables();
+    const channel = params.channel || "whatsapp";
     const [row] = await db`
-      INSERT INTO guest_chat_messages (id, phone_number, sender_name, role, content)
-      VALUES (${params.id}, ${params.phone_number}, ${params.sender_name || null}, ${params.role}, ${params.content})
+      INSERT INTO guest_chat_messages (id, phone_number, sender_name, channel, role, content)
+      VALUES (${params.id}, ${params.phone_number}, ${params.sender_name || null}, ${channel}, ${params.role}, ${params.content})
       RETURNING *
     `;
     return row;
@@ -319,13 +325,13 @@ export async function dbAddGuestMessage(params: {
   }
 }
 
-export async function dbGetGuestMessages(phoneNumber: string, limit: number = 20) {
+export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50) {
   const db = getSql();
   if (!db) return [];
   try {
     await createGuestChatTables();
     const rows = await db`
-      SELECT id, phone_number, sender_name, role, content, created_at
+      SELECT id, phone_number, sender_name, channel, role, content, created_at
       FROM guest_chat_messages
       WHERE phone_number = ${phoneNumber}
       ORDER BY created_at ASC
@@ -338,13 +344,50 @@ export async function dbGetGuestMessages(phoneNumber: string, limit: number = 20
   }
 }
 
+export async function dbGetInboxThreads() {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createGuestChatTables();
+    const rows = await db`
+      SELECT 
+        phone_number AS contact_id,
+        MAX(sender_name) AS sender_name,
+        COALESCE(MAX(channel), 'whatsapp') AS channel,
+        COUNT(*)::int AS total_messages,
+        MAX(created_at) AS last_message_at,
+        (
+          SELECT content 
+          FROM guest_chat_messages sub 
+          WHERE sub.phone_number = guest_chat_messages.phone_number 
+          ORDER BY sub.created_at DESC 
+          LIMIT 1
+        ) AS last_message,
+        (
+          SELECT role 
+          FROM guest_chat_messages sub 
+          WHERE sub.phone_number = guest_chat_messages.phone_number 
+          ORDER BY sub.created_at DESC 
+          LIMIT 1
+        ) AS last_role
+      FROM guest_chat_messages
+      GROUP BY phone_number
+      ORDER BY MAX(created_at) DESC
+    `;
+    return rows;
+  } catch (e) {
+    console.warn("dbGetInboxThreads error:", e);
+    return [];
+  }
+}
+
 export async function dbGetAllGuestConversations() {
   const db = getSql();
   if (!db) return [];
   try {
     await createGuestChatTables();
     const rows = await db`
-      SELECT id, phone_number, sender_name, role, content, created_at
+      SELECT id, phone_number, sender_name, channel, role, content, created_at
       FROM guest_chat_messages
       ORDER BY phone_number, created_at ASC
     `;
@@ -354,4 +397,5 @@ export async function dbGetAllGuestConversations() {
     return [];
   }
 }
+
 
