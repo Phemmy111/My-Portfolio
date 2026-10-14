@@ -15,6 +15,7 @@ import {
   User,
   Bot,
   Filter,
+  ArrowLeft,
 } from "lucide-react";
 import { formatToWAT } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ interface ThreadMessage {
 export default function AdminOmnichannelInbox() {
   const [threads, setThreads] = useState<InboxThread[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const selectedContactIdRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -50,6 +52,11 @@ export default function AdminOmnichannelInbox() {
   const [sendingReply, setSendingReply] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Keep ref synchronized with state to prevent stale closure in interval polling
+  useEffect(() => {
+    selectedContactIdRef.current = selectedContactId;
+  }, [selectedContactId]);
+
   // Fetch threads list
   const fetchThreads = async () => {
     try {
@@ -57,8 +64,8 @@ export default function AdminOmnichannelInbox() {
       const data = await res.json();
       if (data.ok && Array.isArray(data.threads)) {
         setThreads(data.threads);
-        // Default select first thread if none selected
-        if (!selectedContactId && data.threads.length > 0) {
+        // Only select first thread on desktop if none selected yet
+        if (!selectedContactIdRef.current && data.threads.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
           setSelectedContactId(data.threads[0].contact_id);
         }
       }
@@ -176,7 +183,9 @@ export default function AdminOmnichannelInbox() {
   return (
     <div className="h-[750px] max-h-[82vh] bg-white dark:bg-[#080808] border border-zinc-300 dark:border-zinc-800 rounded-2xl shadow-sm flex flex-col md:flex-row overflow-hidden">
       {/* LEFT COLUMN: Contacts Thread List */}
-      <div className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 bg-zinc-50/50 dark:bg-[#0c0c0e]/50">
+      <div className={`w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 bg-zinc-50/50 dark:bg-[#0c0c0e]/50 ${
+        selectedContactId ? "hidden md:flex" : "flex flex-1"
+      }`}>
         {/* Search & Actions Bar */}
         <div className="p-3.5 border-b border-zinc-200 dark:border-zinc-800 space-y-2.5">
           <div className="flex items-center justify-between">
@@ -287,23 +296,35 @@ export default function AdminOmnichannelInbox() {
       </div>
 
       {/* RIGHT COLUMN: Active Conversation & Manual Takeover */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-[#080808]">
+      <div className={`flex-1 flex flex-col bg-white dark:bg-[#080808] ${
+        selectedContactId ? "flex" : "hidden md:flex"
+      }`}>
         {selectedThread ? (
           <>
             {/* Thread Header */}
-            <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-[#0c0c0e]/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center font-bold">
-                  <User size={18} />
+            <div className="px-4 sm:px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-[#0c0c0e]/50 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Mobile Back to Threads Button */}
+                <button
+                  onClick={() => setSelectedContactId(null)}
+                  className="md:hidden p-1.5 -ml-1 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1 text-xs font-bold"
+                  title="Back to conversations list"
+                >
+                  <ArrowLeft size={16} />
+                  <span>Chats</span>
+                </button>
+
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center font-bold shrink-0">
+                  <User size={16} />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm text-zinc-950 dark:text-white">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white truncate max-w-[140px] sm:max-w-none">
                       {selectedThread.sender_name || `+${selectedThread.contact_id}`}
                     </h4>
                     {getChannelBadge(selectedThread.channel)}
                   </div>
-                  <p className="text-[11px] font-mono text-zinc-500">
+                  <p className="text-[10px] sm:text-[11px] font-mono text-zinc-500 truncate">
                     ID: {selectedThread.contact_id}
                   </p>
                 </div>

@@ -7,7 +7,7 @@ import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { searchTavily } from "@/lib/tavily-search";
 import { neon } from "@neondatabase/serverless";
 import { formatToWAT, getNigerianTime } from "@/lib/utils";
-import { getObeyBrainContext } from "@/lib/settings";
+import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
 const sql = neon(dbUrl);
@@ -108,6 +108,47 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.warn("Failed to persist user message to Neon DB:", err);
+    }
+
+    // =========================================================================
+    // 0. INTENT: DYNAMIC BEHAVIOR DIRECTIVES & BRAIN MEMORY (Taught by Femi in chat)
+    // =========================================================================
+    const isReportingDirective =
+      /\b(report|brief|alert|notification|notify)\b/i.test(lower) &&
+      /\b(every|first time|meaningful|don't give me|dont give me|only send|stop sending|too many|conversat)\b/i.test(lower);
+
+    const isExplicitMemoryDirective =
+      /^(remember|never forget|note this|instruction|directive|from now on)\b/i.test(lower.trim());
+
+    if (isReportingDirective || isExplicitMemoryDirective) {
+      try {
+        const currentInstructions = await getSetting("OBEY_CUSTOM_INSTRUCTIONS");
+        let directiveToSave = "";
+
+        if (isReportingDirective) {
+          directiveToSave = "NOTIFICATION & REPORTING DIRECTIVE (Approved by Femi): Only alert Femi when a new contact messages for the first time, or when they reach a concrete milestone (e.g., share email/phone, request a call/meeting, or agree on project budget/scope). Never spam on intermediate conversational chatter.";
+        } else {
+          directiveToSave = trimmed.replace(/^(remember|never forget|note this|instruction|directive|from now on)[:\s]*/i, "").trim();
+        }
+
+        const updated = currentInstructions
+          ? `${currentInstructions}\n• ${directiveToSave}`
+          : `• ${directiveToSave}`;
+
+        await setSetting("OBEY_CUSTOM_INSTRUCTIONS", updated);
+
+        if (isReportingDirective) {
+          return saveAndRespond({
+            reply: `Understood and noted, Boss! 🎯\n\nI have permanently committed this directive to my Neon DB memory:\n• **Rule:** I will only alert you when a new person messages for the first time, or when they reach a concrete milestone (like sharing their contact details or requesting a call).\n• **Status:** Active and saved in Obey Brain.\n\nI will never spam you with intermediate conversational chatter, sir.`,
+          });
+        } else {
+          return saveAndRespond({
+            reply: `Understood, Boss! 🧠 I have committed that to my permanent Neon DB memory:\n\n> "${directiveToSave}"\n\nI will remember and apply this across all channels.`,
+          });
+        }
+      } catch (err: any) {
+        console.error("Save directive error in chat route:", err);
+      }
     }
 
     // =========================================================================

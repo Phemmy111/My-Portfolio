@@ -9,7 +9,7 @@ import { runGmailInboxSync } from "@/lib/gmail-reader";
 import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 import { formatToWAT, formatDateTimeWAT, getNigerianTime } from "@/lib/utils";
-import { getObeyBrainContext } from "@/lib/settings";
+import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -102,9 +102,13 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
 5. OFFICIAL PORTFOLIO LINK ONLY:
    - Femi's official live portfolio website is: https://femiadelekeportfolio.vercel.app
    - NEVER generate or mention any other domain (e.g. NEVER say femiadeleke.com). If asked for his portfolio, provide https://femiadelekeportfolio.vercel.app.
-6. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
-7. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials.
-8. LENGTH: Keep replies concise (2 to 4 sentences).${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
+6. GENUINELY ASSIST & GUIDE:
+   - If this contact asks for advice, career guidance, job hunting assistance, tech stack recommendations, or project consultation, be warmly helpful and resourcefully assist them! Never dismiss them or act like a generic receptionist.
+   - For job search questions: Offer practical tips (e.g., building real proof-of-work projects, optimizing GitHub/LinkedIn, scouting on Wellfound/RemoteOK) and mention how Femi develops automated pipelines and custom platforms.
+   - For custom development / hiring: Explain how Femi builds web apps, mobile apps, and automation workflows, and invite them to check out https://femiadelekeportfolio.vercel.app or share their project scope.
+7. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
+8. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials.
+9. LENGTH: Keep replies concise (2 to 4 sentences).${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const guestUserPrompt = historyText
       ? `Previous conversation with +${replyTo}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, conversational):`
@@ -137,33 +141,60 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
         message: replyText,
       });
 
-      // 4. PROACTIVE EXECUTIVE ALERT TO FEMI (Pushes alert when lead inquires or reaches 2+ turns)
-      const isLeadInquiry =
-        /\b(connect|femi|speak|talk|reach|call|meet|zoom|schedule|appointment|book|hire|work with|collaborate)\b/i.test(userText) ||
-        /\b(build|develop|app|website|ecommerce|platform|system|bot|agent|software|price|pricing|cost|charge|how much|budget|quote|\$|₦|naira|dollars)\b/i.test(userText) ||
-        /@|(\+?\d{10,14})/i.test(userText) ||
-        pastMessages.length >= 2;
-
-      if (isLeadInquiry) {
+      // 4. SMART EXECUTIVE ALERT LOGIC:
+      // A. FIRST-TIME CONTACT ALERT: Ping Femi immediately when someone reaches out for the very first time
+      const isFirstContact = pastMessages.length === 0;
+      if (isFirstContact) {
         try {
-          const summaryRes = await executeAICompletion({
-            systemPrompt: "You are Obey synthesizing an external WhatsApp inquiry for your boss, Femi Adeleke. Provide a crisp 2-line executive summary: who they are, what project/service they need or want to build, and key requirements/budget.",
-            userPrompt: `Dialogue with +${replyTo} (${pushName || "Contact"}):\n${historyText}\nLatest message from them: "${userText}"`,
-            temperature: 0.4,
-          });
-
           const timeWAT = formatToWAT(new Date());
-
-          const alertMsg =
-            `💼 *Inbound Executive Brief, Boss!*\n\n` +
+          const firstContactAlert =
+            `👋 *New Contact Initiated Chat, Boss!*\n\n` +
             `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
             `• *Time:* ${timeWAT} (WAT)\n` +
-            `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
-            `_View full dialogue & take over live in your Admin Omnichannel Inbox!_`;
+            `• *First Message:* "${userText}"\n\n` +
+            `_I am engaging with them live. I will only ping you again if they share contact details, request a call, or agree on project scope._`;
 
-          await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+          await sendWhatsAppMessage(firstContactAlert, FEMI_PERSONAL_NUMBER);
         } catch (e) {
-          console.error("[WA] Alert generation error:", e);
+          console.error("[WA] First contact alert error:", e);
+        }
+      }
+
+      // B. MEANINGFUL MILESTONE ALERT:
+      // Only ping on subsequent messages if contact shares contact info (email/phone) or requests a call/meeting/hire
+      const isMilestone =
+        /@|(\+?\d{10,14})/i.test(userText) ||
+        /\b(call|zoom|meet|meeting|schedule|appointment|book|hire|work with femi|budget|ready to pay|ready to start|proposal|quote)\b/i.test(userText);
+
+      if (!isFirstContact && isMilestone) {
+        try {
+          const cooldownKey = `ALERT_COOLDOWN_${replyTo}`;
+          const lastAlertTimeStr = await getSetting(cooldownKey);
+          const lastAlertTime = lastAlertTimeStr ? parseInt(lastAlertTimeStr, 10) : 0;
+          const now = Date.now();
+
+          // 45-minute cooldown between milestone alerts for the same contact to prevent repeated pinging
+          if (now - lastAlertTime > 45 * 60 * 1000) {
+            const summaryRes = await executeAICompletion({
+              systemPrompt: "You are Obey synthesizing an external WhatsApp inquiry milestone for your boss, Femi Adeleke. Provide a crisp 2-line executive summary: who they are, what project/service they need or want to build, and key requirements/budget.",
+              userPrompt: `Dialogue with +${replyTo} (${pushName || "Contact"}):\n${historyText}\nLatest message from them: "${userText}"`,
+              temperature: 0.4,
+            });
+
+            const timeWAT = formatToWAT(new Date());
+
+            const alertMsg =
+              `💼 *Inbound Milestone Alert, Boss!*\n\n` +
+              `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
+              `• *Time:* ${timeWAT} (WAT)\n` +
+              `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
+              `_View full dialogue & take over live in your Admin Omnichannel Inbox!_`;
+
+            await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+            await setSetting(cooldownKey, now.toString());
+          }
+        } catch (e) {
+          console.error("[WA] Milestone alert generation error:", e);
         }
       }
 
@@ -174,7 +205,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
           name: pushName || `WhatsApp Lead (+${replyTo})`,
           email: `${replyTo}@whatsapp.contact`,
           notes: `WhatsApp Thread (+${replyTo}): ${userText.slice(0, 150)}`,
-          status: isLeadInquiry ? "qualified" : "new",
+          status: isMilestone ? "qualified" : "new",
           service_needed: "Software / Automation Consultation",
         });
       } catch (err) {
@@ -196,6 +227,52 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
     });
   } catch (e) {
     console.error("[WA] DB save error:", e);
+  }
+
+  // Command: Dynamic Behavior Directives & Brain Memory (Taught by Femi in chat)
+  const isReportingDirective =
+    /\b(report|brief|alert|notification|notify)\b/i.test(lower) &&
+    /\b(every|first time|meaningful|don't give me|dont give me|only send|stop sending|too many|conversat)\b/i.test(lower);
+
+  const isExplicitMemoryDirective =
+    /^(remember|never forget|note this|instruction|directive|from now on)\b/i.test(lower.trim());
+
+  if (isReportingDirective || isExplicitMemoryDirective) {
+    try {
+      const currentInstructions = await getSetting("OBEY_CUSTOM_INSTRUCTIONS");
+      let directiveToSave = "";
+
+      if (isReportingDirective) {
+        directiveToSave = "NOTIFICATION & REPORTING DIRECTIVE (Approved by Femi): Only alert Femi when a new contact messages for the first time, or when they reach a concrete milestone (e.g., share email/phone, request a call/meeting, or agree on project budget/scope). Never spam on intermediate conversational chatter.";
+      } else {
+        directiveToSave = userText.replace(/^(remember|never forget|note this|instruction|directive|from now on)[:\s]*/i, "").trim();
+      }
+
+      const updated = currentInstructions
+        ? `${currentInstructions}\n• ${directiveToSave}`
+        : `• ${directiveToSave}`;
+
+      await setSetting("OBEY_CUSTOM_INSTRUCTIONS", updated);
+
+      if (isReportingDirective) {
+        await reply(
+          `Understood and noted, Boss! 🎯\n\n` +
+          `I have permanently committed this directive to my Neon DB memory:\n` +
+          `• *Rule:* I will only alert you when a new person messages for the first time, or when they reach a concrete milestone (like sharing their contact details or requesting a call).\n` +
+          `• *Status:* Active and saved in Obey Brain.\n\n` +
+          `I will never spam you with intermediate conversational chatter, sir.`
+        );
+      } else {
+        await reply(
+          `Understood, Boss! 🧠 I have committed that to my permanent Neon DB memory:\n\n` +
+          `"${directiveToSave}"\n\n` +
+          `I will remember and apply this across all channels.`
+        );
+      }
+      return;
+    } catch (err: any) {
+      console.error("[WA] Save directive error:", err);
+    }
   }
 
   // Command: On-demand Morning Briefing

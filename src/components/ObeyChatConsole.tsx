@@ -445,8 +445,8 @@ export default function ObeyChatConsole({
       <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <div className="relative shrink-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-black shadow-md shadow-emerald-500/20">
-              <Bot size={18} className="sm:w-5 sm:h-5" />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl overflow-hidden border border-emerald-500/50 shadow-md shadow-emerald-500/20">
+              <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-black rounded-full" />
           </div>
@@ -510,8 +510,8 @@ export default function ObeyChatConsole({
               className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
             >
               {!isUser && (
-                <div className="w-8 h-8 rounded-xl bg-emerald-500 text-black flex items-center justify-center shrink-0 mt-1 shadow-sm font-bold text-xs">
-                  <Bot size={17} />
+                <div className="w-8 h-8 rounded-xl overflow-hidden border border-emerald-500/40 shrink-0 mt-1 shadow-sm">
+                  <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
                 </div>
               )}
 

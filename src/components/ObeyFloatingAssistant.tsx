@@ -23,8 +23,8 @@ export default function ObeyFloatingAssistant({ onTaskUpdated }: ObeyFloatingAss
             aria-label="Open Obey AI Assistant"
           >
             <div className="relative">
-              <div className="w-8 h-8 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold shadow-md shadow-emerald-500/30">
-                <Bot size={18} />
+              <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-500/50 shadow-md shadow-emerald-500/30">
+                <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
               </div>
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full" />
