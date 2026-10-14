@@ -4,6 +4,7 @@ import { dbAddChatMessage, dbGetChatMessages } from "@/lib/db";
 import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
+import { getNigerianTime } from "@/lib/utils";
 
 /**
  * Dispatches a proactive message to Femi's Telegram app.
@@ -259,9 +260,8 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     return;
   }
 
-  // General Conversational Brain (Obey AI)
-  const now = new Date();
-  const watHour = (now.getUTCHours() + 1) % 24;
+  // General Conversational Brain (Obey AI - Africa/Lagos WAT)
+  const { hour: watHour, timeStr: watTimeStr, dateStr: watDateStr } = getNigerianTime();
   let timeGreeting = "Good afternoon, sir";
   if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
   else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";
@@ -272,7 +272,8 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
 - Format responses cleanly with bold markdown and bullet points. Keep it punchy and easy to read on mobile.
 - Provide strategic advice, authentic encouragement, and emotional support.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
-- Current Time: Local West Africa Time ~${watHour}:00. Greeting: "${timeGreeting}".`;
+- REAL PORTFOLIO URL RULE: Femi's official live portfolio is strictly https://femiadelekeportfolio.vercel.app. NEVER mention femiadeleke.com.
+- Current Time: Local Nigerian Time (WAT) is ${watTimeStr} on ${watDateStr}. Greeting: "${timeGreeting}".`;
 
   // Fetch recent conversation context from Neon DB
   let conversationHistory = "";

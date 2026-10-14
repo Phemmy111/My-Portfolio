@@ -8,6 +8,7 @@ import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 import { runGmailInboxSync } from "@/lib/gmail-reader";
 import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
+import { formatToWAT, formatDateTimeWAT, getNigerianTime } from "@/lib/utils";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -146,9 +147,12 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
             temperature: 0.4,
           });
 
+          const timeWAT = formatToWAT(new Date());
+
           const alertMsg =
             `💼 *Inbound Executive Brief, Boss!*\n\n` +
             `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
+            `• *Time:* ${timeWAT} (WAT)\n` +
             `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
             `_View full dialogue & take over live in your Admin Omnichannel Inbox!_`;
 
@@ -344,9 +348,8 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
     return;
   }
 
-  // General Conversational Brain
-  const now = new Date();
-  const watHour = (now.getUTCHours() + 1) % 24;
+  // General Conversational Brain (Accurate West Africa Time / WAT)
+  const { hour: watHour, timeStr: watTimeStr, dateStr: watDateStr } = getNigerianTime();
   let timeGreeting = "Good afternoon, sir";
   if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
   else if (watHour >= 17 || watHour < 5) timeGreeting = "Good evening, sir";
@@ -360,7 +363,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
         .slice(0, 5)
         .map(
           (t: any) =>
-            `• Contact: ${t.sender_name || t.contact_id} (${t.channel}) | Total messages: ${t.total_messages} | Last text: "${t.last_message}" (at ${new Date(t.last_message_at).toLocaleTimeString()})`
+            `• Contact: ${t.sender_name || t.contact_id} (${t.channel}) | Total messages: ${t.total_messages} | Last text: "${t.last_message}" (at ${formatToWAT(t.last_message_at)} WAT)`
         )
         .join("\n");
     }
@@ -378,9 +381,10 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
 - CRITICAL GREETING RULE: Do NOT say "Good morning", "Good afternoon", or "Good evening" if you are already in an ongoing active conversation with Femi! Only use a greeting if this is the very first interaction of the day. Otherwise, jump directly into your sharp, concise answer.
 - LIVE EXTERNAL INBOX DATA (WhatsApp, Telegram, Web):
 ${inboxSummary}
-- CRITICAL INBOX REPORTING RULE: If Femi asks if anyone has messaged on WhatsApp or reached out, ALWAYS refer directly to the live inbox data above! State who messaged, what they said, what they are building, and when! Never claim no one reached out if there are contacts listed above.
+- CRITICAL INBOX & TIME REPORTING RULE: If Femi asks if anyone has messaged on WhatsApp or reached out, ALWAYS refer directly to the live inbox data above! State who messaged, what they said, what they are building, and when! All times MUST be reported strictly in Nigerian West Africa Time (WAT) using the times specified in the inbox data above. Never report UTC times or claim no one reached out if there are contacts listed above.
+- REAL PORTFOLIO URL RULE: Femi's official live portfolio is strictly https://femiadelekeportfolio.vercel.app. NEVER mention or say femiadeleke.com. If discussing portfolio links, always use https://femiadelekeportfolio.vercel.app.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
-- Current Time: Local West Africa Time ~${watHour}:00.`;
+- Current Time: Local Nigerian Time (WAT / West Africa Time) is ${watTimeStr} on ${watDateStr}. All time references must align with this Nigerian local time.`;
 
   let conversationHistory = "";
   try {

@@ -1,5 +1,6 @@
 import { generateGigProposal } from "./gig-generator";
 import { createAgentTask } from "./obey-agent";
+import { dbSaveProposal } from "./db";
 
 export interface UpworkJob {
   title: string;
@@ -162,7 +163,6 @@ export async function runUpworkLiveScout() {
 
     const fullPayload = `JOB LINK: ${job.link}\nBUDGET: ${job.budget}\n\n-- PROPOSED BID --\n${result.proposal}`;
 
-    // Queue in Obey tasks
     const task = await createAgentTask({
       task_type: "upwork_proposal",
       title: `Upwork: ${job.title.slice(0, 60)}...`,
@@ -174,6 +174,21 @@ export async function runUpworkLiveScout() {
     });
 
     queuedTasks.push(task);
+
+    // Also populate directly into the Gig Automator archive in Admin
+    try {
+      await dbSaveProposal({
+        id: `prop-scout-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        platform: "Upwork",
+        job_title: job.title,
+        job_description: `${job.description}\n\nBudget: ${job.budget || 'Open'}\nJob Link: ${job.link}`,
+        angle: "Rapid Automation & Speed",
+        generated_proposal: result.proposal,
+        relevant_projects: result.recommendedProjects,
+      });
+    } catch (dbErr) {
+      console.warn("[Upwork Scout] dbSaveProposal error:", dbErr);
+    }
   }
 
   return {

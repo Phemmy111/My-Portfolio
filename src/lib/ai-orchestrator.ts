@@ -1,4 +1,5 @@
 import { getAIProvidersPool, AIProviderConfig } from "./settings";
+import { getNigerianTime } from "./utils";
 
 export interface AICompletionResult {
   text: string;
@@ -250,9 +251,8 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
 function generateDeterministicAgentResponse(userPrompt: string): string {
   const lower = userPrompt.toLowerCase();
 
-  // Compute current time of day in West Africa Time (Nigeria, UTC+1)
-  const now = new Date();
-  const watHour = (now.getUTCHours() + 1) % 24;
+  // Compute accurate Nigerian local time in West Africa Time (Africa/Lagos, UTC+1)
+  const { hour: watHour } = getNigerianTime();
   let timeGreeting = "Good afternoon, sir";
   if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
   else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";

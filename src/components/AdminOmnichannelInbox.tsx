@@ -16,6 +16,7 @@ import {
   Bot,
   Filter,
 } from "lucide-react";
+import { formatToWAT } from "@/lib/utils";
 
 interface InboxThread {
   contact_id: string;
@@ -249,10 +250,7 @@ export default function AdminOmnichannelInbox() {
           ) : (
             filteredThreads.map((t) => {
               const isSelected = t.contact_id === selectedContactId;
-              const formattedTime = new Date(t.last_message_at).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
+              const formattedTime = formatToWAT(t.last_message_at);
 
               return (
                 <button
@@ -338,10 +336,7 @@ export default function AdminOmnichannelInbox() {
               ) : (
                 messages.map((m) => {
                   const isUser = m.role === "user";
-                  const time = new Date(m.created_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+                  const time = formatToWAT(m.created_at);
 
                   return (
                     <div

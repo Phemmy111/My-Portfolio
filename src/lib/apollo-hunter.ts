@@ -1,5 +1,6 @@
 import { generateColdEmail } from "./gig-generator";
 import { createAgentTask } from "./obey-agent";
+import { dbAddLead } from "./db";
 
 export interface B2BLeadProspect {
   name: string;
@@ -126,6 +127,24 @@ export async function runB2BLeadHunter(options?: { industry?: string }) {
     });
 
     queuedTasks.push(task);
+
+    // Also populate directly into the Cold Mailing Pipeline in Admin
+    try {
+      await dbAddLead({
+        id: `lead-hunt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: `${prospect.name} (${prospect.title})`,
+        company: prospect.company,
+        email: prospect.email,
+        service_needed: prospect.serviceNeeded,
+        status: "drafted",
+        niche: prospect.niche,
+        notes: `Scouted by Obey: ${prospect.title} at ${prospect.company}. Focus: ${prospect.specificPainPoint}`,
+        draft_subject: draft.subject,
+        draft_body: draft.body,
+      });
+    } catch (dbErr) {
+      console.warn("[Apollo Hunter] dbAddLead sync error:", dbErr);
+    }
   }
 
   return {

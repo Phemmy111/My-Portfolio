@@ -3,6 +3,7 @@ import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { dbAddGuestMessage, dbGetGuestMessages, dbAddLead } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
+import { formatToWAT } from "@/lib/utils";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -102,9 +103,12 @@ CRITICAL BEHAVIOR RULES:
           temperature: 0.4,
         });
 
+        const timeWAT = formatToWAT(new Date());
+
         const alertMsg =
           `🌐 *New Web Visitor Alert, Boss!*\n\n` +
           `• *Visitor:* ${displayName} ${visitorEmail ? `(${visitorEmail})` : ""}\n` +
+          `• *Time:* ${timeWAT} (WAT)\n` +
           `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
           `_View full live dialogue & reply in your Admin Omnichannel Inbox!_`;
 

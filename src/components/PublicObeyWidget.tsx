@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { MessageSquare, X, Send, Bot, Sparkles, User, RefreshCw, ChevronDown } from "lucide-react";
+import { formatToWAT } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -45,7 +46,7 @@ export default function PublicObeyWidget() {
         id: "msg_welcome",
         role: "assistant",
         content: "Hey there! Welcome to Femi's space. I'm Obey, working with Femi on software engineering, AI systems, and operations. How can I help you today?",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: formatToWAT(new Date()),
       };
       setMessages([initialWelcome]);
     }
@@ -74,7 +75,7 @@ export default function PublicObeyWidget() {
       id: "usr_" + Date.now(),
       role: "user",
       content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatToWAT(new Date()),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -97,7 +98,7 @@ export default function PublicObeyWidget() {
         id: "asst_" + Date.now(),
         role: "assistant",
         content: data.reply || "Thanks for your message! Femi and I will review this promptly.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: formatToWAT(new Date()),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -108,7 +109,7 @@ export default function PublicObeyWidget() {
           id: "err_" + Date.now(),
           role: "assistant",
           content: "I ran into a quick connection glitch, but your message has been logged. Feel free to leave your email so we can get in touch!",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: formatToWAT(new Date()),
         },
       ]);
     } finally {
@@ -122,7 +123,7 @@ export default function PublicObeyWidget() {
       id: "msg_welcome_" + Date.now(),
       role: "assistant",
       content: "Hey there! How can I help you connect with Femi today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatToWAT(new Date()),
     };
     setMessages([freshWelcome]);
   };

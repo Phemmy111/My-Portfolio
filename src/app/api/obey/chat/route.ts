@@ -6,6 +6,7 @@ import { generateColdEmail, generateGigProposal } from "@/lib/gig-generator";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { searchTavily } from "@/lib/tavily-search";
 import { neon } from "@neondatabase/serverless";
+import { formatToWAT, getNigerianTime } from "@/lib/utils";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
 const sql = neon(dbUrl);
@@ -65,7 +66,7 @@ export async function GET() {
       id: r.id,
       role: r.role,
       content: r.content,
-      timestamp: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatToWAT(r.created_at),
       cards: r.cards || undefined,
     }));
     return NextResponse.json({ messages });
@@ -409,9 +410,8 @@ export async function POST(req: NextRequest) {
     // =========================================================================
     // 10. DYNAMIC AI CONVERSATIONAL BRAIN WITH DEEP STRATEGIC MEMORY
     // =========================================================================
-    // Compute current time of day in West Africa Time (Nigeria, UTC+1)
-    const now = new Date();
-    const watHour = (now.getUTCHours() + 1) % 24;
+    // Compute accurate Nigerian local time in West Africa Time (Africa/Lagos, UTC+1)
+    const { hour: watHour, timeStr: watTimeStr, dateStr: watDateStr } = getNigerianTime();
     let timeGreeting = "Good afternoon, sir";
     let timeContext = "afternoon";
     if (watHour >= 5 && watHour < 12) {

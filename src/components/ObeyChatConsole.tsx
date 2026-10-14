@@ -21,6 +21,7 @@ import {
   Minimize2,
   FileText,
 } from "lucide-react";
+import { formatToWAT } from "@/lib/utils";
 
 interface ActionCard {
   id: string;
@@ -229,7 +230,7 @@ export default function ObeyChatConsole({
           id: "welcome",
           role: "assistant",
           content: getInitialGreeting(),
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: formatToWAT(new Date()),
         },
       ]);
     }
@@ -295,7 +296,7 @@ export default function ObeyChatConsole({
       id: `user-${Date.now()}`,
       role: "user",
       content: textToSend.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatToWAT(new Date()),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -324,7 +325,7 @@ export default function ObeyChatConsole({
           id: `obey-${Date.now()}`,
           role: "assistant",
           content: data.reply,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: formatToWAT(new Date()),
           cards: data.cards,
         };
         setMessages((prev) => [...prev, assistantMessage]);
@@ -342,7 +343,7 @@ export default function ObeyChatConsole({
           id: `err-${Date.now()}`,
           role: "assistant",
           content: `⚠️ My apologies, sir. I hit a temporary network snag: ${err.message || "Request timed out"}. Please try sending that again.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: formatToWAT(new Date()),
         },
       ]);
     } finally {
@@ -418,7 +419,7 @@ export default function ObeyChatConsole({
         id: `welcome-${Date.now()}`,
         role: "assistant",
         content: `Conversation refreshed, sir! How can I help you right now? What are the key things we need to note down or tackle together?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: formatToWAT(new Date()),
       },
     ];
     setMessages(fresh);
