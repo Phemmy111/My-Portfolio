@@ -87,16 +87,17 @@ CRITICAL BEHAVIOR RULES:
       intent: "Website Live Chat",
     });
 
-    // 6. Check High-Intent Triggers for Instant WhatsApp Executive Alert to Femi
-    const isHighIntent =
-      /\b(\$|₦|budget|quote|cost|pricing|dollars|naira|hire|contract|urgent|proposal|scope|timeline)\b/i.test(userText) ||
-      /\b(call|meet|zoom|google meet|schedule|appointment)\b/i.test(userText) ||
-      /@|(\+?\d{10,13})/i.test(userText);
+    // 6. Proactive Executive Alert to Femi's WhatsApp (Triggers as soon as visitor engages or asks to connect)
+    const isLeadInquiry =
+      /\b(connect|femi|speak|talk|reach|call|meet|zoom|schedule|appointment|book|hire|work with|collaborate)\b/i.test(userText) ||
+      /\b(build|develop|app|website|ecommerce|platform|system|bot|agent|software|price|pricing|cost|charge|how much|budget|quote|\$|₦|naira|dollars)\b/i.test(userText) ||
+      /@|(\+?\d{10,14})/i.test(userText) ||
+      pastMessages.length >= 2;
 
-    if (isHighIntent) {
+    if (isLeadInquiry) {
       try {
         const summaryRes = await executeAICompletion({
-          systemPrompt: "You are Obey. Synthesize a 2-line executive briefing for Femi about this website visitor inquiry, including their goal, budget/timeline, and contact details if shared.",
+          systemPrompt: "You are Obey. Synthesize a 2-line executive briefing for Femi about this website visitor inquiry: what they want to build, their goal or question, and contact details if provided.",
           userPrompt: `Web Chat with ${displayName} (Email: ${visitorEmail || "Not provided yet"}):\n${historyText}\nLatest: "${userText}"`,
           temperature: 0.4,
         });
@@ -104,8 +105,8 @@ CRITICAL BEHAVIOR RULES:
         const alertMsg =
           `🌐 *New Web Visitor Alert, Boss!*\n\n` +
           `• *Visitor:* ${displayName} ${visitorEmail ? `(${visitorEmail})` : ""}\n` +
-          `• *Executive Summary:*\n${summaryRes.text}\n\n` +
-          `_View full dialogue and reply live in your Admin Omnichannel Inbox!_`;
+          `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
+          `_View full live dialogue & reply in your Admin Omnichannel Inbox!_`;
 
         await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
       } catch (err) {

@@ -373,8 +373,8 @@ export default function AdminOmnichannelInbox() {
                       </div>
 
                       {!isUser && (
-                        <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-bold border border-emerald-500/30">
-                          <Bot size={14} />
+                        <div className="w-7 h-7 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0 mt-0.5">
+                          <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
                         </div>
                       )}
                     </div>

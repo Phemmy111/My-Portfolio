@@ -142,8 +142,8 @@ export default function PublicObeyWidget() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 px-4 py-3 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xl hover:scale-105 transition-all duration-200 border border-zinc-800 dark:border-zinc-200 group"
           aria-label="Chat with Obey"
         >
-          <div className="relative w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 dark:text-emerald-600 flex items-center justify-center font-bold">
-            <Bot size={18} />
+          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
+            <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse border-2 border-zinc-950 dark:border-white" />
           </div>
           <div className="text-left hidden sm:block">
@@ -164,15 +164,15 @@ export default function PublicObeyWidget() {
           {/* Header */}
           <div className="px-5 py-3.5 bg-zinc-950 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/30">
-                <Bot size={22} />
+              <div className="relative w-10 h-10 rounded-2xl overflow-hidden border border-emerald-500/40 shrink-0">
+                <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
                 <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-zinc-950" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-black tracking-tight">Obey</h3>
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-500 text-black">
-                    Associate
+                    Chief of Staff
                   </span>
                 </div>
                 <p className="text-[10px] text-zinc-400 flex items-center gap-1">
@@ -208,8 +208,8 @@ export default function PublicObeyWidget() {
                 className={`flex gap-2.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {m.role === "assistant" && (
-                  <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-500/20 font-bold">
-                    <Bot size={13} />
+                  <div className="w-6 h-6 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0 mt-0.5">
+                    <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div
@@ -233,8 +233,8 @@ export default function PublicObeyWidget() {
 
             {loading && (
               <div className="flex gap-2.5 justify-start items-center">
-                <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 font-bold">
-                  <Bot size={13} />
+                <div className="w-6 h-6 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0">
+                  <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
                 </div>
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2.5 text-zinc-500 flex items-center gap-1.5 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
@@ -261,30 +261,40 @@ export default function PublicObeyWidget() {
             </div>
           )}
 
-          {/* Input Bar */}
+          {/* Input Bar with Multiline on Mobile */}
           <div className="p-3 bg-white dark:bg-[#0c0c0e] border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                type="text"
+            <div className="flex items-end gap-2">
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  // On desktop: Enter sends message, Shift+Enter creates new line.
+                  // On mobile touch devices: Enter naturally creates a new line without sending!
+                  const isMobile =
+                    typeof window !== "undefined" &&
+                    ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+                  if (e.key === "Enter" && !e.shiftKey && !isMobile) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={1}
                 placeholder="Ask Obey about projects, services, or pricing..."
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-900 dark:text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="flex-1 max-h-24 min-h-[38px] px-3.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-900 dark:text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none leading-relaxed"
               />
               <button
-                type="submit"
+                type="button"
+                onClick={() => handleSend()}
                 disabled={!input.trim() || loading}
-                className="p-2.5 rounded-xl bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-500 transition-all shrink-0"
+                className="p-2.5 rounded-xl bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-500 transition-all shrink-0 mb-0.5"
+                title="Send message"
               >
                 <Send size={15} />
               </button>
-            </form>
+            </div>
+            <p className="text-[10px] text-zinc-400 mt-1 hidden sm:block">
+              Press <span className="font-mono text-zinc-500">Enter</span> to send, <span className="font-mono text-zinc-500">Shift + Enter</span> for new line
+            </p>
           </div>
         </div>
       )}

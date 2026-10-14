@@ -131,28 +131,26 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
         message: replyText,
       });
 
-      // 4. SMART EXECUTIVE ALERT TO FEMI (NO DM SPAM)
-      // Only alert Femi if high intent detected or after meaningful dialogue, NOT on every casual "hi"
-      const isHighIntent =
-        /\b(\$|₦|budget|quote|cost|pricing|dollars|naira|hire|contract|urgent|proposal|scope|timeline)\b/i.test(userText) ||
-        /\b(call|meet|zoom|google meet|schedule|appointment)\b/i.test(userText) ||
-        /@|(\+?\d{10,13})/i.test(userText);
+      // 4. PROACTIVE EXECUTIVE ALERT TO FEMI (Pushes alert when lead inquires or reaches 2+ turns)
+      const isLeadInquiry =
+        /\b(connect|femi|speak|talk|reach|call|meet|zoom|schedule|appointment|book|hire|work with|collaborate)\b/i.test(userText) ||
+        /\b(build|develop|app|website|ecommerce|platform|system|bot|agent|software|price|pricing|cost|charge|how much|budget|quote|\$|₦|naira|dollars)\b/i.test(userText) ||
+        /@|(\+?\d{10,14})/i.test(userText) ||
+        pastMessages.length >= 2;
 
-      const isMilestone = pastMessages.length === 4 || pastMessages.length === 8;
-
-      if (isHighIntent || isMilestone) {
+      if (isLeadInquiry) {
         try {
           const summaryRes = await executeAICompletion({
-            systemPrompt: "You are Obey synthesizing an external inquiry for your boss, Femi Adeleke. Provide a 2-line executive summary: who they are, what they need, and budget/urgency if stated.",
-            userPrompt: `Dialogue with +${replyTo} (${pushName || "Guest"}):\n${historyText}\nLatest: "${userText}"`,
+            systemPrompt: "You are Obey synthesizing an external WhatsApp inquiry for your boss, Femi Adeleke. Provide a crisp 2-line executive summary: who they are, what project/service they need or want to build, and key requirements/budget.",
+            userPrompt: `Dialogue with +${replyTo} (${pushName || "Contact"}):\n${historyText}\nLatest message from them: "${userText}"`,
             temperature: 0.4,
           });
 
           const alertMsg =
             `💼 *Inbound Executive Brief, Boss!*\n\n` +
             `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
-            `• *Executive Summary:*\n${summaryRes.text}\n\n` +
-            `_Full conversation saved to your Spreadsheet & Neon CRM._`;
+            `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
+            `_View full dialogue & take over live in your Admin Omnichannel Inbox!_`;
 
           await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
         } catch (e) {
