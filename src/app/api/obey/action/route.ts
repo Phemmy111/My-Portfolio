@@ -16,7 +16,19 @@ export async function GET(req: NextRequest) {
 
   let result: { success: boolean; message: string };
 
-  if (action === "approve") {
+  if (id.startsWith("act-")) {
+    const { sql, dbUpdateUserActionStatus } = await import("@/lib/db");
+    const { executePendingUserAction } = await import("@/lib/agent-dispatcher");
+    const rows = (await sql`SELECT * FROM agent_user_actions WHERE id = ${id} LIMIT 1`) as any[];
+    if (!rows || rows.length === 0) {
+      result = { success: false, message: "Action not found or already expired" };
+    } else if (action === "approve") {
+      result = await executePendingUserAction(rows[0]);
+    } else {
+      await dbUpdateUserActionStatus(id, "rejected");
+      result = { success: true, message: "Action rejected and cancelled successfully." };
+    }
+  } else if (action === "approve") {
     result = await executeAgentTask(id, token);
   } else if (action === "reject") {
     result = await rejectAgentTask(id, token);
@@ -123,3 +135,39 @@ function renderHtml(title: string, message: string, success: boolean) {
     </html>
   `;
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    const { id, token, action } = await req.json();
+    if (!id || !action) {
+      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    }
+
+    if (id.startsWith("act-")) {
+      const { sql, dbUpdateUserActionStatus } = await import("@/lib/db");
+      const { executePendingUserAction } = await import("@/lib/agent-dispatcher");
+      const rows = (await sql`SELECT * FROM agent_user_actions WHERE id = ${id} LIMIT 1`) as any[];
+      if (!rows || rows.length === 0) {
+        return NextResponse.json({ ok: false, error: "Action not found" }, { status: 404 });
+      }
+      if (action === "approve") {
+        const res = await executePendingUserAction(rows[0]);
+        return NextResponse.json({ ok: res.success, message: res.message });
+      } else {
+        await dbUpdateUserActionStatus(id, "rejected");
+        return NextResponse.json({ ok: true, message: "Action rejected." });
+      }
+    }
+
+    if (action === "approve") {
+      const res = await executeAgentTask(id, token || "");
+      return NextResponse.json({ ok: res.success, message: res.message });
+    } else {
+      const res = await rejectAgentTask(id, token || "");
+      return NextResponse.json({ ok: res.success, message: res.message });
+    }
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+  }
+}
+

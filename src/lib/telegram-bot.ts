@@ -1,6 +1,13 @@
 import { getSetting, getObeyBrainContext } from "@/lib/settings";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddChatMessage, dbGetChatMessages } from "@/lib/db";
+import {
+  dbAddChatMessage,
+  dbGetChatMessages,
+  dbCreateUserPendingAction,
+  dbGetPendingUserAction,
+  dbUpdateUserActionStatus,
+} from "@/lib/db";
+import { executePendingUserAction } from "@/lib/agent-dispatcher";
 import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -145,6 +152,36 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
           parse_mode: "Markdown",
         }),
       });
+    } else if (data.startsWith("user_act_approve:")) {
+      const actId = data.replace("user_act_approve:", "");
+      const { sql } = await import("@/lib/db");
+      const rows = (await sql`SELECT * FROM agent_user_actions WHERE id = ${actId} LIMIT 1`) as any[];
+      if (rows && rows.length > 0) {
+        const execRes = await executePendingUserAction(rows[0]);
+        await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            text: execRes.message,
+            parse_mode: "Markdown",
+          }),
+        });
+      }
+    } else if (data.startsWith("user_act_reject:")) {
+      const actId = data.replace("user_act_reject:", "");
+      await dbUpdateUserActionStatus(actId, "rejected");
+      await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text: `❌ *Action Cancelled.* The drafted operation has been discarded.`,
+          parse_mode: "Markdown",
+        }),
+      });
     }
 
     // Acknowledge callback
@@ -170,6 +207,89 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     role: "user",
     content: userText,
   });
+
+  // 0. Pending User Action Confirmation Check (HITL)
+  const pendingAction = await dbGetPendingUserAction(chatId.toString());
+  if (pendingAction) {
+    const isAffirmative = /^(yes|send|approve|confirm|proceed|ok|1)\b/i.test(lower.trim());
+    const isNegative = /^(no|cancel|reject|stop|2)\b/i.test(lower.trim());
+
+    if (isAffirmative) {
+      const execRes = await executePendingUserAction(pendingAction as any);
+      await sendTelegramMessage(execRes.message, { chatId: chatId.toString() });
+      return;
+    } else if (isNegative) {
+      await dbUpdateUserActionStatus(pendingAction.id, "rejected");
+      await sendTelegramMessage("❌ *Action Cancelled.* The drafted operation has been discarded.", { chatId: chatId.toString() });
+      return;
+    }
+  }
+
+  // 1. Direct Action Commands on Telegram
+  const waMatch = userText.match(/(?:send\s+whatsapp\s+message\s+to|message)\s+(\+?\d{10,14})\s+(?:saying|with|:)\s+([\s\S]+)/i);
+  if (waMatch) {
+    const targetNumber = waMatch[1].replace(/\D/g, "");
+    const messageContent = waMatch[2].trim();
+
+    const act = await dbCreateUserPendingAction({
+      userIdentifier: chatId.toString(),
+      actionType: "whatsapp_message",
+      targetRecipient: targetNumber,
+      payload: messageContent,
+    });
+
+    const keyboard = act
+      ? [
+          [
+            { text: "✅ Send WhatsApp Now", callback_data: `user_act_approve:${act.id}` },
+            { text: "❌ Cancel", callback_data: `user_act_reject:${act.id}` },
+          ],
+        ]
+      : undefined;
+
+    await sendTelegramMessage(
+      `📋 *WhatsApp Message Drafted — Approval Required:*\n\n` +
+      `• *Recipient:* +${targetNumber}\n` +
+      `• *Message Content:*\n"${messageContent}"\n\n` +
+      `Click a button below or reply *YES* to dispatch.`,
+      { chatId: chatId.toString(), inlineKeyboard: keyboard }
+    );
+    return;
+  }
+
+  const emailMatch = userText.match(/send\s+email\s+to\s+([^\s@]+@[^\s@]+\.[^\s@]+)\s+(?:with\s+subject\s+["']?([^"'\n]+)["']?\s+)?(?:saying|with|:)\s+([\s\S]+)/i);
+  if (emailMatch) {
+    const targetEmail = emailMatch[1].trim();
+    const subject = emailMatch[2]?.trim() || "Important Message from Femi Adeleke";
+    const bodyContent = emailMatch[3].trim();
+
+    const act = await dbCreateUserPendingAction({
+      userIdentifier: chatId.toString(),
+      actionType: "email_send",
+      targetRecipient: targetEmail,
+      subject,
+      payload: bodyContent,
+    });
+
+    const keyboard = act
+      ? [
+          [
+            { text: "✅ Send Email Now", callback_data: `user_act_approve:${act.id}` },
+            { text: "❌ Cancel", callback_data: `user_act_reject:${act.id}` },
+          ],
+        ]
+      : undefined;
+
+    await sendTelegramMessage(
+      `📧 *Email Drafted — Approval Required:*\n\n` +
+      `• *To:* ${targetEmail}\n` +
+      `• *Subject:* ${subject}\n` +
+      `• *Body:*\n"${bodyContent}"\n\n` +
+      `Click a button below or reply *YES* to dispatch via Gmail.`,
+      { chatId: chatId.toString(), inlineKeyboard: keyboard }
+    );
+    return;
+  }
 
   // Fast command: Scout Upwork
   if (lower.includes("scout upwork") || lower.includes("find job")) {

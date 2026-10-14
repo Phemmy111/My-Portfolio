@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddChatMessage, dbGetChatMessages, dbAddLead, dbAddGuestMessage, dbGetGuestMessages, dbGetInboxThreads } from "@/lib/db";
+import {
+  dbAddChatMessage,
+  dbGetChatMessages,
+  dbAddLead,
+  dbAddGuestMessage,
+  dbGetGuestMessages,
+  dbGetInboxThreads,
+  dbGetOrCreatePersonalAgent,
+  dbCreateUserPendingAction,
+  dbGetPendingUserAction,
+  dbUpdateUserActionStatus,
+} from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
@@ -10,6 +21,7 @@ import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 import { formatToWAT, formatDateTimeWAT, getNigerianTime } from "@/lib/utils";
 import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
+import { executePendingUserAction } from "@/lib/agent-dispatcher";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -57,6 +69,111 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
     }
   }
 
+  // Voice note acknowledgment
+  if (userText === "[Voice Note Received]") {
+    await reply(
+      `🎙️ *Voice Note Received!*\n\n` +
+      `I can hear you! I am analyzing and processing voice messages. To trigger instant actions right now, you can also send quick text commands like:\n` +
+      `• *Send WhatsApp to [number] saying [message]*\n` +
+      `• *Send email to [email] saying [message]*\n` +
+      `• *Check my Gmail inbox*\n` +
+      `• *Scout Upwork jobs*`
+    );
+    return;
+  }
+
+  // ==============================================================
+  // 0. HUMAN-IN-THE-LOOP APPROVAL HANDLER (ACTION CONFIRMATIONS)
+  // ==============================================================
+  try {
+    const pendingAction = await dbGetPendingUserAction(replyTo);
+    if (pendingAction) {
+      const isAffirmative = /^(yes|send|approve|confirm|proceed|ok|1)\b/i.test(lower.trim());
+      const isNegative = /^(no|cancel|reject|stop|2)\b/i.test(lower.trim());
+
+      if (isAffirmative) {
+        const execRes = await executePendingUserAction(pendingAction as any);
+        await reply(execRes.message);
+        return;
+      } else if (isNegative) {
+        await dbUpdateUserActionStatus(pendingAction.id, "rejected");
+        await reply("❌ *Action Cancelled.* The drafted operation has been discarded.");
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn("[WA] Pending action check error:", err);
+  }
+
+  // ==============================================================
+  // 1. DIRECT ACTION COMMANDS: Send WhatsApp, Send Email, or Place Call
+  // ==============================================================
+  const waMatch = userText.match(/(?:send\s+whatsapp\s+message\s+to|message)\s+(\+?\d{10,14})\s+(?:saying|with|:)\s+([\s\S]+)/i);
+  if (waMatch) {
+    const targetNumber = waMatch[1].replace(/\D/g, "");
+    const messageContent = waMatch[2].trim();
+
+    await dbCreateUserPendingAction({
+      userIdentifier: replyTo,
+      actionType: "whatsapp_message",
+      targetRecipient: targetNumber,
+      payload: messageContent,
+    });
+
+    await reply(
+      `📋 *WhatsApp Message Drafted — Approval Required:*\n\n` +
+      `• *Recipient:* +${targetNumber}\n` +
+      `• *Message Content:*\n"${messageContent}"\n\n` +
+      `👉 Reply *YES* (or *1*) to dispatch this immediately, or *NO* to cancel.`
+    );
+    return;
+  }
+
+  const emailMatch = userText.match(/send\s+email\s+to\s+([^\s@]+@[^\s@]+\.[^\s@]+)\s+(?:with\s+subject\s+["']?([^"'\n]+)["']?\s+)?(?:saying|with|:)\s+([\s\S]+)/i);
+  if (emailMatch) {
+    const targetEmail = emailMatch[1].trim();
+    const subject = emailMatch[2]?.trim() || "Message from Femi Adeleke";
+    const bodyContent = emailMatch[3].trim();
+
+    await dbCreateUserPendingAction({
+      userIdentifier: replyTo,
+      actionType: "email_send",
+      targetRecipient: targetEmail,
+      subject,
+      payload: bodyContent,
+    });
+
+    await reply(
+      `📧 *Email Drafted — Approval Required:*\n\n` +
+      `• *To:* ${targetEmail}\n` +
+      `• *Subject:* ${subject}\n` +
+      `• *Body:*\n"${bodyContent}"\n\n` +
+      `👉 Reply *YES* (or *1*) to send via Gmail SMTP, or *NO* to cancel.`
+    );
+    return;
+  }
+
+  const callMatch = userText.match(/call\s+(\+?\d{10,14})\s+(?:to\s+|and\s+)?([\s\S]+)/i);
+  if (callMatch) {
+    const targetNumber = callMatch[1].replace(/\D/g, "");
+    const callObjective = callMatch[2].trim();
+
+    await dbCreateUserPendingAction({
+      userIdentifier: replyTo,
+      actionType: "phone_call",
+      targetRecipient: targetNumber,
+      payload: callObjective,
+    });
+
+    await reply(
+      `📞 *AI Phone Call Prepared — Approval Required:*\n\n` +
+      `• *Target Number:* +${targetNumber}\n` +
+      `• *Call Objective:* ${callObjective}\n\n` +
+      `👉 Reply *YES* (or *1*) to initiate the AI call, or *NO* to cancel.`
+    );
+    return;
+  }
+
   // ==============================================================
   // GUEST / EXTERNAL CONTACTS (HUMAN PERSONA + CONTINUOUS MEMORY)
   // ==============================================================
@@ -69,6 +186,51 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
       role: "user",
       content: userText,
     });
+
+    // Check if the contact wants Obey to be their personal agent / assistant
+    const isPersonalAgentInquiry =
+      /\b(personal\s+agent|personal\s+assistant|work\s+for\s+me|be\s+my\s+agent|be\s+my\s+assistant|hire\s+you|get\s+obey|set\s+up\s+obey|your\s+service)\b/i.test(userText) ||
+      (/\b(how\s+can\s+i|can\s+you)\b/i.test(userText) && /\b(agent|assistant|gmail|whatsapp|automate|activities)\b/i.test(userText));
+
+    if (isPersonalAgentInquiry) {
+      await dbGetOrCreatePersonalAgent({
+        phone: replyTo,
+        name: pushName || "Interested Client",
+      });
+
+      await dbAddLead({
+        id: `lead-personal-agent-${replyTo}`,
+        name: pushName || `Prospect (+${replyTo})`,
+        email: `${replyTo}@whatsapp.contact`,
+        notes: `Wants Obey Personal Agent: "${userText}"`,
+        status: "qualified",
+        service_needed: "Obey Personal Agent Deployment",
+      });
+
+      const personalAgentPitch =
+        `I would love to be your personal agent! 🚀\n\n` +
+        `Femi Adeleke built me as an autonomous executive operator that works directly inside WhatsApp and Telegram. Here is what I can do for you:\n\n` +
+        `• 📬 *Gmail Auto-Pilot:* I monitor your inbox, summarize incoming messages, and draft replies that you can approve and dispatch with 1 click.\n` +
+        `• 💬 *WhatsApp & Telegram Dispatch:* You can tell me to message your contacts, clients, or team, and I draft and send upon your confirmation.\n` +
+        `• 📞 *AI Voice Calling:* I can place automated phone calls to confirm appointments, vendors, or orders, and report transcripts back to you.\n` +
+        `• 🧠 *Custom Brain Memory:* I remember your personal schedule, business facts, and preferred tone.\n\n` +
+        `Femi is currently setting up dedicated instances for select founders and professionals. You can explore his work at https://femiadelekeportfolio.vercel.app.\n\n` +
+        `What are the top 2 activities you'd like me to handle for you first?`;
+
+      await reply(personalAgentPitch);
+
+      // Alert Femi immediately
+      const timeWAT = formatToWAT(new Date());
+      await sendWhatsAppMessage(
+        `🌟 *HOT LEAD: Obey Personal Agent Request, Boss!*\n\n` +
+        `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
+        `• *Time:* ${timeWAT} (WAT)\n` +
+        `• *Inquiry:* "${userText}"\n\n` +
+        `_They want their own Obey instance! Follow up with them to onboard their personal agent setup._`,
+        FEMI_PERSONAL_NUMBER
+      );
+      return;
+    }
 
     // 2. Dispatch to Google Sheets Webhook
     logToGoogleSheet({
@@ -541,12 +703,17 @@ export async function POST(req: NextRequest) {
     senderNumber = FEMI_PERSONAL_NUMBER;
   }
 
-  const userText = (
+  let userText = (
     msgObj.message?.conversation ||
     msgObj.message?.extendedTextMessage?.text ||
     msgObj.message?.imageMessage?.caption ||
     ""
   ).trim();
+
+  const isAudio = Boolean(msgObj.message?.audioMessage);
+  if (!userText && isAudio) {
+    userText = "[Voice Note Received]";
+  }
 
   if (!userText) {
     return NextResponse.json({ ok: true });

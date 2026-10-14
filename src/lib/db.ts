@@ -398,4 +398,152 @@ export async function dbGetAllGuestConversations() {
   }
 }
 
+// ==============================================================
+// MULTI-TENANT PERSONAL AGENT USERS & APPROVAL ACTIONS
+// ==============================================================
+export async function createPersonalAgentTables() {
+  const db = getSql();
+  if (!db) return;
+  try {
+    await db`
+      CREATE TABLE IF NOT EXISTS personal_agent_users (
+        id                 TEXT PRIMARY KEY,
+        phone_number       TEXT,
+        telegram_chat_id   TEXT,
+        name               TEXT NOT NULL,
+        email              TEXT,
+        status             TEXT DEFAULT 'active',
+        custom_directives  TEXT,
+        gmail_connected    BOOLEAN DEFAULT false,
+        approval_mode      TEXT DEFAULT 'strict',
+        created_at         TIMESTAMPTZ DEFAULT NOW(),
+        last_active_at     TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+
+    await db`
+      CREATE TABLE IF NOT EXISTS agent_user_actions (
+        id               TEXT PRIMARY KEY,
+        user_identifier  TEXT NOT NULL,
+        action_type      TEXT NOT NULL,
+        target_recipient TEXT NOT NULL,
+        subject          TEXT,
+        payload          TEXT NOT NULL,
+        status           TEXT DEFAULT 'pending_approval',
+        approval_code    TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
+        executed_at      TIMESTAMPTZ
+      )
+    `;
+
+    await db`
+      CREATE INDEX IF NOT EXISTS idx_agent_user_actions_lookup 
+      ON agent_user_actions (user_identifier, status, created_at DESC)
+    `;
+  } catch (err) {
+    console.warn("createPersonalAgentTables error:", err);
+  }
+}
+
+export async function dbGetOrCreatePersonalAgent(params: {
+  phone?: string;
+  telegramChatId?: string;
+  name?: string;
+}) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createPersonalAgentTables();
+    const existing = await db`
+      SELECT * FROM personal_agent_users
+      WHERE phone_number = ${params.phone || null}
+         OR telegram_chat_id = ${params.telegramChatId || null}
+      LIMIT 1
+    `;
+
+    if (existing && existing.length > 0) {
+      await db`
+        UPDATE personal_agent_users
+        SET last_active_at = NOW(),
+            name = COALESCE(${params.name || null}, name)
+        WHERE id = ${existing[0].id}
+      `;
+      return existing[0];
+    }
+
+    const id = `agent-user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [created] = await db`
+      INSERT INTO personal_agent_users (id, phone_number, telegram_chat_id, name)
+      VALUES (${id}, ${params.phone || null}, ${params.telegramChatId || null}, ${params.name || "User"})
+      RETURNING *
+    `;
+    return created;
+  } catch (err) {
+    console.warn("dbGetOrCreatePersonalAgent fallback:", err);
+    return null;
+  }
+}
+
+export async function dbCreateUserPendingAction(params: {
+  userIdentifier: string;
+  actionType: "whatsapp_message" | "email_send" | "phone_call";
+  targetRecipient: string;
+  subject?: string;
+  payload: string;
+}) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createPersonalAgentTables();
+    const id = `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [created] = await db`
+      INSERT INTO agent_user_actions (id, user_identifier, action_type, target_recipient, subject, payload, status)
+      VALUES (${id}, ${params.userIdentifier}, ${params.actionType}, ${params.targetRecipient}, ${params.subject || null}, ${params.payload}, 'pending_approval')
+      RETURNING *
+    `;
+    return created;
+  } catch (err) {
+    console.warn("dbCreateUserPendingAction fallback:", err);
+    return null;
+  }
+}
+
+export async function dbGetPendingUserAction(userIdentifier: string) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createPersonalAgentTables();
+    const rows = await db`
+      SELECT * FROM agent_user_actions
+      WHERE user_identifier = ${userIdentifier}
+        AND status = 'pending_approval'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows && rows.length > 0 ? rows[0] : null;
+  } catch (err) {
+    console.warn("dbGetPendingUserAction fallback:", err);
+    return null;
+  }
+}
+
+export async function dbUpdateUserActionStatus(id: string, status: "executed" | "rejected" | "failed") {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createPersonalAgentTables();
+    const [updated] = await db`
+      UPDATE agent_user_actions
+      SET status = ${status},
+          executed_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return updated;
+  } catch (err) {
+    console.warn("dbUpdateUserActionStatus fallback:", err);
+    return null;
+  }
+}
+
 

@@ -17,6 +17,12 @@ export const PERSONAL = {
 
 export const SERVICES = [
   {
+    icon: "⚡",
+    title: "Autonomous AI Agents (Obey Engine)",
+    description:
+      "Custom WhatsApp & Telegram AI agents that see through your apps, manage your Gmail, dispatch messages on your approval, and automate daily business operations.",
+  },
+  {
     icon: "💻",
     title: "Web Development",
     description:
@@ -41,12 +47,6 @@ export const SERVICES = [
       "Cohort-based courses, masterclasses, and digital skill products via AutoLearn Spot.",
   },
   {
-    icon: "🎬",
-    title: "Video Editing & Content",
-    description:
-      "AI-powered video ads, brand promos, and social content. FL Studio, CapCut, and Google Flow.",
-  },
-  {
     icon: "📱",
     title: "Mobile App Development",
     description:
@@ -55,6 +55,14 @@ export const SERVICES = [
 ];
 
 export const PROJECTS = [
+  {
+    title: "Obey AI · Autonomous WhatsApp & Telegram Operator",
+    description:
+      "Autonomous personal AI executive agent for founders and professionals. Manages Gmail inboxes, drafts & sends emails on 1-click approval, dispatches WhatsApp/Telegram messages, and places AI phone calls 24/7.",
+    tags: ["Next.js 16", "WhatsApp Gateway", "Telegram Bot", "Neon DB", "AI Agents", "Gmail SMTP"],
+    link: "https://wa.me/2349161488564?text=Hi%20Obey%2C%20tell%20me%20how%20you%20can%20be%20my%20personal%20agent",
+    featured: true,
+  },
   {
     title: "AutoLearn Spot",
     description:
