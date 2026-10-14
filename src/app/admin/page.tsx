@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Play,
   MessagesSquare,
+  Brain,
 } from "lucide-react";
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
 import ObeyChatConsole from "@/components/ObeyChatConsole";
@@ -40,6 +41,7 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey" | "inbox">("inbox");
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsModalTab, setSettingsModalTab] = useState<"brain" | "ai" | "phone" | "integrations">("brain");
 
   // Agent Obey state
   const [agentTasks, setAgentTasks] = useState<any[]>([]);
@@ -334,12 +336,27 @@ export default function AdminDashboardPage() {
 
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-2">
             <button
-              onClick={() => setShowSettingsModal(true)}
-              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs"
+              onClick={() => {
+                setSettingsModalTab("brain");
+                setShowSettingsModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-black rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-600 hover:text-white dark:hover:bg-purple-600 dark:hover:text-white transition-all shadow-xs cursor-pointer"
+              title="Teach Obey permanent knowledge & custom behavior directives"
+            >
+              <Brain size={13} className="text-purple-500" />
+              <span>🧠 Obey Brain</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setSettingsModalTab("ai");
+                setShowSettingsModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs cursor-pointer"
               title="Configure AI Models & Fallback Keys"
             >
               <Zap size={13} className="text-emerald-500" />
-              <span className="hidden xs:inline sm:inline">AI Settings</span>
+              <span className="hidden xs:inline sm:inline">AI Keys</span>
             </button>
 
             <a
@@ -976,11 +993,25 @@ export default function AdminDashboardPage() {
                   </button>
 
                   <button
-                    onClick={() => setShowSettingsModal(true)}
-                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-emerald-500/40 hover:border-emerald-400 transition-all sm:ml-auto"
+                    onClick={() => {
+                      setSettingsModalTab("brain");
+                      setShowSettingsModal(true);
+                    }}
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-purple-950/40 hover:bg-purple-900/60 text-purple-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-purple-500/40 hover:border-purple-400 transition-all sm:ml-auto cursor-pointer"
+                  >
+                    <Brain size={14} className="text-purple-400" />
+                    🧠 Obey Brain
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSettingsModalTab("ai");
+                      setShowSettingsModal(true);
+                    }}
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-emerald-500/40 hover:border-emerald-400 transition-all cursor-pointer"
                   >
                     <Zap size={14} className="text-emerald-400" />
-                    ⚙️ AI & Fallback Keys
+                    ⚙️ AI Keys
                   </button>
                 </div>
 
@@ -988,6 +1019,39 @@ export default function AdminDashboardPage() {
                   💡 Obey pulls live Upwork client postings with budgets and verifies B2B emails with 1-click approvals sent to femiadeleke2020@gmail.com
                 </p>
               </div>
+            </div>
+
+            {/* Obey Brain & Memory Directives Card */}
+            <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-purple-500/30 bg-purple-950/10 dark:bg-purple-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-purple-500/5">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-purple-500/15 text-purple-500 dark:text-purple-400 flex items-center justify-center font-bold border border-purple-500/30 shrink-0">
+                  <Brain size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-sm sm:text-base text-zinc-950 dark:text-white">
+                      Obey Brain · Permanent Memory & Behavior Directives
+                    </h3>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-500 text-white">
+                      Neon DB Cloud
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+                    Paste facts Obey must never forget (real portfolio links, actual project case studies, phone numbers, pricing rules) and set custom directives for how he behaves and addresses clients.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setSettingsModalTab("brain");
+                  setShowSettingsModal(true);
+                }}
+                className="w-full sm:w-auto px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-purple-500/25 transition-all cursor-pointer"
+              >
+                <Brain size={15} />
+                <span>Open Obey Brain Memory</span>
+              </button>
             </div>
 
             {/* Interactive Chat with Obey AI Assistant */}
@@ -1433,6 +1497,7 @@ export default function AdminDashboardPage() {
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
         onSaved={fetchData}
+        initialTab={settingsModalTab}
       />
     </div>
   );

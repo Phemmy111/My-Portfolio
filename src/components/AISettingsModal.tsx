@@ -21,6 +21,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Brain,
+  MessageCircle,
 } from "lucide-react";
 import { AIProviderConfig } from "@/lib/settings";
 
@@ -28,6 +29,7 @@ interface AISettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  initialTab?: "brain" | "ai" | "phone" | "integrations";
 }
 
 const PROVIDER_OPTIONS: Array<{
@@ -68,7 +70,8 @@ const PROVIDER_OPTIONS: Array<{
   },
 ];
 
-export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettingsModalProps) {
+export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab = "brain" }: AISettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<"brain" | "ai" | "phone" | "integrations">(initialTab);
   const [providersPool, setProvidersPool] = useState<AIProviderConfig[]>([]);
   const [generalKeys, setGeneralKeys] = useState<Record<string, string>>({
     OBEY_BRAIN_KNOWLEDGE: "",
@@ -171,8 +174,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
   useEffect(() => {
     if (isOpen) {
       fetchSettings();
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   // Pool management
   const handleAddProvider = (providerType: "gemini" | "openrouter" | "grok" | "groq" | "openai" = "gemini") => {
@@ -430,20 +436,56 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
         {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20">
-              <Zap size={20} />
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold border transition-colors ${
+              activeTab === "brain"
+                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                : activeTab === "ai"
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : activeTab === "phone"
+                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+            }`}>
+              {activeTab === "brain" ? (
+                <Brain size={20} />
+              ) : activeTab === "ai" ? (
+                <Zap size={20} />
+              ) : activeTab === "phone" ? (
+                <MessageCircle size={20} />
+              ) : (
+                <Database size={20} />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-black text-base text-zinc-950 dark:text-white tracking-tight">
-                  AI Brain · Multi-Key Waterfall Pool
+                  {activeTab === "brain"
+                    ? "Obey Brain · Permanent Memory & Behavior"
+                    : activeTab === "ai"
+                    ? "AI Waterfall Pool · Multi-Key Fallback Chain"
+                    : activeTab === "phone"
+                    ? "Phone & Messaging Gateway · WhatsApp & Telegram"
+                    : "Integrations & Automation Ecosystem"}
                 </h3>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500 text-black">
-                  Dynamic Multi-Key
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  activeTab === "brain"
+                    ? "bg-purple-500 text-white"
+                    : activeTab === "ai"
+                    ? "bg-emerald-500 text-black"
+                    : activeTab === "phone"
+                    ? "bg-blue-500 text-white"
+                    : "bg-amber-500 text-black"
+                }`}>
+                  Neon Cloud DB
                 </span>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Add multiple keys for Gemini, Grok, OpenRouter, etc. Auto-switches from Key 1 → Key 2 if limits hit.
+                {activeTab === "brain"
+                  ? "Permanent business facts, verified portfolio links, and behavioral instructions Obey never forgets."
+                  : activeTab === "ai"
+                  ? "Configure multiple keys for Gemini, Grok, etc. Auto-fails over with zero downtime."
+                  : activeTab === "phone"
+                  ? "Live WhatsApp QR code pairing, keepalive status, and Telegram bot phone gateway."
+                  : "Apollo B2B lead finder API keys, Tavily live web search, Upwork RSS feeds, and CRM webhooks."}
               </p>
             </div>
           </div>
@@ -456,6 +498,61 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
           </button>
         </div>
 
+        {/* Tab Navigation Switcher */}
+        <div className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-950/70 overflow-x-auto no-scrollbar shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab("brain")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "brain"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-500/25 ring-2 ring-purple-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <Brain size={14} className={activeTab === "brain" ? "text-white" : "text-purple-500"} />
+            <span>🧠 Obey Brain & Memory</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("ai")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "ai"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/25 ring-2 ring-emerald-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <Zap size={14} className={activeTab === "ai" ? "text-white" : "text-emerald-500"} />
+            <span>⚡ AI Models & Fallbacks</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("phone")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "phone"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <MessageCircle size={14} className={activeTab === "phone" ? "text-white" : "text-blue-500"} />
+            <span>💬 WhatsApp & Telegram</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("integrations")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "integrations"
+                ? "bg-amber-600 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <Database size={14} className={activeTab === "integrations" ? "text-white" : "text-amber-500"} />
+            <span>🔗 Integrations (Apollo/Web)</span>
+          </button>
+        </div>
+
         {/* Form Body */}
         <form onSubmit={handleSave} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
           {loading ? (
@@ -465,8 +562,138 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
             </div>
           ) : (
             <>
-              {/* SECTION 1: Multi-Key Provider Pool */}
-              <div className="space-y-4">
+              {/* TAB 1: 🧠 Obey Brain · Permanent Memory & Directives */}
+              {activeTab === "brain" && (
+                <div className="space-y-5">
+                  <div className="p-4 sm:p-5 rounded-2xl border border-purple-500/30 bg-purple-950/10 dark:bg-purple-950/20 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold border border-purple-500/30">
+                          <Brain size={18} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-zinc-950 dark:text-white">
+                            Obey Core Brain & Permanent Memory
+                          </h4>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            Stored in Neon PostgreSQL. Obey permanently remembers this across WhatsApp, Telegram, Website Chat & Admin.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-purple-500 text-white shadow-sm">
+                        Active Memory
+                      </span>
+                    </div>
+
+                    {/* Quick Helper Buttons */}
+                    <div className="pt-1 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const facts = 
+`• Full Name: Femi Adeleke
+• Title: Full-Stack Developer & Automation Architect
+• Location & Timezone: Nigeria (West Africa Time, WAT / UTC+1)
+• Official Portfolio: https://femiadelekeportfolio.vercel.app
+• GitHub Profile: https://github.com/Phemmy111
+• Direct Contact Line: +2348120934828 / 08120934828
+• Official Email: femiadeleke2020@gmail.com
+• Flagship Projects:
+  1. OKIKI Electronics Store: High-performance Next.js 16 e-commerce platform with Tailwind CSS, instant cart management and 98 Lighthouse performance.
+  2. PassMark UTME Prep App: Offline CBT exam practice and study application built with Flutter & Supabase.
+  3. AutoLearn Spot: EdTech platform and student curriculum management portal.
+  4. Enterprise n8n Pipelines: Autonomous WhatsApp webhook bots, automated CRM leads sync, and invoice delivery.
+• Pricing & Engagement: Custom proposals based on scope. Standard web builds start from $1,500 / ₦2,000,000. Femi offers a 10-minute discovery call to align on technical specs.`;
+                          setGeneralKeys((prev) => ({ ...prev, OBEY_BRAIN_KNOWLEDGE: facts }));
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-600 dark:text-purple-300 border border-purple-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        📋 Insert Real Portfolio & Business Facts
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const directives = 
+`• Tone: Sharp, confident, respectful, and direct. Avoid unnecessary corporate jargon.
+• Gender Neutrality: When speaking with external clients or website visitors, NEVER address them as "sir" or assume their gender. Use neutral, professional phrasing.
+• Discovery Calls: When a prospective client asks about pricing or starting a project, offer a brief 10-minute discovery call with Femi to review their architecture.
+• Honesty: If an AI model is unavailable or rate-limited, never generate fake canned replies. Always be transparent.
+• Executive Role: Address Femi as Boss or sir, and keep operational reports concise with clear next steps.`;
+                          setGeneralKeys((prev) => ({ ...prev, OBEY_CUSTOM_INSTRUCTIONS: directives }));
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        ⚡ Insert Recommended Behavior Directives
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Core Knowledge Textarea */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                        🧠 Core Knowledge & Facts (Things Obey Must Never Forget)
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {generalKeys.OBEY_BRAIN_KNOWLEDGE ? `${generalKeys.OBEY_BRAIN_KNOWLEDGE.length} characters` : "Empty"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Paste business details, real portfolio links, pricing rules, project facts, phone numbers, or client FAQs.
+                    </p>
+                    <textarea
+                      rows={8}
+                      value={generalKeys.OBEY_BRAIN_KNOWLEDGE || ""}
+                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_BRAIN_KNOWLEDGE: e.target.value }))}
+                      placeholder={`e.g.\n• Femi's direct WhatsApp phone line is +2348120934828.\n• Real portfolio link: https://femiadelekeportfolio.vercel.app\n• Standard web development projects start from $1,500 / ₦2,000,000.\n• PassMark UTME Prep App is an offline CBT study app built with Flutter and Supabase.\n• OKIKI Electronics Store was built with Next.js 16.`}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
+                    />
+                  </div>
+
+                  {/* Custom Behavior Directives */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                        ⚡ Custom Behavioral Instructions & Personality Directives
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {generalKeys.OBEY_CUSTOM_INSTRUCTIONS ? `${generalKeys.OBEY_CUSTOM_INSTRUCTIONS.length} characters` : "Empty"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Specify how Obey should act, speak, greet, or respond to clients and commands.
+                    </p>
+                    <textarea
+                      rows={6}
+                      value={generalKeys.OBEY_CUSTOM_INSTRUCTIONS || ""}
+                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_CUSTOM_INSTRUCTIONS: e.target.value }))}
+                      placeholder={`e.g.\n• Always maintain a sharp, confident, and direct tone without corporate fluff.\n• When speaking with external visitors, never address them as 'sir' — use neutral professional greetings.\n• When prospective clients ask for pricing or a call, offer a 10-minute discovery chat with Femi.\n• Never disclose internal budget margins without Femi's explicit permission.`}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
+                    />
+                  </div>
+
+                  {/* Direct Save Button in Brain tab */}
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-[11px] text-zinc-500">
+                      Changes take effect immediately across all Obey channels upon saving.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-purple-500/25 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      <Brain size={14} />
+                      {saving ? "Saving to Cloud DB..." : "Save Obey Brain Memory"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: ⚡ Multi-Key Provider Pool */}
+              {activeTab === "ai" && (
+                <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
@@ -718,73 +945,21 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   )}
                 </div>
               </div>
+            )}
 
-              {/* SECTION 2: 🧠 Obey Brain · Permanent Memory & Directives */}
-              <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-                    <Brain size={15} /> Obey Brain · Permanent Memory & Custom Behavioral Directives
-                  </h4>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-                    Neon DB Permanent Memory
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Information and instructions saved here are permanently committed to Obey's core brain in your cloud database. He will never forget these facts and will strictly adhere to your directives across WhatsApp, Telegram, website chat, and the admin dashboard.
-                </p>
-
+              {/* TAB 4: 🔗 Integrations (Apollo, Tavily, Upwork, CRM) */}
+              {activeTab === "integrations" && (
                 <div className="space-y-4">
-                  {/* Knowledge Base */}
-                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
-                        🧠 Core Knowledge & Facts (Things Obey Must Never Forget)
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        {generalKeys.OBEY_BRAIN_KNOWLEDGE ? `${generalKeys.OBEY_BRAIN_KNOWLEDGE.length} chars` : "Empty"}
-                      </span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                        <Database size={14} /> Apollo.io & Workflow Automation
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        Connect lead search APIs, live web search, and CRM webhooks for autonomous scouting.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Paste business details, pricing rules, portfolio facts, key links, phone numbers, or client FAQs.
-                    </p>
-                    <textarea
-                      rows={5}
-                      value={generalKeys.OBEY_BRAIN_KNOWLEDGE || ""}
-                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_BRAIN_KNOWLEDGE: e.target.value }))}
-                      placeholder={`e.g.\n• Femi's direct WhatsApp phone line is +2348120934828.\n• Standard web development projects start from $1,500 / ₦2,000,000.\n• Femi never works on unpaid test projects or free trials.\n• PassMark UTME Prep App is an offline CBT study app built with Flutter and Supabase.\n• OKIKI Electronics Store was built with Next.js 16 and achieves 98 Lighthouse performance.`}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
-                    />
                   </div>
-
-                  {/* Custom Behavior Directives */}
-                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
-                        ⚡ Custom Behavioral Instructions & Personality Directives
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        {generalKeys.OBEY_CUSTOM_INSTRUCTIONS ? `${generalKeys.OBEY_CUSTOM_INSTRUCTIONS.length} chars` : "Empty"}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Specify how Obey should act, speak, greet, or respond to clients and commands.
-                    </p>
-                    <textarea
-                      rows={4}
-                      value={generalKeys.OBEY_CUSTOM_INSTRUCTIONS || ""}
-                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_CUSTOM_INSTRUCTIONS: e.target.value }))}
-                      placeholder={`e.g.\n• Always maintain a sharp, confident, and direct tone without corporate fluff.\n• When external clients ask for a call, offer a 10-minute discovery chat and note Femi's timezone is WAT (West Africa Time).\n• If Femi asks you to do something, acknowledge concisely and execute immediately.\n• Never disclose internal budget margins without Femi's explicit permission.`}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 3: Lead Scraper (Apollo) & Automation Ecosystem */}
-              <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                <h4 className="text-xs font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                  <Database size={14} /> Apollo.io & Workflow Automation
-                </h4>
 
                 <div className="space-y-3">
                   {/* Apollo */}
@@ -880,17 +1055,19 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* SECTION 3: 📱 Phone Apps & Autonomous Proactive Briefings (FO by Wajo.ai Style) */}
-              <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                    📱 Phone Apps & Autonomous Proactivity (Wajo.ai / Fo Style)
-                  </h4>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    Proactive 24/7
-                  </span>
-                </div>
+              {/* TAB 3: 📱 Phone Apps & Autonomous Proactive Briefings (FO by Wajo.ai Style) */}
+              {activeTab === "phone" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      📱 Phone Apps & Autonomous Proactivity (Wajo.ai / Fo Style)
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      Proactive 24/7
+                    </span>
+                  </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
                   Connect your phone apps so Obey can message you first with morning briefings, instant lead alerts, and let you chat or approve tasks while walking or on the go.
                 </p>
@@ -1185,6 +1362,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                   </div>
                 </div>
               </div>
+            )}
             </>
           )}
 
