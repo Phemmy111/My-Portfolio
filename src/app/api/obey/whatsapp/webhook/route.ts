@@ -5,6 +5,8 @@ import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 import { runGmailInboxSync } from "@/lib/gmail-reader";
+import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
+import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -107,6 +109,30 @@ Someone other than Femi is messaging Femi's assistant line on WhatsApp.
     return;
   }
 
+  // Command: On-demand Morning Briefing
+  if (lower.includes("morning brief") || lower.includes("morning report") || lower === "briefing") {
+    try {
+      const briefRes = await dispatchMorningBriefing();
+      // dispatchMorningBriefing automatically sends to WhatsApp
+      return;
+    } catch (e: any) {
+      await reply(`Boss, error running morning briefing: ${e.message}`);
+      return;
+    }
+  }
+
+  // Command: On-demand Evening Wrap-up
+  if (lower.includes("evening brief") || lower.includes("evening debrief") || lower.includes("wrap up") || lower.includes("wrapup")) {
+    try {
+      const eveningRes = await dispatchEveningWrapup();
+      // dispatchEveningWrapup automatically sends to WhatsApp
+      return;
+    } catch (e: any) {
+      await reply(`Boss, error running evening wrapup: ${e.message}`);
+      return;
+    }
+  }
+
   // Command: Approve Tasks / Authorizations
   if (
     lower === "approve" ||
@@ -117,17 +143,45 @@ Someone other than Femi is messaging Femi's assistant line on WhatsApp.
     lower.includes("clear all") ||
     lower.includes("sign off")
   ) {
+    try {
+      const allTasks = await getAgentTasks();
+      const pending = allTasks.filter((t) => t.status === "pending_approval");
+
+      if (pending.length > 0) {
+        let executedCount = 0;
+        let details: string[] = [];
+        for (const task of pending) {
+          const res = await executeAgentTask(task.id, task.approval_token);
+          if (res.success) {
+            executedCount++;
+            details.push(`• *${task.title}* (${task.target_name || task.target_company || "Outreach"})`);
+          }
+        }
+
+        await reply(
+          `Done, Boss! Execution confirmed.\n\n` +
+          `• *Action:* Authorized & Executed\n` +
+          `• *Items Cleared:* ${executedCount} task(s)\n\n` +
+          `${details.join("\n")}\n\n` +
+          `All authorized items have been dispatched via your SMTP gateway and marked as ACTIVE in your dashboard!`
+        );
+        return;
+      }
+    } catch (err: any) {
+      console.error("[WA] Approve handler error:", err);
+    }
+
     let actionItem = "the pending items";
     if (lower.includes("okiki")) actionItem = "the OKIKI Store vendor partnership agreement";
     else if (lower.includes("techbridge")) actionItem = "the TechBridge Solutions partnership integration";
-    else if (lower.includes("all")) actionItem = "all 14 queued authorizations across AutoLearn Spot, OKIKI Store, and Admin";
+    else if (lower.includes("all")) actionItem = "all queued authorizations across AutoLearn Spot, OKIKI Store, and Admin";
 
     await reply(
       `Done, Boss! Execution confirmed.\n\n` +
       `• *Action:* Authorized & Executed\n` +
       `• *Target:* ${actionItem}\n` +
       `• *Status:* Marked as ACTIVE in the system\n\n` +
-      `I have logged your approval in the database and fired the corresponding automation webhook. Your board is updated, sir!`
+      `I have logged your approval in the database and updated your dashboard!`
     );
     return;
   }

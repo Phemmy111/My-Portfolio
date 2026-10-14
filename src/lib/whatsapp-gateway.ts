@@ -5,6 +5,19 @@
  * @param recipient - The E.164 phone number to send TO (e.g. "2348120934828").
  *                    Defaults to Femi's personal number if omitted.
  */
+function cleanWhatsAppFormatting(text: string): string {
+  if (!text) return "";
+  let clean = text;
+  clean = clean.replace(/^\s*\*\s+\*([^*]+)\*:/gm, "• *$1:*");
+  clean = clean.replace(/^\s*\*\s+\*([^*]+)\*/gm, "• *$1*");
+  clean = clean.replace(/\*\s+\*([^*]+)\*:/g, "• *$1:*");
+  clean = clean.replace(/\*\s+\*([^*]+)\*/g, "• *$1*");
+  clean = clean.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+  clean = clean.replace(/^#{1,4}\s+(.+)$/gm, "*$1*");
+  clean = clean.replace(/^[-*]\s+/gm, "• ");
+  return clean.trim();
+}
+
 export async function sendWhatsAppMessage(
   text: string,
   recipient?: string
@@ -39,7 +52,7 @@ export async function sendWhatsAppMessage(
         },
         body: JSON.stringify({
           number: targetPhone,
-          text,
+          text: cleanWhatsAppFormatting(text),
         }),
       }
     );
