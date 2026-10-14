@@ -173,33 +173,35 @@ export async function POST(req: NextRequest) {
 
   console.log("[WA Webhook] Raw event:", JSON.stringify(body).slice(0, 300));
 
-  const data = body?.data;
-  if (!data) return NextResponse.json({ ok: true });
+  const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
+  if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
 
-  const senderJid = data.key?.remoteJid || "";
+  // Ignore messages the bot itself sent (outgoing echo)
+  if (msgObj.key?.fromMe) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // remoteJidAlt provides the actual phone JID (e.g. 2348120934828@s.whatsapp.net) when remoteJid is an LID
+  const senderJid = msgObj.key?.remoteJidAlt || msgObj.key?.remoteJid || "";
 
   // Ignore broadcasts and groups
   if (senderJid.endsWith("@broadcast") || senderJid.endsWith("@g.us")) {
     return NextResponse.json({ ok: true });
   }
 
-  // Ignore messages the bot itself sent (outgoing echo)
-  if (data.key?.fromMe) {
-    return NextResponse.json({ ok: true });
-  }
-
-  let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "");
+  let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
 
   // In WhatsApp multi-device, messages to linked accounts arrive with @lid (e.g. 164213964194040@lid).
   // If incoming JID is an internal WhatsApp LID, or not a valid E.164 phone length,
   // route directly to Femi's verified personal WhatsApp number (2348120934828):
-  if (senderJid.endsWith("@lid") || senderNumber.length > 13 || senderNumber.length < 10) {
+  if (senderJid.endsWith("@lid") || !senderNumber || senderNumber.length > 13 || senderNumber.length < 10) {
     senderNumber = FEMI_PERSONAL_NUMBER;
   }
 
   const userText = (
-    data.message?.conversation ||
-    data.message?.extendedTextMessage?.text ||
+    msgObj.message?.conversation ||
+    msgObj.message?.extendedTextMessage?.text ||
+    msgObj.message?.imageMessage?.caption ||
     ""
   ).trim();
 
