@@ -199,12 +199,11 @@ export async function POST(req: NextRequest) {
 
   console.log(`[WA Webhook] Incoming from ${senderNumber}: "${userText}"`);
 
-  // Fire-and-forget: respond to Evolution API immediately (< 1s),
-  // then process the AI reply in the background without blocking.
-  // This prevents Vercel from timing out the webhook.
-  processMessage(senderNumber, userText).catch((err) =>
-    console.error("[WA] processMessage error:", err)
-  );
+  try {
+    await processMessage(senderNumber, userText);
+  } catch (err) {
+    console.error("[WA] processMessage error:", err);
+  }
 
   return NextResponse.json({ ok: true });
 }
