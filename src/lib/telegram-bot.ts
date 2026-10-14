@@ -8,6 +8,7 @@ import {
   dbUpdateUserActionStatus,
 } from "@/lib/db";
 import { executePendingUserAction } from "@/lib/agent-dispatcher";
+import { processDynamicCompanionTurn } from "@/lib/dynamic-companion";
 import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -380,23 +381,6 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     return;
   }
 
-  // General Conversational Brain (Obey AI - Africa/Lagos WAT)
-  const { hour: watHour, timeStr: watTimeStr, dateStr: watDateStr } = getNigerianTime();
-  let timeGreeting = "Good afternoon, sir";
-  if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
-  else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";
-  else timeGreeting = "Good evening, sir";
-
-  const brain = await getObeyBrainContext();
-
-  const systemPrompt = `You are Obey, Femi Adeleke's dedicated, emotionally intelligent personal AI executive assistant chatting with him directly on his phone via Telegram.
-- Address Femi with high respect and genuine human warmth: call him "sir" or "Boss".
-- Format responses cleanly with bold markdown and bullet points. Keep it punchy and easy to read on mobile.
-- Provide strategic advice, authentic encouragement, and emotional support.
-- Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
-- REAL PORTFOLIO URL RULE: Femi's official live portfolio is strictly https://femiadelekeportfolio.vercel.app. NEVER mention femiadeleke.com.
-- Current Time: Local Nigerian Time (WAT) is ${watTimeStr} on ${watDateStr}. Greeting: "${timeGreeting}".${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
-
   // Fetch recent conversation context from Neon DB
   let conversationHistory = "";
   try {
@@ -404,22 +388,19 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     if (rows && rows.length > 0) {
       conversationHistory = rows
         .slice(-6)
-        .map((r: any) => `${r.role === "user" ? "Femi" : "Obey"}: ${r.content}`)
+        .map((r: any) => `${r.role === "user" ? "User" : "Obey"}: ${r.content}`)
         .join("\n\n");
     }
   } catch {}
 
-  const promptWithContext = conversationHistory
-    ? `Recent dialogue context:\n${conversationHistory}\n\nFemi texts from phone: "${userText}"\n\nObey (respond warmly and concisely for mobile):`
-    : userText;
-
-  const aiRes = await executeAICompletion({
-    systemPrompt,
-    userPrompt: promptWithContext,
-    temperature: 0.7,
+  const companionRes = await processDynamicCompanionTurn({
+    userIdentifier: chatId.toString(),
+    userText,
+    channel: "telegram",
+    historyText: conversationHistory,
   });
 
-  const replyText = aiRes.text;
+  const replyText = companionRes.reply;
 
   // Persist Obey's reply in Neon DB
   await dbAddChatMessage({
@@ -428,5 +409,18 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     content: replyText,
   });
 
-  await sendTelegramMessage(replyText, { chatId });
+  let keyboard = undefined;
+  if (companionRes.actionStaged) {
+    const pending = await dbGetPendingUserAction(chatId.toString());
+    if (pending) {
+      keyboard = [
+        [
+          { text: "✅ Approve & Send", callback_data: `user_act_approve:${pending.id}` },
+          { text: "❌ Cancel", callback_data: `user_act_reject:${pending.id}` },
+        ],
+      ];
+    }
+  }
+
+  await sendTelegramMessage(replyText, { chatId, inlineKeyboard: keyboard });
 }
