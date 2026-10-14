@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddChatMessage, dbGetChatMessages, dbAddLead, dbAddGuestMessage, dbGetGuestMessages } from "@/lib/db";
+import { dbAddChatMessage, dbGetChatMessages, dbAddLead, dbAddGuestMessage, dbGetGuestMessages, dbGetInboxThreads } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
@@ -90,9 +90,15 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
 1. ACT 100% HUMAN: Never state or imply that you are an AI, bot, virtual assistant, or language model. Talk naturally, warmly, and professionally like a sharp, thoughtful human colleague.
 2. NATURAL CHAT STYLE: Write in crisp, friendly, conversational sentences suited for WhatsApp. Avoid robotic corporate boilerplate, canned customer support scripts, or long unprompted pitches.
 3. CONVERSATIONAL CONTINUITY & MEMORY: Review the prior chat history below carefully. Never repeat a greeting or opening line you've already sent. Answer their direct question or comment and keep the conversation flowing.
-4. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
-5. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials. Do not call this contact "Boss" (that title is strictly reserved for Femi).
-6. LENGTH: Keep replies concise (2 to 4 sentences).`;
+4. GENDER NEUTRAL & NO "SIR" OR "BOSS":
+   - NEVER call this contact "sir", "ma", or "Boss". You do NOT know their gender, and "Boss" / "sir" are strictly reserved for Femi.
+   - Address them naturally, politely, and neutrally: "Hey there", "Hello", "Glad to connect with you", or use their name if they shared it.
+5. OFFICIAL PORTFOLIO LINK ONLY:
+   - Femi's official live portfolio website is: https://femiadelekeportfolio.vercel.app
+   - NEVER generate or mention any other domain (e.g. NEVER say femiadeleke.com). If asked for his portfolio, provide https://femiadelekeportfolio.vercel.app.
+6. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
+7. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials.
+8. LENGTH: Keep replies concise (2 to 4 sentences).`;
 
     const guestUserPrompt = historyText
       ? `Previous conversation with +${replyTo}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, conversational):`
@@ -347,6 +353,23 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
   if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
   else if (watHour >= 17 || watHour < 5) timeGreeting = "Good evening, sir";
 
+  // Fetch live external inbox threads so Obey always knows who messaged on WhatsApp/Web
+  let inboxSummary = "No external contacts have messaged recently.";
+  try {
+    const liveThreads = await dbGetInboxThreads();
+    if (liveThreads && liveThreads.length > 0) {
+      inboxSummary = liveThreads
+        .slice(0, 5)
+        .map(
+          (t: any) =>
+            `• Contact: ${t.sender_name || t.contact_id} (${t.channel}) | Total messages: ${t.total_messages} | Last text: "${t.last_message}" (at ${new Date(t.last_message_at).toLocaleTimeString()})`
+        )
+        .join("\n");
+    }
+  } catch (err) {
+    console.error("[WA] Error loading live threads for Femi context:", err);
+  }
+
   const systemPrompt = `You are Obey, Femi Adeleke's dedicated, emotionally intelligent personal AI executive assistant chatting with him directly on his phone via WhatsApp.
 - Address Femi with high respect and genuine human warmth: call him "sir" or "Boss".
 - Keep your answers clean, supportive, confident, and readable on mobile (short paragraphs, no walls of text).
@@ -354,9 +377,12 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
   - Do NOT use markdown bullet asterisks (* item) because they clash with WhatsApp bolding and look ugly. Use clean bullet points (•) or numbers (1.).
   - Do NOT use markdown headers (# or ##).
   - Use bolding sparingly (*like this*) only for key names or terms. Never create nested asterisks like * *term*.
-- Provide strategic advice, authentic encouragement, and emotional support.
+- CRITICAL GREETING RULE: Do NOT say "Good morning", "Good afternoon", or "Good evening" if you are already in an ongoing active conversation with Femi! Only use a greeting if this is the very first interaction of the day. Otherwise, jump directly into your sharp, concise answer.
+- LIVE EXTERNAL INBOX DATA (WhatsApp, Telegram, Web):
+${inboxSummary}
+- CRITICAL INBOX REPORTING RULE: If Femi asks if anyone has messaged on WhatsApp or reached out, ALWAYS refer directly to the live inbox data above! State who messaged, what they said, what they are building, and when! Never claim no one reached out if there are contacts listed above.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
-- Current Time: Local West Africa Time ~${watHour}:00. Greeting: "${timeGreeting}".`;
+- Current Time: Local West Africa Time ~${watHour}:00.`;
 
   let conversationHistory = "";
   try {
@@ -370,7 +396,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
   } catch {}
 
   const promptWithContext = conversationHistory
-    ? `Recent dialogue:\n${conversationHistory}\n\nFemi on WhatsApp: "${userText}"\n\nObey (concise, warm, mobile-friendly):`
+    ? `Recent dialogue:\n${conversationHistory}\n\nFemi on WhatsApp: "${userText}"\n\nObey (concise, warm, direct, mobile-friendly):`
     : userText;
 
   try {
@@ -382,7 +408,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
     await reply(aiRes.text);
   } catch (e: any) {
     console.error("[WA] AI error:", e);
-    await reply(`${timeGreeting}! I received your message, sir, but hit a brief glitch processing it. Please try again in a moment.`);
+    await reply(`I received your message, Boss, but hit a brief glitch processing it. Please try again in a moment.`);
   }
 }
 
