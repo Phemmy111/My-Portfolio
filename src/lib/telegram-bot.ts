@@ -1,4 +1,4 @@
-import { getSetting } from "@/lib/settings";
+import { getSetting, getObeyBrainContext } from "@/lib/settings";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { dbAddChatMessage, dbGetChatMessages } from "@/lib/db";
 import { getAgentTasks, executeAgentTask, rejectAgentTask } from "@/lib/obey-agent";
@@ -267,13 +267,15 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
   else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";
   else timeGreeting = "Good evening, sir";
 
+  const brain = await getObeyBrainContext();
+
   const systemPrompt = `You are Obey, Femi Adeleke's dedicated, emotionally intelligent personal AI executive assistant chatting with him directly on his phone via Telegram.
 - Address Femi with high respect and genuine human warmth: call him "sir" or "Boss".
 - Format responses cleanly with bold markdown and bullet points. Keep it punchy and easy to read on mobile.
 - Provide strategic advice, authentic encouragement, and emotional support.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
 - REAL PORTFOLIO URL RULE: Femi's official live portfolio is strictly https://femiadelekeportfolio.vercel.app. NEVER mention femiadeleke.com.
-- Current Time: Local Nigerian Time (WAT) is ${watTimeStr} on ${watDateStr}. Greeting: "${timeGreeting}".`;
+- Current Time: Local Nigerian Time (WAT) is ${watTimeStr} on ${watDateStr}. Greeting: "${timeGreeting}".${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
   // Fetch recent conversation context from Neon DB
   let conversationHistory = "";

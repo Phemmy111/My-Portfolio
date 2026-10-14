@@ -203,12 +203,17 @@ async function fetchProviderLiveModels(provider: string, key: string): Promise<{
       const generateModels = rawModels
         .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
         .map((m) => m.name.replace(/^models\//, ""))
-        .filter((name) => !name.includes("embedding") && !name.includes("aqa") && !name.includes("tts"));
+        .filter((name) => !name.includes("embedding") && !name.includes("aqa") && !name.includes("tts"))
+        .filter((name) => !name.startsWith("gemini-2.5-")); // Filter out deprecated models that return 404
 
-      // Prioritize flash and pro models at the top
+      // Prioritize flash-lite and active flash models at the top
+      const preferred = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
       const sorted = generateModels.sort((a, b) => {
-        if (a.includes("flash") && !b.includes("flash")) return -1;
-        if (!a.includes("flash") && b.includes("flash")) return 1;
+        const aIdx = preferred.indexOf(a);
+        const bIdx = preferred.indexOf(b);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
         return a.localeCompare(b);
       });
 
@@ -294,7 +299,7 @@ async function testProviderConnection(
 
   try {
     if (prov === "gemini" || prov === "gemini_api_key") {
-      const targetModel = model?.trim() || "gemini-2.5-flash";
+      const targetModel = model?.trim() || "gemini-flash-lite-latest";
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,7 +317,7 @@ async function testProviderConnection(
       if (res.status === 503) {
         return {
           success: false,
-          message: `Model '${targetModel}' is overloaded (503). Click 'Fetch Live Models' and pick another model (e.g. gemini-2.5-flash-lite or gemini-2.5-flash).`,
+          message: `Model '${targetModel}' is overloaded (503). Click 'Fetch Live Models' and pick another model (e.g. gemini-flash-lite-latest or gemini-3.5-flash-lite).`,
         };
       }
       return { success: false, message: `Gemini rejected key (${res.status}): ${err.slice(0, 100)}` };

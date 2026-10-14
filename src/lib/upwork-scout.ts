@@ -1,6 +1,7 @@
 import { generateGigProposal } from "./gig-generator";
 import { createAgentTask } from "./obey-agent";
 import { dbSaveProposal } from "./db";
+import { executeAICompletion } from "./ai-orchestrator";
 
 export interface UpworkJob {
   title: string;
@@ -120,6 +121,14 @@ function parseUpworkRss(xml: string): UpworkJob[] {
     const budgetMatch = /(?:Budget|Hourly Range):\s*([^\n<]+)/i.exec(cleanDesc);
     const budget = budgetMatch ? budgetMatch[1].trim() : "Hourly / Custom";
 
+    // Exclude non-engineering/non-developer roles (recruiters, HR, sales, legal, etc.)
+    const isNonTech = /\b(talent acquisition|recruiter|recruiting|hr partner|human resources|client success|customer success|legal|sales rep|account executive|risk associate|administrative|office manager)\b/i.test(title);
+    if (isNonTech) continue;
+
+    // Must be relevant to software engineering, automation, AI, or fullstack development
+    const isRelevantTech = /\b(developer|engineer|full-stack|fullstack|frontend|backend|software|next\.?js|react|node|typescript|n8n|automation|ai|api|integration|python|flutter|mobile|web|shopify|ecommerce|architect)\b/i.test(`${title} ${cleanDesc}`);
+    if (!isRelevantTech) continue;
+
     if (title && link) {
       jobs.push({
         title,
@@ -153,15 +162,44 @@ export async function runUpworkLiveScout() {
   const queuedTasks = [];
 
   for (const job of liveJobs.slice(0, 3)) { // Process top 3 newest jobs
-    // Generate proposal
-    const result = generateGigProposal({
-      platform: "Upwork",
-      jobTitle: job.title,
-      jobDescription: job.description,
-      angle: "Rapid Automation & Speed",
-    });
+    let proposalText = "";
+    let recommendedProjects: string[] = ["OKIKI Store", "AutoLearn Spot", "n8n Automation Pipelines"];
 
-    const fullPayload = `JOB LINK: ${job.link}\nBUDGET: ${job.budget}\n\n-- PROPOSED BID --\n${result.proposal}`;
+    try {
+      const aiRes = await executeAICompletion({
+        systemPrompt: `You are Obey, senior proposal architect for Femi Adeleke (Senior Full-Stack Engineer & Automation Architect).
+Femi's Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111
+Key Projects:
+- OKIKI Electronics Store (Next.js 16, Tailwind, high-conversion headless e-commerce)
+- AutoLearn Spot (Automated learning lab & AI platform)
+- n8n Automation Workflows (WhatsApp/webhook integrations, CRM auto-dispatch)
+- Jeweller's Hub (Luxury jewelry e-commerce platform)
+- PassMark UTME Prep App (Flutter, Supabase, offline test engine)
+
+Write a winning, punchy, human proposal for this job post.
+Guidelines:
+1. NO generic boilerplate (NEVER say "I am excited to apply" or "I am writing to express my interest").
+2. Directly answer their technical problem in the first 2 sentences.
+3. Outline a concrete 3-step technical execution roadmap tailored to what they asked for.
+4. Cite 2 of Femi's most relevant projects specifically demonstrating capability.
+5. End with a confident, friendly call to action offering a quick 10-minute discovery call.
+6. Length: 150-250 words. Professional, sharp, confident.`,
+        userPrompt: `Job Title: ${job.title}\nClient Description:\n${job.description}\nBudget: ${job.budget}`,
+        temperature: 0.6,
+      });
+      proposalText = aiRes.text;
+    } catch {
+      const fallbackResult = generateGigProposal({
+        platform: "Upwork",
+        jobTitle: job.title,
+        jobDescription: job.description,
+        angle: "Rapid Automation & Speed",
+      });
+      proposalText = fallbackResult.proposal;
+      recommendedProjects = fallbackResult.recommendedProjects;
+    }
+
+    const fullPayload = `JOB LINK: ${job.link}\nBUDGET: ${job.budget}\n\n-- PROPOSED BID --\n${proposalText}`;
 
     const task = await createAgentTask({
       task_type: "upwork_proposal",
@@ -183,8 +221,8 @@ export async function runUpworkLiveScout() {
         job_title: job.title,
         job_description: `${job.description}\n\nBudget: ${job.budget || 'Open'}\nJob Link: ${job.link}`,
         angle: "Rapid Automation & Speed",
-        generated_proposal: result.proposal,
-        relevant_projects: result.recommendedProjects,
+        generated_proposal: proposalText,
+        relevant_projects: recommendedProjects,
       });
     } catch (dbErr) {
       console.warn("[Upwork Scout] dbSaveProposal error:", dbErr);

@@ -4,6 +4,7 @@ import { dbAddGuestMessage, dbGetGuestMessages, dbAddLead } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { formatToWAT } from "@/lib/utils";
+import { getObeyBrainContext } from "@/lib/settings";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -39,8 +40,12 @@ export async function POST(req: NextRequest) {
       intent: "Website Live Chat",
     });
 
-    // 3. Load previous dialogue for this web session
-    const pastMessages = await dbGetGuestMessages(contactId, 12);
+    // 3. Load previous dialogue for this web session & Obey Brain
+    const [pastMessages, brain] = await Promise.all([
+      dbGetGuestMessages(contactId, 12),
+      getObeyBrainContext(),
+    ]);
+
     const historyText = pastMessages
       .slice(-8)
       .map((m) => `${m.role === "user" ? displayName : "Obey"}: ${m.content}`)
@@ -55,7 +60,7 @@ CRITICAL BEHAVIOR RULES:
 3. OFFICIAL PORTFOLIO LINK: Femi's official live portfolio website is: https://femiadelekeportfolio.vercel.app. Never invent any other URL.
 4. REPRESENT FEMI EXPERTLY: Know Femi's key strengths: Full-Stack Web Apps (Next.js, React, Node.js, TypeScript), Custom AI Agents, Automated Workflows (n8n), Database Architecture (PostgreSQL/Neon), and scalable MVPs (AutoLearn Spot, OKIKI Store, PassMark).
 5. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email so Femi and you can follow up with a proposal or schedule a brief discovery call.
-6. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.`;
+6. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const userPrompt = historyText
       ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, helpful):`

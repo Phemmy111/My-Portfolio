@@ -58,6 +58,35 @@ async function poll() {
   }
 }
 
+const EVO_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-latest-cx3y.onrender.com';
+const EVO_KEY = process.env.EVOLUTION_API_KEY || 'FemiObey2026!';
+const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'obey';
+
+async function checkEvolutionKeepAlive() {
+  try {
+    const res = await fetch(`${EVO_URL}/instance/fetchInstances`, {
+      headers: { apikey: EVO_KEY },
+    });
+    if (!res.ok) {
+      console.warn(`[WA Keepalive] Evolution fetchInstances HTTP ${res.status}. Ping connect...`);
+      await fetch(`${EVO_URL}/instance/connect/${EVO_INSTANCE}`, { headers: { apikey: EVO_KEY } });
+      return;
+    }
+    const instances = await res.json();
+    const inst = Array.isArray(instances) ? instances.find((i) => i.name === EVO_INSTANCE) : null;
+    const isConnected = Boolean(inst && inst.connectionStatus === 'open' && !inst.disconnectionReasonCode);
+
+    if (!isConnected) {
+      console.log(`[WA Keepalive] Instance '${EVO_INSTANCE}' is ${inst?.connectionStatus || 'offline'}. Reconnecting...`);
+      await fetch(`${EVO_URL}/instance/connect/${EVO_INSTANCE}`, { headers: { apikey: EVO_KEY } });
+    } else {
+      console.log(`[WA Keepalive] WhatsApp instance '${EVO_INSTANCE}' is active and connected.`);
+    }
+  } catch (err) {
+    console.warn('[WA Keepalive] Ping error:', err?.message || err);
+  }
+}
+
 // Lightweight HTTP server for Render Free Web Service health checks and keep-alive pings
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -73,4 +102,8 @@ server.listen(PORT, () => {
   console.log(`[WA Listener] Daemon HTTP server running on port ${PORT}`);
   console.log('[WA Listener] Real-time WhatsApp sync loop active (2s interval).');
   setInterval(poll, 2000);
+
+  // Ping Evolution API every 3 minutes (180,000ms) so Render never spins down into inactivity sleep
+  setInterval(checkEvolutionKeepAlive, 180000);
+  checkEvolutionKeepAlive();
 });

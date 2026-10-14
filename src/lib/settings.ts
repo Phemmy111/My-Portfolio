@@ -20,6 +20,8 @@ export interface AIProviderConfig {
 
 export const KNOWN_KEYS = [
   "AI_PROVIDERS_POOL",
+  "OBEY_BRAIN_KNOWLEDGE",
+  "OBEY_CUSTOM_INSTRUCTIONS",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
   "APOLLO_API_KEY",
@@ -62,6 +64,35 @@ export async function getSetting(key: string): Promise<string> {
 }
 
 /**
+ * Retrieves Obey's permanent knowledge and custom behavior directives for prompt injection
+ */
+export async function getObeyBrainContext(): Promise<{ knowledge: string; instructions: string; formattedPrompt: string }> {
+  try {
+    const [knowledge, instructions] = await Promise.all([
+      getSetting("OBEY_BRAIN_KNOWLEDGE"),
+      getSetting("OBEY_CUSTOM_INSTRUCTIONS"),
+    ]);
+
+    const parts: string[] = [];
+    if (knowledge?.trim()) {
+      parts.push(`\n🧠 OBEY BRAIN · PERMANENT MEMORY & CORE FACTS (NEVER FORGET):\n${knowledge.trim()}`);
+    }
+    if (instructions?.trim()) {
+      parts.push(`\n⚡ OBEY BRAIN · CUSTOM BEHAVIOR DIRECTIVES & OVERRIDES:\n${instructions.trim()}`);
+    }
+
+    return {
+      knowledge: knowledge?.trim() || "",
+      instructions: instructions?.trim() || "",
+      formattedPrompt: parts.join("\n"),
+    };
+  } catch (err) {
+    console.warn("Failed to get Obey brain context:", err);
+    return { knowledge: "", instructions: "", formattedPrompt: "" };
+  }
+}
+
+/**
  * Saves or updates a setting in the persistent database
  */
 export async function setSetting(key: string, value: string): Promise<void> {
@@ -92,7 +123,7 @@ export async function getAIProvidersPool(): Promise<AIProviderConfig[]> {
   // Fallback / Auto-migration from singular keys
   const pool: AIProviderConfig[] = [];
   const geminiKey = await getSetting("GEMINI_API_KEY");
-  const geminiModel = (await getSetting("GEMINI_MODEL")) || "gemini-2.5-flash";
+  const geminiModel = (await getSetting("GEMINI_MODEL")) || "gemini-flash-lite-latest";
   if (geminiKey) {
     pool.push({
       id: "gemini-default",

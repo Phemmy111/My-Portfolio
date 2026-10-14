@@ -9,6 +9,7 @@ import { runGmailInboxSync } from "@/lib/gmail-reader";
 import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 import { formatToWAT, formatDateTimeWAT, getNigerianTime } from "@/lib/utils";
+import { getObeyBrainContext } from "@/lib/settings";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -77,8 +78,12 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
       message: userText,
     });
 
-    // 3. Load previous dialogue specific to this phone number
-    const pastMessages = await dbGetGuestMessages(replyTo, 15);
+    // 3. Load previous dialogue specific to this phone number & Obey Brain
+    const [pastMessages, brain] = await Promise.all([
+      dbGetGuestMessages(replyTo, 15),
+      getObeyBrainContext(),
+    ]);
+
     const historyText = pastMessages
       .slice(-10)
       .map((m) => `${m.role === "user" ? (pushName || "Contact") : "Obey"}: ${m.content}`)
@@ -99,7 +104,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
    - NEVER generate or mention any other domain (e.g. NEVER say femiadeleke.com). If asked for his portfolio, provide https://femiadelekeportfolio.vercel.app.
 6. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
 7. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials.
-8. LENGTH: Keep replies concise (2 to 4 sentences).`;
+8. LENGTH: Keep replies concise (2 to 4 sentences).${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const guestUserPrompt = historyText
       ? `Previous conversation with +${replyTo}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, conversational):`
@@ -270,25 +275,29 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
     return;
   }
 
-  // Command: Scout Upwork
-  if (lower.includes("scout upwork") || lower.includes("find job")) {
+  // Command: Scout Upwork / Freelance Tech Contracts
+  const isUpworkCommand =
+    /\b(scout|find|search|get)\b/i.test(lower) &&
+    /\b(upwork|gig|gigs|job|jobs|contract|contracts|freelance)\b/i.test(lower);
+
+  if (isUpworkCommand) {
     try {
       const scoutRes = await runUpworkLiveScout();
       const tasks = scoutRes.tasks || [];
       if (tasks.length === 0) {
-        await reply("I scanned the Upwork feeds, sir, but couldn't find fresh listings in this run. I'll notify you as soon as new gigs drop!");
+        await reply("I scanned the live freelance feeds, sir, but couldn't find fresh listings in this run. I'll notify you as soon as new gigs drop!");
       } else {
-        const firstTask = tasks[0];
-        await reply(
-          `Right away, sir! I captured *${tasks.length} high-value Upwork contracts* matching your stack!\n\n` +
-          `*Top Match:* ${firstTask.title}\n` +
-          `*Company:* ${firstTask.target_company || "Upwork Client"}\n\n` +
-          `*Proposal Draft:*\n${firstTask.payload?.slice(0, 350)}...\n\n` +
-          `_Reply with 'approve' on Telegram or open your Command Center to send._`
-        );
+        let msg = `🎯 *Live Tech Opportunities Scouted (${tasks.length} found), Boss!*\n\n`;
+        tasks.slice(0, 3).forEach((t: any, i: number) => {
+          msg += `*${i + 1}. ${t.title}*\n`;
+          msg += `• *Client / Budget:* ${t.target_company}\n`;
+          msg += `• *Proposal Draft:*\n${t.payload?.replace(/^JOB LINK:[\s\S]*?\n-- PROPOSED BID --\n/, "").slice(0, 240)}...\n\n`;
+        });
+        msg += `_All ${tasks.length} proposals are saved to your Admin Gig Automator and ready for 1-click dispatch!_`;
+        await reply(msg);
       }
     } catch (e: any) {
-      await reply(`Sorry sir, I ran into an issue scanning Upwork: ${e.message}`);
+      await reply(`Sorry sir, I ran into an issue scanning freelance gigs: ${e.message}`);
     }
     return;
   }
@@ -321,26 +330,27 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
     return;
   }
 
-  // Command: Hunt B2B Leads
-  if (
-    lower.includes("hunt lead") ||
-    lower.includes("hunt b2b") ||
-    lower.includes("cold email")
-  ) {
+  // Command: Hunt B2B Leads / Scout Brands / Cold Outreach Pitches
+  const isB2BCommand =
+    /\b(hunt|scout|find|search|identify|draft|pitch)\b/i.test(lower) &&
+    /\b(brand|brands|compan|companies|b2b|lead|leads|client|clients|outreach|cold mail|cold email|pitches)\b/i.test(lower);
+
+  if (isB2BCommand) {
     try {
-      const huntRes = await runB2BLeadHunter({ industry: "E-Commerce & Digital Logistics" });
+      const huntRes = await runB2BLeadHunter({ industry: userText });
       const tasks = huntRes.tasks || [];
       if (tasks.length === 0) {
         await reply("No fresh B2B leads captured in this run, sir. Let me know if you want me to search another niche.");
       } else {
-        const firstTask = tasks[0];
-        await reply(
-          `Done, sir! I scouted decision-makers and drafted cold outreach pitches.\n\n` +
-          `*Target:* ${firstTask.target_name} (${firstTask.target_email})\n` +
-          `*Company:* ${firstTask.target_company}\n` +
-          `*Subject:* ${firstTask.subject}\n\n` +
-          `*Pitch:*\n${firstTask.payload?.slice(0, 300)}...`
-        );
+        let msg = `💼 *Scouted ${tasks.length} Target Brands & Drafted Pitches, Boss!*\n\n`;
+        tasks.slice(0, 3).forEach((t: any, i: number) => {
+          msg += `*${i + 1}. ${t.target_company}* (${t.target_name})\n`;
+          msg += `• *Email:* ${t.target_email}\n`;
+          msg += `• *Subject:* ${t.subject}\n`;
+          msg += `• *Pitch:*\n"${t.payload?.slice(0, 200)}..."\n\n`;
+        });
+        msg += `_All pitches are saved in your Admin Cold Mailing Pipeline ready to send!_`;
+        await reply(msg);
       }
     } catch (e: any) {
       await reply(`Sorry sir, lead hunting hit a snag: ${e.message}`);
@@ -354,10 +364,14 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
   if (watHour >= 5 && watHour < 12) timeGreeting = "Good morning, sir";
   else if (watHour >= 17 || watHour < 5) timeGreeting = "Good evening, sir";
 
-  // Fetch live external inbox threads so Obey always knows who messaged on WhatsApp/Web
+  // Fetch live external inbox threads & Obey Brain
   let inboxSummary = "No external contacts have messaged recently.";
+  let brainPrompt = "";
   try {
-    const liveThreads = await dbGetInboxThreads();
+    const [liveThreads, brain] = await Promise.all([
+      dbGetInboxThreads(),
+      getObeyBrainContext(),
+    ]);
     if (liveThreads && liveThreads.length > 0) {
       inboxSummary = liveThreads
         .slice(0, 5)
@@ -367,8 +381,9 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
         )
         .join("\n");
     }
+    brainPrompt = brain?.formattedPrompt || "";
   } catch (err) {
-    console.error("[WA] Error loading live threads for Femi context:", err);
+    console.error("[WA] Error loading live threads or brain for Femi context:", err);
   }
 
   const systemPrompt = `You are Obey, Femi Adeleke's dedicated, emotionally intelligent personal AI executive assistant chatting with him directly on his phone via WhatsApp.
@@ -384,7 +399,7 @@ ${inboxSummary}
 - CRITICAL INBOX & TIME REPORTING RULE: If Femi asks if anyone has messaged on WhatsApp or reached out, ALWAYS refer directly to the live inbox data above! State who messaged, what they said, what they are building, and when! All times MUST be reported strictly in Nigerian West Africa Time (WAT) using the times specified in the inbox data above. Never report UTC times or claim no one reached out if there are contacts listed above.
 - REAL PORTFOLIO URL RULE: Femi's official live portfolio is strictly https://femiadelekeportfolio.vercel.app. NEVER mention or say femiadeleke.com. If discussing portfolio links, always use https://femiadelekeportfolio.vercel.app.
 - Know Femi's key projects: AutoLearn Spot, OKIKI Store, PassMark UTME Prep App, and n8n automations.
-- Current Time: Local Nigerian Time (WAT / West Africa Time) is ${watTimeStr} on ${watDateStr}. All time references must align with this Nigerian local time.`;
+- Current Time: Local Nigerian Time (WAT / West Africa Time) is ${watTimeStr} on ${watDateStr}. All time references must align with this Nigerian local time.${brainPrompt ? `\n\n${brainPrompt}` : ""}`;
 
   let conversationHistory = "";
   try {

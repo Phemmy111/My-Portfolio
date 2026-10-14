@@ -20,6 +20,7 @@ import {
   ArrowDown,
   ToggleLeft,
   ToggleRight,
+  Brain,
 } from "lucide-react";
 import { AIProviderConfig } from "@/lib/settings";
 
@@ -38,7 +39,7 @@ const PROVIDER_OPTIONS: Array<{
   {
     id: "gemini",
     name: "Google Gemini",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-flash-lite-latest",
     docUrl: "https://aistudio.google.com/app/apikey",
   },
   {
@@ -70,6 +71,8 @@ const PROVIDER_OPTIONS: Array<{
 export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettingsModalProps) {
   const [providersPool, setProvidersPool] = useState<AIProviderConfig[]>([]);
   const [generalKeys, setGeneralKeys] = useState<Record<string, string>>({
+    OBEY_BRAIN_KNOWLEDGE: "",
+    OBEY_CUSTOM_INSTRUCTIONS: "",
     APOLLO_API_KEY: "",
     TAVILY_API_KEY: "",
     UPWORK_FEED_URL: "",
@@ -143,6 +146,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
 
       if (data.settings) {
         setGeneralKeys({
+          OBEY_BRAIN_KNOWLEDGE: data.settings.OBEY_BRAIN_KNOWLEDGE?.value || "",
+          OBEY_CUSTOM_INSTRUCTIONS: data.settings.OBEY_CUSTOM_INSTRUCTIONS?.value || "",
           APOLLO_API_KEY: data.settings.APOLLO_API_KEY?.value || "",
           TAVILY_API_KEY: data.settings.TAVILY_API_KEY?.value || "",
           UPWORK_FEED_URL: data.settings.UPWORK_FEED_URL?.value || "",
@@ -714,7 +719,68 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                 </div>
               </div>
 
-              {/* SECTION 2: Lead Scraper (Apollo) & Automation Ecosystem */}
+              {/* SECTION 2: 🧠 Obey Brain · Permanent Memory & Directives */}
+              <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                    <Brain size={15} /> Obey Brain · Permanent Memory & Custom Behavioral Directives
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                    Neon DB Permanent Memory
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Information and instructions saved here are permanently committed to Obey's core brain in your cloud database. He will never forget these facts and will strictly adhere to your directives across WhatsApp, Telegram, website chat, and the admin dashboard.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Knowledge Base */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                        🧠 Core Knowledge & Facts (Things Obey Must Never Forget)
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {generalKeys.OBEY_BRAIN_KNOWLEDGE ? `${generalKeys.OBEY_BRAIN_KNOWLEDGE.length} chars` : "Empty"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Paste business details, pricing rules, portfolio facts, key links, phone numbers, or client FAQs.
+                    </p>
+                    <textarea
+                      rows={5}
+                      value={generalKeys.OBEY_BRAIN_KNOWLEDGE || ""}
+                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_BRAIN_KNOWLEDGE: e.target.value }))}
+                      placeholder={`e.g.\n• Femi's direct WhatsApp phone line is +2348120934828.\n• Standard web development projects start from $1,500 / ₦2,000,000.\n• Femi never works on unpaid test projects or free trials.\n• PassMark UTME Prep App is an offline CBT study app built with Flutter and Supabase.\n• OKIKI Electronics Store was built with Next.js 16 and achieves 98 Lighthouse performance.`}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
+                    />
+                  </div>
+
+                  {/* Custom Behavior Directives */}
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                        ⚡ Custom Behavioral Instructions & Personality Directives
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {generalKeys.OBEY_CUSTOM_INSTRUCTIONS ? `${generalKeys.OBEY_CUSTOM_INSTRUCTIONS.length} chars` : "Empty"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Specify how Obey should act, speak, greet, or respond to clients and commands.
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={generalKeys.OBEY_CUSTOM_INSTRUCTIONS || ""}
+                      onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_CUSTOM_INSTRUCTIONS: e.target.value }))}
+                      placeholder={`e.g.\n• Always maintain a sharp, confident, and direct tone without corporate fluff.\n• When external clients ask for a call, offer a 10-minute discovery chat and note Femi's timezone is WAT (West Africa Time).\n• If Femi asks you to do something, acknowledge concisely and execute immediately.\n• Never disclose internal budget margins without Femi's explicit permission.`}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: Lead Scraper (Apollo) & Automation Ecosystem */}
               <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
                 <h4 className="text-xs font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                   <Database size={14} /> Apollo.io & Workflow Automation
@@ -933,7 +999,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                             Pairing Code: <span className="text-emerald-600 dark:text-emerald-400">{qrData.pairingCode}</span>
                           </div>
                         )}
-                        <div className="pt-2 flex items-center gap-2 justify-center sm:justify-start">
+                        <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                           <button
                             type="button"
                             onClick={() => fetchWhatsAppQr(false)}
@@ -941,7 +1007,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                             className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white text-[11px] font-bold flex items-center gap-1.5 transition-all"
                           >
                             <RefreshCw size={11} className={qrData.loading ? "animate-spin" : ""} />
-                            {qrData.loading ? "Checking..." : "Refresh"}
+                            {qrData.loading ? "Checking..." : "Refresh Status"}
                           </button>
                           <button
                             type="button"
@@ -951,7 +1017,18 @@ export default function AISettingsModal({ isOpen, onClose, onSaved }: AISettings
                           >
                             Reset & New QR
                           </button>
+                          <a
+                            href="/api/obey/whatsapp/keepalive"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold transition-all flex items-center gap-1"
+                          >
+                            ⚡ 24/7 Keep-Alive Link <ExternalLink size={10} />
+                          </a>
                         </div>
+                        <p className="text-[10px] text-zinc-500 pt-1">
+                          🟢 <strong>24/7 Auto-Keepalive Active:</strong> Obey auto-pings Render every 3 mins to prevent 15-minute sleep and auto-heals any disconnect.
+                        </p>
                       </div>
 
                       <div className="shrink-0 flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white border border-zinc-200 dark:border-zinc-700 shadow-sm min-w-[150px] min-h-[150px]">

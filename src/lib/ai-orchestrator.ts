@@ -38,12 +38,19 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     try {
       // 1. Google Gemini
       if (p.provider === "gemini") {
-        const targetModel = p.model?.trim() || "gemini-2.5-flash";
-        const candidateModels = [targetModel];
-        if (targetModel !== "gemini-2.5-flash-lite") candidateModels.push("gemini-2.5-flash-lite");
-        if (targetModel !== "gemini-flash-latest") candidateModels.push("gemini-flash-latest");
+        const targetModel = p.model?.trim() || "gemini-flash-lite-latest";
+        const candidateModels = [
+          targetModel,
+          "gemini-flash-lite-latest",
+          "gemini-3.5-flash-lite",
+          "gemini-3.1-flash-lite",
+          "gemini-3.8-flash",
+          "gemini-3.7-flash",
+          "gemini-3.6-flash",
+        ];
+        const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
-        for (const m of candidateModels) {
+        for (const m of uniqueModels) {
           try {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${p.apiKey.trim()}`, {
               method: "POST",
@@ -237,7 +244,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
 
   // 6. Built-in Deterministic Fallback Engine (always reliable)
   return {
-    text: generateDeterministicAgentResponse(userPrompt),
+    text: generateDeterministicAgentResponse(userPrompt, systemPrompt),
     provider: "Obey Core Engine (Deterministic Fallback)",
     model: "obey-v1-rule-engine",
     fallbackTriggered: true,
@@ -248,9 +255,50 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
 /**
  * Built-in fallback rule engine if all external models are offline or exhausted
  */
-function generateDeterministicAgentResponse(userPrompt: string): string {
+function generateDeterministicAgentResponse(userPrompt: string, systemPrompt?: string): string {
   const lower = userPrompt.toLowerCase();
 
+  // Detect if this conversation is with an external guest / website visitor
+  const isGuestOrVisitor = Boolean(
+    systemPrompt && (
+      systemPrompt.includes("GENDER NEUTRAL") ||
+      systemPrompt.includes("Never call this contact") ||
+      systemPrompt.includes("visitor") ||
+      systemPrompt.includes("visitor inquiry")
+    )
+  );
+
+  // GUEST / VISITOR DETERMINISTIC RESPONSES (Never say 'sir' or 'Boss')
+  if (isGuestOrVisitor) {
+    if (lower.includes("portfolio") || lower.includes("website") || lower.includes("link") || lower.includes("work")) {
+      return (
+        "You can explore Femi's official portfolio and latest case studies right here: https://femiadelekeportfolio.vercel.app\n\n" +
+        "Let me know what kind of project or platform you have in mind!"
+      );
+    }
+
+    if (lower.includes("price") || lower.includes("cost") || lower.includes("charge") || lower.includes("how much") || lower.includes("rate")) {
+      return (
+        "Pricing depends on the scope, architecture, and timeline of what you need built. " +
+        "Femi typically connects on a brief discovery call to evaluate your requirements before putting together an exact proposal. " +
+        "What specific features or systems are you aiming to build?"
+      );
+    }
+
+    if (lower.includes("call") || lower.includes("meet") || lower.includes("speak") || lower.includes("talk") || lower.includes("contact")) {
+      return (
+        "I'd be glad to help arrange that! You can share your email or phone number here, or reach out to Femi directly at 08120934828. " +
+        "What days or times usually work best for you?"
+      );
+    }
+
+    return (
+      "Hello! Thank you for reaching out. I have logged your message for Femi so we can follow up with you directly. " +
+      "Could you share a bit more about the project, feature, or timeline you have in mind?"
+    );
+  }
+
+  // BOSS / FEMI DETERMINISTIC RESPONSES
   // Compute accurate Nigerian local time in West Africa Time (Africa/Lagos, UTC+1)
   const { hour: watHour } = getNigerianTime();
   let timeGreeting = "Good afternoon, sir";
@@ -258,21 +306,22 @@ function generateDeterministicAgentResponse(userPrompt: string): string {
   else if (watHour >= 12 && watHour < 17) timeGreeting = "Good afternoon, sir";
   else timeGreeting = "Good evening, sir";
 
-  // Greetings & warm human check-in
-  if (
-    lower.includes("hello") ||
-    lower.includes("hi ") ||
+  // Pure standalone greetings only (avoid repeating on active work messages)
+  const isPureGreeting = (
+    lower === "hello" ||
     lower === "hi" ||
-    lower.includes("hey") ||
-    lower.includes("good morning") ||
-    lower.includes("good afternoon") ||
-    lower.includes("good evening") ||
-    lower.includes("how far") ||
-    lower.includes("greeting")
-  ) {
+    lower === "hey" ||
+    lower === "good morning" ||
+    lower === "good afternoon" ||
+    lower === "good evening" ||
+    lower === "how far" ||
+    lower === "greeting"
+  );
+
+  if (isPureGreeting) {
     return (
-      `${timeGreeting}! How was today's work, sir? I hope everything went smoothly.\n\n` +
-      `How can I help you right now, sir? What are the key things or ideas we need to note down or tackle together?`
+      `${timeGreeting}! Standing by and ready for your command, Boss.\n\n` +
+      `Our database records, outreach pipelines, and client logs are active. What are we tackling right now?`
     );
   }
 
@@ -348,5 +397,5 @@ function generateDeterministicAgentResponse(userPrompt: string): string {
     );
   }
 
-  return `I am standing by right beside you, sir! Everything across your database, email dispatches, and project records is active. How can I help you right now, sir? Are there specific leads to hunt or tasks to note down?`;
+  return `Standing by and on task, Boss! Everything across our Neon cloud records and pipelines is active. What would you like us to review or execute next?`;
 }

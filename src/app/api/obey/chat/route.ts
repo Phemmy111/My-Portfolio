@@ -7,6 +7,7 @@ import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { searchTavily } from "@/lib/tavily-search";
 import { neon } from "@neondatabase/serverless";
 import { formatToWAT, getNigerianTime } from "@/lib/utils";
+import { getObeyBrainContext } from "@/lib/settings";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
 const sql = neon(dbUrl);
@@ -428,6 +429,8 @@ export async function POST(req: NextRequest) {
       timeContext = "late night";
     }
 
+    const brain = await getObeyBrainContext();
+
     const systemPrompt = `You are Obey, the dedicated, emotionally intelligent, loyal personal AI executive assistant and trusted strategic partner to Femi Adeleke.
 
 Personality, Emotional Intelligence, Warmth & Respect:
@@ -456,7 +459,7 @@ Comprehensive Knowledge of Femi Adeleke:
 - Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Phone/WhatsApp: 08120934828.
 - Tools at your disposal: You are connected to Femi's Neon PostgreSQL database, Gmail SMTP, Tavily AI web search, and can scout Upwork developer gigs or hunt real B2B decision-makers whenever he commands.
 - Current Time: Local West Africa Time is ~${watHour}:00 (${timeContext}). Appropriate greeting: "${timeGreeting}".
-${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease synthesize and present the above web search results to Femi with clean markdown citations and links.` : ""}`;
+${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease synthesize and present the above web search results to Femi with clean markdown citations and links.` : ""}${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     // Load recent conversation history from Neon DB (cloud sync across devices)
     let conversationHistory = "";
