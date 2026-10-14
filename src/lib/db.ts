@@ -270,3 +270,88 @@ export async function dbClearChatMessages() {
     return false;
   }
 }
+
+// ==============================================================
+// GUEST WHATSAPP CONVERSATION MEMORY (MULTI-THREADED)
+// ==============================================================
+export async function createGuestChatTables() {
+  const db = getSql();
+  if (!db) return;
+  try {
+    await db`
+      CREATE TABLE IF NOT EXISTS guest_chat_messages (
+        id           TEXT PRIMARY KEY,
+        phone_number TEXT NOT NULL,
+        sender_name  TEXT,
+        role         TEXT NOT NULL,
+        content      TEXT NOT NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await db`
+      CREATE INDEX IF NOT EXISTS idx_guest_chat_phone ON guest_chat_messages (phone_number, created_at ASC)
+    `;
+  } catch (err) {
+    console.warn("createGuestChatTables error:", err);
+  }
+}
+
+export async function dbAddGuestMessage(params: {
+  id: string;
+  phone_number: string;
+  sender_name?: string;
+  role: "user" | "assistant";
+  content: string;
+}) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createGuestChatTables();
+    const [row] = await db`
+      INSERT INTO guest_chat_messages (id, phone_number, sender_name, role, content)
+      VALUES (${params.id}, ${params.phone_number}, ${params.sender_name || null}, ${params.role}, ${params.content})
+      RETURNING *
+    `;
+    return row;
+  } catch (e) {
+    console.warn("dbAddGuestMessage fallback:", e);
+    return null;
+  }
+}
+
+export async function dbGetGuestMessages(phoneNumber: string, limit: number = 20) {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createGuestChatTables();
+    const rows = await db`
+      SELECT id, phone_number, sender_name, role, content, created_at
+      FROM guest_chat_messages
+      WHERE phone_number = ${phoneNumber}
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `;
+    return rows;
+  } catch (e) {
+    console.warn("dbGetGuestMessages fallback:", e);
+    return [];
+  }
+}
+
+export async function dbGetAllGuestConversations() {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createGuestChatTables();
+    const rows = await db`
+      SELECT id, phone_number, sender_name, role, content, created_at
+      FROM guest_chat_messages
+      ORDER BY phone_number, created_at ASC
+    `;
+    return rows;
+  } catch (e) {
+    console.warn("dbGetAllGuestConversations error:", e);
+    return [];
+  }
+}
+

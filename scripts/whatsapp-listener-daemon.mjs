@@ -19,7 +19,7 @@ async function poll() {
     `;
 
     const [latestUser] = await sql`
-      SELECT id, key, message, "messageTimestamp", "instanceId"
+      SELECT id, key, message, "messageTimestamp", "instanceId", "pushName"
       FROM evolution."Message"
       WHERE (key->>'fromMe')::boolean = false
       ORDER BY "messageTimestamp" DESC

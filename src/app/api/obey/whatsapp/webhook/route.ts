@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddChatMessage, dbGetChatMessages, dbAddLead } from "@/lib/db";
+import { dbAddChatMessage, dbGetChatMessages, dbAddLead, dbAddGuestMessage, dbGetGuestMessages } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
 import { runGmailInboxSync } from "@/lib/gmail-reader";
@@ -30,83 +31,158 @@ function cleanWhatsAppFormatting(text: string): string {
     .trim();
 }
 
-async function processMessage(senderNumber: string, userText: string) {
+async function processMessage(senderNumber: string, userText: string, pushName?: string) {
   const lower = userText.toLowerCase();
   let replyTo = (senderNumber || FEMI_PERSONAL_NUMBER).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
   if (!replyTo || replyTo.length > 13 || replyTo.length < 10) {
     replyTo = FEMI_PERSONAL_NUMBER;
   }
 
-  // Save incoming message to Neon DB
-  try {
-    await dbAddChatMessage({
-      id: `wa-${Date.now()}`,
-      role: "user",
-      content: `[WhatsApp from ${replyTo}] ${userText}`,
-    });
-  } catch (e) {
-    console.error("[WA] DB save error:", e);
-  }
+  const isFemi = replyTo === FEMI_PERSONAL_NUMBER;
 
   // Helper: send reply via WhatsApp + save to DB
   async function reply(text: string) {
     const formatted = cleanWhatsAppFormatting(text);
     await sendWhatsAppMessage(formatted, replyTo);
-    try {
-      await dbAddChatMessage({
-        id: `wa-asst-${Date.now()}`,
-        role: "assistant",
-        content: formatted,
-      });
-    } catch {}
+    if (isFemi) {
+      try {
+        await dbAddChatMessage({
+          id: `wa-asst-${Date.now()}`,
+          role: "assistant",
+          content: formatted,
+        });
+      } catch {}
+    }
   }
 
-  const isFemi = replyTo === FEMI_PERSONAL_NUMBER;
-
-  // Gatekeeper: If someone other than Femi messages the bot
+  // ==============================================================
+  // GUEST / EXTERNAL CONTACTS (HUMAN PERSONA + CONTINUOUS MEMORY)
+  // ==============================================================
   if (!isFemi) {
-    const guestPrompt = `You are Obey, the AI executive assistant to Femi Adeleke (full-stack software engineer & automation architect).
-Someone other than Femi is messaging Femi's assistant line on WhatsApp.
-- Be polite, courteous, and highly professional.
-- Protect Femi's private data, financials, and internal credentials. Do NOT disclose confidential metrics or call them "Boss".
-- Offer to take a message, inquire about their project or business needs, or direct them to view Femi's portfolio at https://femiadelekeportfolio.vercel.app.
-- Keep the response concise, polished, and mobile-friendly.`;
+    // 1. Save guest incoming message to Neon DB
+    await dbAddGuestMessage({
+      id: `guest-msg-${Date.now()}`,
+      phone_number: replyTo,
+      sender_name: pushName || "External Contact",
+      role: "user",
+      content: userText,
+    });
+
+    // 2. Dispatch to Google Sheets Webhook
+    logToGoogleSheet({
+      phoneNumber: replyTo,
+      senderName: pushName,
+      role: "user",
+      message: userText,
+    });
+
+    // 3. Load previous dialogue specific to this phone number
+    const pastMessages = await dbGetGuestMessages(replyTo, 15);
+    const historyText = pastMessages
+      .slice(-10)
+      .map((m) => `${m.role === "user" ? (pushName || "Contact") : "Obey"}: ${m.content}`)
+      .join("\n");
+
+    const guestSystemPrompt = `You are Obey, executive manager and operational partner working directly with Femi Adeleke (full-stack software engineer & automation architect).
+You are messaging this contact on WhatsApp from Femi's desk line.
+
+CRITICAL BEHAVIORAL INSTRUCTIONS:
+1. ACT 100% HUMAN: Never state or imply that you are an AI, bot, virtual assistant, or language model. Talk naturally, warmly, and professionally like a sharp, thoughtful human colleague.
+2. NATURAL CHAT STYLE: Write in crisp, friendly, conversational sentences suited for WhatsApp. Avoid robotic corporate boilerplate, canned customer support scripts, or long unprompted pitches.
+3. CONVERSATIONAL CONTINUITY & MEMORY: Review the prior chat history below carefully. Never repeat a greeting or opening line you've already sent. Answer their direct question or comment and keep the conversation flowing.
+4. QUALIFY GENTLY: If they haven't shared what they need, ask naturally: "How can I help you connect with Femi?" or "What kind of project or system are you looking to build?"
+5. RESPECT CONFIDENTIALITY: Never reveal Femi's private personal schedule, financial numbers, or internal credentials. Do not call this contact "Boss" (that title is strictly reserved for Femi).
+6. LENGTH: Keep replies concise (2 to 4 sentences).`;
+
+    const guestUserPrompt = historyText
+      ? `Previous conversation with +${replyTo}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, conversational):`
+      : `New incoming message from +${replyTo} (${pushName || "Contact"}): "${userText}"\n\nObey (warm, human, conversational):`;
 
     try {
       const guestRes = await executeAICompletion({
-        systemPrompt: guestPrompt,
-        userPrompt: userText,
-        temperature: 0.5,
+        systemPrompt: guestSystemPrompt,
+        userPrompt: guestUserPrompt,
+        temperature: 0.7,
       });
-      await reply(guestRes.text);
 
-      // 🔔 Executive Notification to Femi's personal phone
-      const alertMsg =
-        `🔔 *Executive Alert, Boss!*\n\n` +
-        `An external contact just messaged your Obey WhatsApp line:\n\n` +
-        `• *Sender:* +${replyTo}\n` +
-        `• *Their Message:* "${userText}"\n\n` +
-        `*Obey's Handshake Reply:*\n"${cleanWhatsAppFormatting(guestRes.text)}"`;
+      const replyText = guestRes.text;
+      await reply(replyText);
 
-      await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+      // Save assistant reply to guest DB
+      await dbAddGuestMessage({
+        id: `guest-asst-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: "Obey",
+        role: "assistant",
+        content: replyText,
+      });
 
-      // Save inquiry to Neon DB leads table
+      // Dispatch to Google Sheets
+      logToGoogleSheet({
+        phoneNumber: replyTo,
+        senderName: "Obey",
+        role: "assistant",
+        message: replyText,
+      });
+
+      // 4. SMART EXECUTIVE ALERT TO FEMI (NO DM SPAM)
+      // Only alert Femi if high intent detected or after meaningful dialogue, NOT on every casual "hi"
+      const isHighIntent =
+        /\b(\$|₦|budget|quote|cost|pricing|dollars|naira|hire|contract|urgent|proposal|scope|timeline)\b/i.test(userText) ||
+        /\b(call|meet|zoom|google meet|schedule|appointment)\b/i.test(userText) ||
+        /@|(\+?\d{10,13})/i.test(userText);
+
+      const isMilestone = pastMessages.length === 4 || pastMessages.length === 8;
+
+      if (isHighIntent || isMilestone) {
+        try {
+          const summaryRes = await executeAICompletion({
+            systemPrompt: "You are Obey synthesizing an external inquiry for your boss, Femi Adeleke. Provide a 2-line executive summary: who they are, what they need, and budget/urgency if stated.",
+            userPrompt: `Dialogue with +${replyTo} (${pushName || "Guest"}):\n${historyText}\nLatest: "${userText}"`,
+            temperature: 0.4,
+          });
+
+          const alertMsg =
+            `💼 *Inbound Executive Brief, Boss!*\n\n` +
+            `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
+            `• *Executive Summary:*\n${summaryRes.text}\n\n` +
+            `_Full conversation saved to your Spreadsheet & Neon CRM._`;
+
+          await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+        } catch (e) {
+          console.error("[WA] Alert generation error:", e);
+        }
+      }
+
+      // Update / record lead in Neon DB
       try {
         await dbAddLead({
-          id: `lead-wa-${Date.now()}`,
-          name: `WhatsApp Inbound (+${replyTo})`,
+          id: `lead-wa-${replyTo}`,
+          name: pushName || `WhatsApp Lead (+${replyTo})`,
           email: `${replyTo}@whatsapp.contact`,
-          notes: `Inbound WhatsApp: "${userText}" | Reply: "${guestRes.text.slice(0, 200)}"`,
-          status: "new",
-          service_needed: "General / Partnership Inquiry",
+          notes: `WhatsApp Thread (+${replyTo}): ${userText.slice(0, 150)}`,
+          status: isHighIntent ? "qualified" : "new",
+          service_needed: "Software / Automation Consultation",
         });
       } catch (err) {
         console.error("[WA] Save lead error:", err);
       }
-    } catch {
-      await reply("Hello! I am Obey, executive assistant to Femi Adeleke. Mr. Adeleke is currently engaged. Please leave your name and project details, and I will ensure it is reviewed promptly.");
+    } catch (e: any) {
+      console.error("[WA] Guest processing error:", e);
+      await reply("Hey there! Got your message. I'm currently reviewing a few project items with Femi—what's the best summary of what you need so I can follow up with you shortly?");
     }
     return;
+  }
+
+  // Save Femi's incoming message to Neon DB
+  try {
+    await dbAddChatMessage({
+      id: `wa-${Date.now()}`,
+      role: "user",
+      content: userText,
+    });
+  } catch (e) {
+    console.error("[WA] DB save error:", e);
   }
 
   // Command: On-demand Morning Briefing
@@ -360,7 +436,7 @@ export async function POST(req: NextRequest) {
 
   after(async () => {
     try {
-      await processMessage(senderNumber, userText);
+      await processMessage(senderNumber, userText, msgObj.pushName);
     } catch (err) {
       console.error("[WA] processMessage error:", err);
     }
