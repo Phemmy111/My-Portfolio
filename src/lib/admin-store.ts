@@ -48,67 +48,11 @@ const isServerless = !!process.env.VERCEL || process.env.NODE_ENV === "productio
 const DATA_DIR = isServerless ? path.join("/tmp", "femi-data") : path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "admin-data.json");
 
-// Initial high-converting seed leads to jumpstart Femi's outreach immediately
+// Clean store initialized with zero generic placeholders (all data sourced live from Neon DB)
 const SEED_DATA: AdminData = {
-  leads: [
-    {
-      id: "lead-1",
-      name: "Tunde Bakare",
-      company: "Apex Logistics Ltd",
-      email: "tunde@apexlogistics.ng",
-      serviceNeeded: "Automation / n8n",
-      status: "new",
-      niche: "Supply Chain & Delivery",
-      notes: "Needs automated order tracking via WhatsApp and automated dispatch webhook.",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "lead-2",
-      name: "Sophia Martinez",
-      company: "Luminary Beauty",
-      email: "sophia@luminarybeauty.com",
-      serviceNeeded: "Web Development",
-      status: "drafted",
-      niche: "E-Commerce",
-      notes: "Shopify store migration to Next.js custom headless frontend. Reference OKIKI Store.",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "lead-3",
-      name: "David Adeleke",
-      company: "AfroVibe Media",
-      email: "david@afrovibemedia.io",
-      serviceNeeded: "Video / Content",
-      status: "contacted",
-      niche: "Digital Media & Podcasts",
-      notes: "Wants automated social media reel generator and video editing pipeline.",
-      createdAt: new Date().toISOString(),
-      lastContactedAt: new Date().toISOString(),
-    },
-  ],
-  proposals: [
-    {
-      id: "prop-1",
-      platform: "Upwork",
-      jobTitle: "Build automated customer onboarding pipeline with n8n & Supabase",
-      jobDescription: "Looking for an expert to automate customer intake from Typeform to Supabase and send custom WhatsApp notifications via webhook.",
-      angle: "Rapid Automation & Speed",
-      generatedProposal: "Hi there,\n\nI noticed you need an automated customer onboarding pipeline connecting Typeform, Supabase, and WhatsApp.\n\nAs an automation engineer specializing in n8n and modern full-stack workflows, I have built multiple end-to-end production pipelines handling webhooks, database state sync, and real-time messaging.\n\nHere is how I will execute this:\n1. Webhook intake with payload sanitization in n8n.\n2. Secure record creation in Supabase with idempotent keys.\n3. Dynamic WhatsApp notification trigger via Meta Graph API or Twilio.\n4. Error logging and fallback alerts.\n\nI recently deployed similar systems for platforms including AutoLearn Spot. Let's connect and get this live this week.\n\nBest,\nFemi Adeleke",
-      relevantProjects: ["AutoLearn Spot", "n8n Automation Pipelines"],
-      createdAt: new Date().toISOString(),
-    },
-  ],
-  inquiries: [
-    {
-      id: "inq-1",
-      name: "Kolawole Sanusi",
-      email: "kola@zenithenterprises.org",
-      service: "Automation Engineering",
-      message: "Hello Femi, I saw your portfolio and your work with n8n. We have an e-commerce operation that needs inventory sync with our warehouse. Can we schedule a call?",
-      status: "unread",
-      createdAt: new Date().toISOString(),
-    },
-  ],
+  leads: [],
+  proposals: [],
+  inquiries: [],
 };
 
 // In-memory cache ensures zero crashes even if filesystem is read-only

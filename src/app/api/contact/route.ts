@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addInquiry } from "@/lib/admin-store";
+import { dbAddInquiry } from "@/lib/db";
 import { sendAdminInquiryAlert, sendClientAutoReply } from "@/lib/email";
 import { triggerInstantProactiveAlert } from "@/lib/proactive-engine";
 
@@ -14,13 +15,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Save to local store (works immediately; swap for Neon DB once DATABASE_URL is set)
-    const inquiry = addInquiry({
-      name,
-      email,
-      service: service || "General Inquiry",
-      message,
-    });
+    const inquiryId = `inq-${Date.now()}`;
+
+    // 1. Save directly to Neon DB
+    try {
+      await dbAddInquiry({
+        id: inquiryId,
+        name,
+        email,
+        service: service || "General Inquiry",
+        message,
+      });
+    } catch (dbErr) {
+      console.warn("dbAddInquiry fallback to memory:", dbErr);
+      addInquiry({
+        name,
+        email,
+        service: service || "General Inquiry",
+        message,
+      });
+    }
 
     // 2. Trigger instant proactive push alert to Femi's phone (Telegram / WhatsApp)
     triggerInstantProactiveAlert({
@@ -32,23 +46,20 @@ export async function POST(req: NextRequest) {
     // 3. Send alerts via SMTP (only if SMTP is configured)
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        // Notify Femi instantly
         await sendAdminInquiryAlert({
           clientName: name,
           clientEmail: email,
           service: service || "General Inquiry",
           message,
-          inquiryId: inquiry.id,
+          inquiryId,
         });
 
-        // Send auto-reply to client
         await sendClientAutoReply({
           clientName: name,
           clientEmail: email,
           service: service || "General Inquiry",
         });
       } catch (emailErr) {
-        // Don't fail the whole request if SMTP fails — just log it
         console.error("SMTP send failed:", emailErr);
       }
     }
@@ -56,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Message received successfully! Femi will respond shortly.",
-      inquiryId: inquiry.id,
+      inquiryId,
     });
   } catch (error) {
     console.error("Contact API error:", error);

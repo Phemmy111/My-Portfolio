@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLeads, addLead, updateLead, deleteLead, getAdminStats } from "@/lib/admin-store";
+import { dbGetLeads, dbAddLead, dbUpdateLead, dbDeleteLead, dbGetStats } from "@/lib/db";
 import { generateColdEmail } from "@/lib/gig-generator";
 
 function checkAuth(req: NextRequest): boolean {
@@ -12,9 +13,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const leads = getLeads();
-  const stats = getAdminStats();
-  return NextResponse.json({ leads, stats });
+  try {
+    const [dbRows, dbStats] = await Promise.all([
+      dbGetLeads(),
+      dbGetStats(),
+    ]);
+
+    const leads = (dbRows || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      company: row.company || "",
+      email: row.email,
+      serviceNeeded: row.service_needed || "Web Development",
+      status: row.status || "new",
+      niche: row.niche || "",
+      notes: row.notes || "",
+      draftSubject: row.draft_subject || "",
+      draftBody: row.draft_body || "",
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at).toISOString() : null,
+    }));
+
+    const stats = {
+      totalLeads: Number(dbStats?.total_leads ?? leads.length),
+      activeLeads: Number(dbStats?.active_leads ?? leads.filter((l: any) => l.status !== "closed").length),
+      convertedLeads: Number(dbStats?.converted_leads ?? leads.filter((l: any) => l.status === "converted").length),
+      totalProposals: Number(dbStats?.total_proposals ?? 0),
+      totalInquiries: Number(dbStats?.total_inquiries ?? 0),
+      unreadInquiries: Number(dbStats?.unread_inquiries ?? 0),
+    };
+
+    return NextResponse.json({ leads, stats });
+  } catch (err) {
+    console.warn("[Admin Leads] Falling back to admin-store:", err);
+    const leads = getLeads();
+    const stats = getAdminStats();
+    return NextResponse.json({ leads, stats });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -39,19 +74,51 @@ export async function POST(req: NextRequest) {
       specificPainPoint,
     });
 
-    const newLead = addLead({
-      name,
-      company: company || "",
-      email,
-      serviceNeeded: serviceNeeded || "Web Development",
-      status: "new",
-      niche: niche || "General Tech",
-      notes: notes || "",
-      draftSubject: draft.subject,
-      draftBody: draft.body,
-    });
+    const leadId = `lead-${Date.now()}`;
 
-    return NextResponse.json({ lead: newLead });
+    try {
+      const row = await dbAddLead({
+        id: leadId,
+        name,
+        company: company || "",
+        email,
+        service_needed: serviceNeeded || "Web Development",
+        status: "new",
+        niche: niche || "General Tech",
+        notes: notes || "",
+        draft_subject: draft.subject,
+        draft_body: draft.body,
+      });
+
+      const newLead = {
+        id: row.id,
+        name: row.name,
+        company: row.company || "",
+        email: row.email,
+        serviceNeeded: row.service_needed || "Web Development",
+        status: row.status || "new",
+        niche: row.niche || "",
+        notes: row.notes || "",
+        draftSubject: row.draft_subject || draft.subject,
+        draftBody: row.draft_body || draft.body,
+        createdAt: new Date().toISOString(),
+      };
+
+      return NextResponse.json({ lead: newLead });
+    } catch {
+      const newLead = addLead({
+        name,
+        company: company || "",
+        email,
+        serviceNeeded: serviceNeeded || "Web Development",
+        status: "new",
+        niche: niche || "General Tech",
+        notes: notes || "",
+        draftSubject: draft.subject,
+        draftBody: draft.body,
+      });
+      return NextResponse.json({ lead: newLead });
+    }
   } catch {
     return NextResponse.json({ error: "Failed to create lead" }, { status: 500 });
   }
@@ -70,12 +137,19 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Lead ID required" }, { status: 400 });
     }
 
-    const updated = updateLead(id, updates);
-    if (!updated) {
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    try {
+      const updatedRow = await dbUpdateLead(id, {
+        status: updates?.status,
+        notes: updates?.notes,
+        draft_subject: updates?.draftSubject,
+        draft_body: updates?.draftBody,
+        last_contacted_at: updates?.lastContactedAt,
+      });
+      return NextResponse.json({ lead: updatedRow });
+    } catch {
+      const updated = updateLead(id, updates);
+      return NextResponse.json({ lead: updated });
     }
-
-    return NextResponse.json({ lead: updated });
   } catch {
     return NextResponse.json({ error: "Failed to update lead" }, { status: 500 });
   }
@@ -93,6 +167,12 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Lead ID required" }, { status: 400 });
   }
 
-  const deleted = deleteLead(id);
-  return NextResponse.json({ success: deleted });
+  try {
+    await dbDeleteLead(id);
+    deleteLead(id);
+    return NextResponse.json({ success: true });
+  } catch {
+    const deleted = deleteLead(id);
+    return NextResponse.json({ success: deleted });
+  }
 }

@@ -165,7 +165,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
           name: pushName || `WhatsApp Lead (+${replyTo})`,
           email: `${replyTo}@whatsapp.contact`,
           notes: `WhatsApp Thread (+${replyTo}): ${userText.slice(0, 150)}`,
-          status: isHighIntent ? "qualified" : "new",
+          status: isLeadInquiry ? "qualified" : "new",
           service_needed: "Software / Automation Consultation",
         });
       } catch (err) {
