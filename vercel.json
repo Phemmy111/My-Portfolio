@@ -1,9 +1,3 @@
 {
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/obey/whatsapp/keepalive",
-      "schedule": "*/10 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }

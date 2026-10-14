@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/api/contact",
   "/api/admin/auth", // keep backward compat during transition
+  "/api/obey/(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
