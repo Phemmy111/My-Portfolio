@@ -120,9 +120,7 @@ export async function fetchEvolutionMediaBase64(
           apikey: evoKey,
         },
         body: JSON.stringify({
-          message: {
-            key: msgObj.key,
-          },
+          message: msgObj,
           convertToMp4: false,
         }),
       }
@@ -144,4 +142,72 @@ export async function fetchEvolutionMediaBase64(
 
   return null;
 }
+
+/**
+ * Dispatches a recorded audio file / voice note via Evolution API to WhatsApp
+ */
+export async function sendWhatsAppAudio(
+  audioUrl: string,
+  recipient: string,
+  caption?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    let cleaned = (recipient || "2348120934828")
+      .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
+      .replace(/\D/g, "");
+    if (!cleaned || cleaned.length > 13 || cleaned.length < 10) {
+      cleaned = "2348120934828";
+    }
+
+    // 1. Try sending as native WhatsApp Voice Note
+    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: cleaned,
+        audio: audioUrl,
+      }),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
+    // 2. Fallback: Send as audio media file
+    const mediaRes = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: cleaned,
+        media: audioUrl,
+        mediatype: "audio",
+        mimetype: "audio/mp3",
+        caption: caption || "🎙️ Call Audio Recording",
+      }),
+    });
+
+    if (mediaRes.ok) {
+      return { success: true };
+    }
+
+    const err = await mediaRes.text();
+    return { success: false, error: err };
+  } catch (err: any) {
+    console.error("[WhatsApp] sendWhatsAppAudio error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
 

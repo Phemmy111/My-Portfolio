@@ -66,13 +66,14 @@ export async function executePendingUserAction(
       const callRes = await placeAIVoiceCall({
         toNumber: action.target_recipient,
         objective: action.payload,
+        userPhone: action.user_identifier,
       });
 
       if (callRes.success) {
         await dbUpdateUserActionStatus(action.id, "executed");
         return {
           success: true,
-          message: `📞 *AI Voice Call Initiated!*\n\n• *Target:* +${action.target_recipient}\n• *Call ID:* \`${callRes.callId}\`\n• *Objective:* ${action.payload}\n\n_The AI caller is dialing now. A transcript summary will be shared once completed._`,
+          message: `📞 *AI Voice Call Initiated!*\n\n• *Target:* +${action.target_recipient}\n• *Provider:* ${callRes.providerName || "Vapi Gateway"}\n• *Call ID:* \`${callRes.callId}\`\n• *Objective:* ${action.payload}\n\n_The AI caller is dialing now. As soon as the call ends, I will send you the recording and full transcript!_`,
         };
       } else {
         await dbUpdateUserActionStatus(action.id, "failed");

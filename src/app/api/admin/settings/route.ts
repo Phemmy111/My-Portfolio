@@ -7,17 +7,21 @@ import {
   getAIProvidersPool,
   setAIProvidersPool,
   AIProviderConfig,
+  getVapiProvidersPool,
+  setVapiProvidersPool,
+  VapiProviderConfig,
 } from "@/lib/settings";
 import { sendTelegramMessage } from "@/lib/telegram-bot";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 
 export async function GET() {
   try {
-    const [settings, pool] = await Promise.all([
+    const [settings, pool, vapiPool] = await Promise.all([
       getAllSettingsMasked(),
       getAIProvidersPool(),
+      getVapiProvidersPool(),
     ]);
-    return NextResponse.json({ success: true, settings, pool });
+    return NextResponse.json({ success: true, settings, pool, vapiPool });
   } catch (err: any) {
     console.error("Settings GET error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -38,6 +42,38 @@ export async function POST(req: NextRequest) {
         pool: updatedPool,
       });
     }
+
+    // 1b. Save Vapi Voice Provider Pool
+    if (body.action === "save_vapi_pool" && Array.isArray(body.vapiPool)) {
+      await setVapiProvidersPool(body.vapiPool as VapiProviderConfig[]);
+      const updatedVapiPool = await getVapiProvidersPool();
+      return NextResponse.json({
+        success: true,
+        message: "Vapi Voice Calling Pool saved to database successfully!",
+        vapiPool: updatedVapiPool,
+      });
+    }
+
+    // 1c. Test Vapi Connection
+    if (body.action === "test_vapi") {
+      const { apiKey } = body;
+      if (!apiKey?.trim()) {
+        return NextResponse.json({ success: false, error: "Vapi API Key is required" });
+      }
+      try {
+        const res = await fetch("https://api.vapi.ai/assistant", {
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+        });
+        if (res.ok) {
+          return NextResponse.json({ success: true, message: "Connected to Vapi.ai successfully! Ready for voice calling." });
+        }
+        const err = await res.text();
+        return NextResponse.json({ success: false, error: `Vapi HTTP ${res.status}: ${err.slice(0, 100)}` });
+      } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message });
+      }
+    }
+
 
     // 2. Fetch Real-Time Models Action
     if (body.action === "fetch_models") {

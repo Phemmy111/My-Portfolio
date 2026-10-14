@@ -18,8 +18,21 @@ export interface AIProviderConfig {
   enabled: boolean;
 }
 
+export interface VapiProviderConfig {
+  id: string;
+  name: string;
+  apiKey: string;
+  assistantId?: string;
+  phoneNumberId?: string;
+  enabled: boolean;
+}
+
 export const KNOWN_KEYS = [
   "AI_PROVIDERS_POOL",
+  "VAPI_PROVIDERS_POOL",
+  "VAPI_API_KEY",
+  "VAPI_ASSISTANT_ID",
+  "VAPI_PHONE_NUMBER_ID",
   "OBEY_BRAIN_KNOWLEDGE",
   "OBEY_CUSTOM_INSTRUCTIONS",
   "GEMINI_API_KEY",
@@ -192,6 +205,48 @@ export async function getAIProvidersPool(): Promise<AIProviderConfig[]> {
 export async function setAIProvidersPool(pool: AIProviderConfig[]): Promise<void> {
   await setSetting("AI_PROVIDERS_POOL", JSON.stringify(pool));
 }
+
+/**
+ * Retrieves the full Vapi Voice Call Providers Pool (multi-account/multi-key list)
+ */
+export async function getVapiProvidersPool(): Promise<VapiProviderConfig[]> {
+  try {
+    const raw = await getSetting("VAPI_PROVIDERS_POOL");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to parse VAPI_PROVIDERS_POOL:", err);
+  }
+
+  // Fallback / Auto-migration from singular key
+  const pool: VapiProviderConfig[] = [];
+  const singleKey = await getSetting("VAPI_API_KEY");
+  const assistantId = await getSetting("VAPI_ASSISTANT_ID");
+  const phoneNumberId = await getSetting("VAPI_PHONE_NUMBER_ID");
+  if (singleKey) {
+    pool.push({
+      id: "vapi-default",
+      name: "Vapi Primary Account (Free Trial)",
+      apiKey: singleKey,
+      assistantId,
+      phoneNumberId,
+      enabled: true,
+    });
+  }
+  return pool;
+}
+
+/**
+ * Saves the Vapi Voice Call Providers Pool to Neon DB
+ */
+export async function setVapiProvidersPool(pool: VapiProviderConfig[]): Promise<void> {
+  await setSetting("VAPI_PROVIDERS_POOL", JSON.stringify(pool));
+}
+
 
 /**
  * Retrieves all known settings with sensitive values masked for UI display

@@ -22,14 +22,15 @@ import {
   ToggleRight,
   Brain,
   MessageCircle,
+  PhoneCall,
 } from "lucide-react";
-import { AIProviderConfig } from "@/lib/settings";
+import { AIProviderConfig, VapiProviderConfig } from "@/lib/settings";
 
 interface AISettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
-  initialTab?: "brain" | "ai" | "phone" | "integrations";
+  initialTab?: "brain" | "ai" | "phone" | "voice" | "integrations";
 }
 
 const PROVIDER_OPTIONS: Array<{
@@ -71,8 +72,9 @@ const PROVIDER_OPTIONS: Array<{
 ];
 
 export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab = "brain" }: AISettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"brain" | "ai" | "phone" | "integrations">(initialTab);
+  const [activeTab, setActiveTab] = useState<"brain" | "ai" | "phone" | "voice" | "integrations">(initialTab as any);
   const [providersPool, setProvidersPool] = useState<AIProviderConfig[]>([]);
+  const [vapiPool, setVapiPool] = useState<VapiProviderConfig[]>([]);
   const [generalKeys, setGeneralKeys] = useState<Record<string, string>>({
     OBEY_BRAIN_KNOWLEDGE: "",
     OBEY_CUSTOM_INSTRUCTIONS: "",
@@ -95,6 +97,62 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Vapi Voice Calling Pool Handlers
+  const addVapiProvider = () => {
+    const newP: VapiProviderConfig = {
+      id: `vapi-${Date.now()}`,
+      name: `Vapi Account ${vapiPool.length + 1} ($10 Free)`,
+      apiKey: "",
+      assistantId: "",
+      phoneNumberId: "",
+      enabled: true,
+    };
+    setVapiPool((prev) => [...prev, newP]);
+  };
+
+  const updateVapiProvider = (id: string, updates: Partial<VapiProviderConfig>) => {
+    setVapiPool((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+  };
+
+  const removeVapiProvider = (id: string) => {
+    setVapiPool((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const moveVapiProvider = (index: number, direction: "up" | "down") => {
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= vapiPool.length) return;
+    const next = [...vapiPool];
+    const temp = next[index];
+    next[index] = next[targetIdx];
+    next[targetIdx] = temp;
+    setVapiPool(next);
+  };
+
+  const handleTestVapi = async (id: string, apiKey: string) => {
+    setTestResults((prev) => ({ ...prev, [id]: { testing: true } }));
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_vapi", apiKey }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: {
+          testing: false,
+          success: data.success,
+          message: data.message || data.error,
+        },
+      }));
+    } catch (e: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: { testing: false, success: false, message: e.message },
+      }));
+    }
+  };
 
   // Live WhatsApp QR Code State
   const [qrData, setQrData] = useState<{ base64?: string; connected?: boolean; loading?: boolean; error?: string; pairingCode?: string }>({});
@@ -146,6 +204,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           fetchLiveModelsForProvider(firstGemini.id, firstGemini.provider, firstGemini.apiKey);
         }
       }
+
+      if (data.vapiPool && Array.isArray(data.vapiPool)) {
+        setVapiPool(data.vapiPool);
+      }
+
 
       if (data.settings) {
         setGeneralKeys({
@@ -404,6 +467,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         body: JSON.stringify({ action: "save_pool", pool: providersPool }),
       });
 
+      // 1b. Save Vapi Pool
+      await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save_vapi_pool", vapiPool }),
+      });
+
       // 2. Save General Settings
       const genRes = await fetch("/api/admin/settings", {
         method: "POST",
@@ -443,6 +513,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                 : activeTab === "phone"
                 ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                : activeTab === "voice"
+                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
                 : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
             }`}>
               {activeTab === "brain" ? (
@@ -451,6 +523,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                 <Zap size={20} />
               ) : activeTab === "phone" ? (
                 <MessageCircle size={20} />
+              ) : activeTab === "voice" ? (
+                <PhoneCall size={20} />
               ) : (
                 <Database size={20} />
               )}
@@ -464,6 +538,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     ? "AI Waterfall Pool · Multi-Key Fallback Chain"
                     : activeTab === "phone"
                     ? "Phone & Messaging Gateway · WhatsApp & Telegram"
+                    : activeTab === "voice"
+                    ? "AI Voice Calling Pool · Free Multi-Account Fallback (Vapi.ai)"
                     : "Integrations & Automation Ecosystem"}
                 </h3>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
@@ -473,6 +549,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     ? "bg-emerald-500 text-black"
                     : activeTab === "phone"
                     ? "bg-blue-500 text-white"
+                    : activeTab === "voice"
+                    ? "bg-rose-500 text-white"
                     : "bg-amber-500 text-black"
                 }`}>
                   Neon Cloud DB
@@ -485,6 +563,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   ? "Configure multiple keys for Gemini, Grok, etc. Auto-fails over with zero downtime."
                   : activeTab === "phone"
                   ? "Live WhatsApp QR code pairing, keepalive status, and Telegram bot phone gateway."
+                  : activeTab === "voice"
+                  ? "Free multi-account Vapi pool ($10 credit per account). Obey calls on your behalf, records audio, and dispatches the MP3 to WhatsApp."
                   : "Apollo B2B lead finder API keys, Tavily live web search, Upwork RSS feeds, and CRM webhooks."}
               </p>
             </div>
@@ -537,6 +617,19 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           >
             <MessageCircle size={14} className={activeTab === "phone" ? "text-white" : "text-blue-500"} />
             <span>💬 WhatsApp & Telegram</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("voice")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "voice"
+                ? "bg-rose-600 text-white shadow-md shadow-rose-500/25 ring-2 ring-rose-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <PhoneCall size={14} className={activeTab === "voice" ? "text-white" : "text-rose-500"} />
+            <span>📞 AI Voice Calls (Vapi)</span>
           </button>
 
           <button
@@ -1363,6 +1456,242 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                 </div>
               </div>
             )}
+
+              {/* TAB: 📞 AI Voice Calling (Vapi Pool) */}
+              {activeTab === "voice" && (
+                <div className="space-y-6">
+                  {/* Strategy & Webhook Banner */}
+                  <div className="p-4 sm:p-5 rounded-2xl border border-rose-500/30 bg-rose-950/10 dark:bg-rose-950/20 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold border border-rose-500/30">
+                          <PhoneCall size={18} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-zinc-950 dark:text-white">
+                            Zero-Cost Multi-Account Voice Calling
+                          </h4>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            Each free Vapi account gives $10 in credits (~100-150 calling minutes). Add multiple accounts below for infinite free failover!
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href="https://dashboard.vapi.ai"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 underline underline-offset-4"
+                      >
+                        Open Vapi Console <ExternalLink size={12} />
+                      </a>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-zinc-300">🔗 Vapi Webhook Server URL:</span>
+                        <span className="text-[10px] text-emerald-400 font-mono">Auto-Recording & Transcription</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-black font-mono text-[11px] text-zinc-300 break-all select-all border border-zinc-800">
+                        https://femiadelekeportfolio.vercel.app/api/obey/calls/webhook
+                      </div>
+                      <p className="text-[10px] text-zinc-500">
+                        Paste this into your Vapi Assistant Server URL. When Obey finishes a call, Vapi automatically sends the <span className="text-zinc-300 font-bold">full audio recording (.mp3) + transcription</span> to Obey, and Obey sends it straight into WhatsApp as a playable voice note!
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Vapi Provider Cards */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                          Active Vapi Account Waterfall ({vapiPool.length})
+                        </h4>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          Auto-Failover on 400/402
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addVapiProvider}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold flex items-center gap-1.5 transition-all"
+                      >
+                        <Plus size={13} />
+                        Add Vapi Account
+                      </button>
+                    </div>
+
+                    {vapiPool.length === 0 ? (
+                      <div className="p-8 text-center border-2 border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl space-y-2">
+                        <PhoneCall size={28} className="mx-auto text-zinc-400" />
+                        <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                          No Vapi accounts configured yet
+                        </p>
+                        <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                          Sign up at vapi.ai, grab your Private API Key, and click &quot;Add Vapi Account&quot; to enable AI voice calling for free.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={addVapiProvider}
+                          className="mt-2 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-black text-xs inline-flex items-center gap-1.5 transition-all shadow-md shadow-rose-500/20"
+                        >
+                          <Plus size={13} />
+                          Add First Vapi Account
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {vapiPool.map((prov, index) => {
+                          const result = testResults[prov.id];
+                          return (
+                            <div
+                              key={prov.id}
+                              className={`p-4 rounded-2xl border transition-all ${
+                                prov.enabled
+                                  ? "bg-zinc-50 dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800"
+                                  : "bg-zinc-100/50 dark:bg-zinc-950/40 border-dashed border-zinc-300 dark:border-zinc-800/60 opacity-60"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                    index === 0
+                                      ? "bg-rose-500 text-white shadow-sm"
+                                      : "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                                  }`}>
+                                    #{index + 1} {index === 0 ? "PRIMARY" : "FALLBACK"}
+                                  </span>
+
+                                  <input
+                                    type="text"
+                                    value={prov.name}
+                                    onChange={(e) => updateVapiProvider(prov.id, { name: e.target.value })}
+                                    className="text-xs font-black bg-transparent border-b border-transparent hover:border-zinc-400 dark:hover:border-zinc-600 focus:border-rose-500 focus:outline-none px-1 py-0.5 text-zinc-900 dark:text-white"
+                                    placeholder="Account Name"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => moveVapiProvider(index, "up")}
+                                    disabled={index === 0}
+                                    className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 transition-all"
+                                    title="Move Priority Up"
+                                  >
+                                    <ArrowUp size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveVapiProvider(index, "down")}
+                                    disabled={index === vapiPool.length - 1}
+                                    className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 transition-all"
+                                    title="Move Priority Down"
+                                  >
+                                    <ArrowDown size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateVapiProvider(prov.id, { enabled: !prov.enabled })}
+                                    className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+                                    title={prov.enabled ? "Disable Provider" : "Enable Provider"}
+                                  >
+                                    {prov.enabled ? (
+                                      <ToggleRight size={18} className="text-rose-500" />
+                                    ) : (
+                                      <ToggleLeft size={18} className="text-zinc-500" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeVapiProvider(prov.id)}
+                                    className="p-1 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                    title="Remove Provider"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    Vapi API Key (Private Key) *
+                                  </label>
+                                  <input
+                                    type="password"
+                                    value={prov.apiKey}
+                                    onChange={(e) => updateVapiProvider(prov.id, { apiKey: e.target.value })}
+                                    placeholder="vapi_live_..."
+                                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    Assistant ID (Optional)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={prov.assistantId || ""}
+                                    onChange={(e) => updateVapiProvider(prov.id, { assistantId: e.target.value })}
+                                    placeholder="Leave blank for auto Obey companion"
+                                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    Phone Number ID (Optional)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={prov.phoneNumberId || ""}
+                                    onChange={(e) => updateVapiProvider(prov.id, { phoneNumberId: e.target.value })}
+                                    placeholder="From Vapi phone numbers tab"
+                                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestVapi(prov.id, prov.apiKey)}
+                                  disabled={!prov.apiKey || result?.testing}
+                                  className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold flex items-center gap-1.5 transition-all disabled:opacity-40"
+                                >
+                                  {result?.testing ? (
+                                    <>
+                                      <RefreshCw size={11} className="animate-spin text-rose-500" />
+                                      Validating Key...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <PhoneCall size={11} className="text-rose-500" />
+                                      Test Vapi Key
+                                    </>
+                                  )}
+                                </button>
+
+                                {result && !result.testing && (
+                                  <span className={`text-[11px] font-bold flex items-center gap-1 ${
+                                    result.success ? "text-emerald-500" : "text-red-500"
+                                  }`}>
+                                    {result.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                                    {result.message}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
