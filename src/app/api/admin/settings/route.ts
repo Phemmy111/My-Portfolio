@@ -100,29 +100,41 @@ export async function POST(req: NextRequest) {
     if (body.action === "whatsapp_qr" || body.action === "whatsapp_reconnect") {
       const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
       const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+      const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
       try {
         if (body.force || body.action === "whatsapp_reconnect") {
           try {
-            await fetch(`${evoUrl}/instance/restart/obey-session`, {
+            await fetch(`${evoUrl}/instance/restart/${instanceName}`, {
               method: "POST",
               headers: { apikey: evoKey },
             });
           } catch {}
         }
 
-        // Check connection state
-        const stateRes = await fetch(`${evoUrl}/instance/connectionState/obey-session`, {
+        // Fetch instance object to check real-time connection without stale cached states
+        const instRes = await fetch(`${evoUrl}/instance/fetchInstances`, {
           headers: { apikey: evoKey },
         });
-        const stateData = await stateRes.json();
-        const isConnected = stateData?.instance?.state === "open";
+        const instances = await instRes.json();
+        const inst = Array.isArray(instances) ? instances.find((i: any) => i.name === instanceName) : null;
+
+        const isConnected = Boolean(
+          inst &&
+          inst.connectionStatus === "open" &&
+          !inst.disconnectionReasonCode
+        );
 
         if (isConnected && !body.force) {
-          return NextResponse.json({ success: true, connected: true, state: "open" });
+          return NextResponse.json({
+            success: true,
+            connected: true,
+            state: "open",
+            ownerJid: inst.ownerJid,
+          });
         }
 
         // Fetch fresh QR code
-        const connectRes = await fetch(`${evoUrl}/instance/connect/obey-session`, {
+        const connectRes = await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
           headers: { apikey: evoKey },
         });
         const connectData = await connectRes.json();

@@ -15,7 +15,7 @@ export async function sendWhatsAppMessage(
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName =
-      process.env.EVOLUTION_INSTANCE_NAME || "obey-session";
+      process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     // Femi's personal WhatsApp number — fallback when no recipient supplied
     const targetPhone = (recipient || "2348120934828").replace(/\D/g, "");
