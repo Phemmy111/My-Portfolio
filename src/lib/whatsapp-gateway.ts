@@ -69,3 +69,79 @@ export async function sendWhatsAppMessage(
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Fetches base64 media for incoming WhatsApp messages (voice notes, images, documents)
+ * Checks webhook payload base64 first, falls back to Evolution API endpoint:
+ * POST /chat/getBase64FromMediaMessage/${instanceName}
+ */
+export async function fetchEvolutionMediaBase64(
+  msgObj: any
+): Promise<{ base64: string; mimetype: string } | null> {
+  if (!msgObj) return null;
+
+  // 1. Check if base64 is already attached directly to the message object (from webhookBase64: true)
+  const directBase64 =
+    msgObj.message?.base64 ||
+    msgObj.base64 ||
+    msgObj.message?.audioMessage?.base64 ||
+    msgObj.message?.imageMessage?.base64 ||
+    msgObj.message?.documentMessage?.base64;
+
+  const mimetype =
+    msgObj.message?.audioMessage?.mimetype ||
+    msgObj.message?.imageMessage?.mimetype ||
+    msgObj.message?.documentMessage?.mimetype ||
+    (msgObj.message?.audioMessage ? "audio/ogg" : msgObj.message?.imageMessage ? "image/jpeg" : "application/octet-stream");
+
+  if (directBase64 && typeof directBase64 === "string" && directBase64.length > 50) {
+    return {
+      base64: directBase64.replace(/^data:[^;]+;base64,/, ""),
+      mimetype,
+    };
+  }
+
+  // 2. Fall back to calling Evolution API getBase64FromMediaMessage endpoint
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    if (!msgObj.key?.id) return null;
+
+    const res = await fetch(
+      `${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: evoKey,
+        },
+        body: JSON.stringify({
+          message: {
+            key: msgObj.key,
+          },
+          convertToMp4: false,
+        }),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      const b64 = data.base64 || data.data?.base64;
+      if (b64 && typeof b64 === "string") {
+        return {
+          base64: b64.replace(/^data:[^;]+;base64,/, ""),
+          mimetype: data.mimetype || mimetype,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[WhatsApp] fetchEvolutionMediaBase64 error:", err);
+  }
+
+  return null;
+}
+

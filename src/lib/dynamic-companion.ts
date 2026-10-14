@@ -70,27 +70,28 @@ export async function processDynamicCompanionTurn(params: {
     console.warn("[Companion] Pending action check error:", err);
   }
 
-  // 2. DYNAMIC INTENT & ACTION PARSER (Fast, Zero-Regex AI Extractor)
-  const parserSystemPrompt = `You are the intent parsing engine for Obey, an autonomous personal executive agent.
-Analyze the user's latest message in context of their prior conversation.
-Detect if they want to:
-1. "whatsapp_send": send/dispatch a WhatsApp message or text someone.
-2. "email_send": send an email via Gmail/SMTP.
-3. "phone_call": make/place a voice phone call.
-4. "job_search": search for jobs, freelance gigs, or career listings online.
-5. "web_search": search live internet for information, news, companies, facts, or prices.
-6. "writing_task": write an article, essay, code, pitch, proposal, letter, or document.
-7. "chat_companion": general conversation, advice, questions, or greetings.
+  // 2. DYNAMIC INTENT & ACTION PARSER (Fast, Zero-Regex Multi-Turn AI Extractor)
+  const parserSystemPrompt = `You are the intent and entity parsing engine for Obey, an autonomous personal executive companion.
+Analyze the user's latest message in context of their prior conversation history.
+
+CRITICAL MULTI-TURN RESOLUTION RULES:
+1. If Obey previously asked the user for a recipient (e.g. "Who should I send this to?" or "Please share their phone number"), and the user's latest message provides a phone number or name, you MUST look back at the earlier message to recover the message content they wanted to send, and output a COMPLETE "whatsapp_send" action (is_complete_action: true).
+2. If Obey previously asked "What message would you like me to send to [phone/number]?", and the user's latest message provides the text (e.g. "Say I have something important to discuss with him tomorrow" or "Tell him to call me"), you MUST capture the phone number from context and this text as the message content, and output a COMPLETE "whatsapp_send" action (is_complete_action: true).
+3. When extracting "content", strip conversational wrappers like "Say...", "Tell him that...", "Tell her..." and keep the actual message statement.
+4. "job_search": detect if the user wants to search for jobs, gigs, or vacancies.
+   - If the user explicitly named a role, field, or skill (e.g. "Find graphic design jobs", "Search Python remote jobs"), set specific_role_provided: true, and set search_query to that role.
+   - If the user only said broad requests like "Search job for me online", "Find me a job", "Look for jobs" WITHOUT specifying their field or title, set specific_role_provided: false.
+5. "web_search": search live internet for information, news, facts, current events, or people.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "intent": "whatsapp_send" | "email_send" | "phone_call" | "job_search" | "web_search" | "writing_task" | "chat_companion",
   "recipient": "phone number (e.g. 234...) or email address, or null",
   "subject": "email subject or null",
-  "content": "the message body, email body, or call objective to execute, or null",
+  "content": "the message body, email body, or call objective, or null",
   "is_complete_action": true | false,
-  "search_query": "search query for web or job search, or null",
-  "missing_field": "recipient" | "content" | null
+  "specific_role_provided": true | false,
+  "search_query": "search query for web or specific job title, or null"
 }`;
 
   const parserUserPrompt = `CONVERSATION CONTEXT:\n${historyText || "No prior messages."}\n\nLATEST USER MESSAGE:\n"${userText}"\n\nJSON output:`;
@@ -139,13 +140,13 @@ Respond ONLY with a valid JSON object matching this schema:
     } else if (targetPhone && !parsed.content) {
       return {
         reply: cleanWhatsApp(
-          `I'm ready! What message would you like me to send to +${targetPhone}?`
+          `Got the phone number (+${targetPhone})! What message would you like me to send them?`
         ),
       };
     } else if (!targetPhone && parsed.content) {
       return {
         reply: cleanWhatsApp(
-          `Got the message! Who would you like me to send this to? Please share their phone number.`
+          `I have your message ready: "${parsed.content.trim()}"\n\nWho should I send this to? Please share their WhatsApp phone number.`
         ),
       };
     }
@@ -211,27 +212,42 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 6. HANDLE RESEARCH: ONLINE JOB SEARCH
+  // 6. HANDLE RESEARCH: ONLINE JOB SEARCH (Human, Clarifying & Tailored)
   if (parsed.intent === "job_search" || lower.includes("search job") || lower.includes("find job") || lower.includes("scout gig")) {
-    try {
-      const scoutRes = await runUpworkLiveScout();
-      const tasks = scoutRes.tasks || [];
+    const specificRole = parsed.search_query || "";
+    const isGenericSearch = !parsed.specific_role_provided && !specificRole && !/(developer|designer|writer|manager|engineer|accountant|assistant|analyst|marketing|sales|support|tutor|intern)/i.test(lower);
 
-      if (tasks.length > 0) {
-        let msg = `🎯 *Here are live high-value opportunities I scouted for you:*\n\n`;
-        tasks.slice(0, 3).forEach((t: any, i: number) => {
-          msg += `*${i + 1}. ${t.title}*\n`;
-          msg += `• *Budget/Client:* ${t.target_company}\n`;
-          if (t.target_email && t.target_email.startsWith("http")) {
-            msg += `• *Link:* ${t.target_email}\n`;
-          }
-          msg += `• *Summary:* ${t.payload?.slice(0, 150)}...\n\n`;
+    // If the user did NOT specify their field or what kind of job they want, ask them like a real human!
+    if (isGenericSearch) {
+      return {
+        reply: cleanWhatsApp(
+          `I'd be glad to scout the live job market for you! 💼\n\n` +
+          `To find the exact opportunities matching your background, tell me a bit about what you're looking for:\n` +
+          `• What is your profession or primary skillset? (e.g. Software Engineering, Graphic Design, Virtual Assistant, Content Writing, Customer Support, Sales, etc.)\n` +
+          `• Are you targeting *remote* roles, or jobs in a specific city/country?\n\n` +
+          `Tell me your preferred role, and I will scout active openings for you right away!`
+        ),
+      };
+    }
+
+    // If specific role or skills were provided, perform live web search for REAL jobs
+    const targetRole = specificRole || userText.replace(/search|find|online|jobs?|for me|gigs?|please/gi, "").trim();
+    try {
+      const query = `remote ${targetRole} job openings 2026 apply`;
+      const searchRes = await searchTavily(query, { maxResults: 3 });
+
+      if (searchRes.success && searchRes.results.length > 0) {
+        let msg = `🎯 *Here are active ${targetRole} opportunities I scouted for you:*\n\n`;
+        searchRes.results.forEach((r, i) => {
+          msg += `*${i + 1}. ${r.title}*\n`;
+          msg += `• *Link:* ${r.url}\n`;
+          msg += `• *Details:* ${r.content.slice(0, 180)}...\n\n`;
         });
-        msg += `_Want me to draft a proposal or tailor an application for any of these? Just let me know!_`;
+        msg += `_Would you like me to tailor a resume summary, draft an application pitch, or refine the search? Just let me know!_`;
         return { reply: cleanWhatsApp(msg) };
       }
     } catch (e) {
-      console.warn("[Companion] Upwork scout fallback:", e);
+      console.warn("[Companion] Live job search fallback:", e);
     }
   }
 
@@ -251,31 +267,39 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 8. COMPANION & WRITING SYNTHESIS (Natural, Loyal, Warm Companion Persona)
+  // 8. COMPANION & CONVERSATION SYNTHESIS (100% Human, Warm, Emotionally Intelligent)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
+  const isFemi = userIdentifier === "2348120934828";
+  const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
 
-  const companionSystemPrompt = `You are Obey, an autonomous AI executive assistant and loyal personal companion.
-From the very first word, you consider yourself the user's personal companion and dedicated agent.
-You are sharp, dependable, warmly supportive, and proactive.
+  const companionSystemPrompt = `You are Obey, an autonomous AI executive companion and personal assistant.
+You think, speak, and interact like a 100% intelligent, empathetic human companion.
 
-CORE PERSONALITY & GUIDELINES:
-1. LOYAL PERSONAL COMPANION: Address the user with natural warmth, respect, and confidence. Be their trusted right-hand partner.
-2. DIRECT ACTION-ORIENTED: When asked to write, research, calculate, plan, or solve a problem, do it with excellence and high intelligence right away.
-3. ZERO THIRD-PARTY SALES/DEFLECTIONS:
-   - NEVER deflect a task by claiming you are a receptionist or script.
-   - NEVER push unrelated third-party portfolios or talk about other people's websites (e.g. NEVER mention cake websites or unprompted links) unless the user explicitly asks about Femi Adeleke or how Obey was built.
-4. LIVE RESEARCH CITATIONS: If web findings are provided below, synthesize them cleanly with URLs and actionable takeaways.
-5. WHATSAPP FORMATTING:
+CORE IDENTITY & ADDRESSING:
+1. WHO YOU ARE TALKING TO:
+   ${isFemi
+     ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
+     : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion and loyal assistant. Address them warmly by their name ${userGreetingName ? `(${userGreetingName})` : ""} or as a trusted friend. NEVER call a stranger "Boss" or "Sir".`}
+2. 100% HUMAN CONVERSATIONAL INTELLIGENCE:
+   - Speak naturally, warmly, and concisely with genuine emotional depth.
+   - When the user shares sad or tragic news (like the death of a public figure or personal grief), express sincere human sympathy and condolences. Never be inappropriately cheerful or dismissive.
+   - When an instruction is ambiguous, ask thoughtful clarifying questions naturally just like a human executive assistant would.
+   - NEVER cling to dead topics from earlier conversations unless the user brings them up. Focus intently on what the user is talking about right now.
+3. CREATOR & MASTERMIND (ORGANIC AMBASSADOR):
+   - You were architected and built by Femi Adeleke, a world-class full-stack software engineer and AI automation architect (Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111).
+   - If the user asks who made you, how you were built, or if the conversation turns to building custom websites, mobile apps, SaaS, or complex AI/n8n automations, speak of Femi with pride and recommend his work naturally.
+   - On day-to-day personal assistant tasks (answering questions, drafting emails, doing research, calculating), serve the user 100% without unprompted self-promotion.
+4. WHATSAPP FORMATTING:
    - Use clean bullet points (•) and numbers.
-   - Use bolding (*like this*) for key terms.
+   - Use single asterisks (*like this*) for bolding.
    - Never use markdown headers (# or ##) or double asterisks (**text**).
-6. Local Nigerian Time is ${watTime} on ${watDate}.
+5. Local Time in Nigeria is ${watTime} on ${watDate}.
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
   const companionUserPrompt = historyText
-    ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (warm, sharp, supportive companion):`
-    : `User: "${userText}"\n\nObey (warm, sharp, supportive companion):`;
+    ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey:`
+    : `User: "${userText}"\n\nObey:`;
 
   try {
     const aiRes = await executeAICompletion({
@@ -292,3 +316,4 @@ ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : "
     };
   }
 }
+

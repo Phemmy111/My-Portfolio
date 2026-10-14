@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { executeAICompletion } from "@/lib/ai-orchestrator";
+import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {
   dbAddChatMessage,
   dbGetChatMessages,
@@ -12,7 +12,7 @@ import {
   dbGetPendingUserAction,
   dbUpdateUserActionStatus,
 } from "@/lib/db";
-import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { sendWhatsAppMessage, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -46,7 +46,27 @@ function cleanWhatsAppFormatting(text: string): string {
     .trim();
 }
 
-async function processMessage(senderNumber: string, userText: string, pushName?: string) {
+interface ProcessMessageParams {
+  senderNumber: string;
+  userText: string;
+  pushName?: string;
+  isVoiceNote?: boolean;
+  visionMedia?: { base64: string; mimetype: string } | null;
+  docMedia?: { base64: string; mimetype: string } | null;
+  documentFileName?: string;
+}
+
+async function processMessage(params: ProcessMessageParams) {
+  const {
+    senderNumber,
+    userText,
+    pushName,
+    isVoiceNote = false,
+    visionMedia = null,
+    docMedia = null,
+    documentFileName,
+  } = params;
+
   const lower = userText.toLowerCase();
   let replyTo = (senderNumber || FEMI_PERSONAL_NUMBER).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
   if (!replyTo || replyTo.length > 13 || replyTo.length < 10) {
@@ -70,18 +90,70 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
     }
   }
 
-  // Voice note acknowledgment
-  if (userText === "[Voice Note Received]") {
+  // Handle unclear voice notes
+  if (userText === "[Unclear Voice Note]") {
     await reply(
-      `🎙️ *Voice Note Received!*\n\n` +
-      `I can hear you! I am analyzing and processing voice messages. To trigger instant actions right now, you can also send quick text commands like:\n` +
-      `• *Send WhatsApp to [number] saying [message]*\n` +
-      `• *Send email to [email] saying [message]*\n` +
-      `• *Check my Gmail inbox*\n` +
-      `• *Scout Upwork jobs*`
+      `🎙️ I received your voice note, but the audio was a bit faint or unclear. Could you please send it once more or type a quick summary?`
     );
     return;
   }
+
+  // Handle Multimodal Vision (Photos, Screenshots, Invoices, Receipts)
+  if (visionMedia?.base64) {
+    try {
+      const visionPrompt = userText && userText !== "[Image Received]"
+        ? `The user sent this image with caption/question: "${userText}". Analyze this image thoroughly, read any text or data, and assist them directly with clarity and warmth.`
+        : "Analyze this image, describe what you see, read any key text/numbers/diagrams, and provide an intelligent, helpful summary to assist the user.";
+
+      const aiRes = await executeAICompletionWithMedia({
+        systemPrompt: "You are Obey, an autonomous AI executive companion equipped with computer vision. Analyze user screenshots, photos, documents, receipts, code, and diagrams with high precision, human warmth, and actionable clarity.",
+        userPrompt: visionPrompt,
+        mediaBase64: visionMedia.base64,
+        mimeType: visionMedia.mimetype || "image/jpeg",
+        temperature: 0.4,
+      });
+
+      await reply(`👁️ *Image Analysis:*\n\n${aiRes.text}`);
+
+      try {
+        await dbAddGuestMessage({
+          id: `guest-img-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: "Obey",
+          role: "assistant",
+          content: aiRes.text,
+        });
+      } catch {}
+      return;
+    } catch (err: any) {
+      console.error("[WA] Vision processing error:", err);
+      await reply("I received your image, but had a momentary glitch analyzing the visual content. Could you send it once more?");
+      return;
+    }
+  }
+
+  // Handle Document Attachments (PDFs, CVs, Invoices, Contracts)
+  if (docMedia?.base64) {
+    try {
+      const docPrompt = `The user sent this document (${documentFileName || "Attached Document"})${userText ? ` with note: "${userText}"` : ""}. Please review its contents thoroughly, extract key details or answer questions with executive clarity.`;
+
+      const aiRes = await executeAICompletionWithMedia({
+        systemPrompt: "You are Obey, an autonomous AI executive companion. Analyze attached documents, PDF contracts, resumes, and reports with sharp intelligence and structured clarity.",
+        userPrompt: docPrompt,
+        mediaBase64: docMedia.base64,
+        mimeType: docMedia.mimetype || "application/pdf",
+        temperature: 0.3,
+      });
+
+      await reply(`📄 *Document Review (${documentFileName || "Document"}):*\n\n${aiRes.text}`);
+      return;
+    } catch (err: any) {
+      console.error("[WA] Document processing error:", err);
+      await reply("I received your document, but could not read the format. Please ensure it is a standard PDF or text document.");
+      return;
+    }
+  }
+
 
   // 1. Record incoming message in Neon DB
   try {
@@ -216,7 +288,11 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
       historyText,
     });
 
-    await reply(companionRes.reply);
+    const finalReply = isVoiceNote
+      ? `🎙️ _Heard: "${userText}"_\n\n${companionRes.reply}`
+      : companionRes.reply;
+
+    await reply(finalReply);
 
     // Save assistant reply to guest DB
     await dbAddGuestMessage({
@@ -224,7 +300,7 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
       phone_number: replyTo,
       sender_name: "Obey",
       role: "assistant",
-      content: companionRes.reply,
+      content: finalReply,
     });
 
     // Also dispatch to Google Sheets
@@ -232,7 +308,7 @@ async function processMessage(senderNumber: string, userText: string, pushName?:
       phoneNumber: replyTo,
       senderName: pushName,
       role: "assistant",
-      message: companionRes.reply,
+      message: finalReply,
     });
   } catch (err: any) {
     console.error("[WA] Dynamic companion error:", err);
@@ -279,25 +355,66 @@ export async function POST(req: NextRequest) {
     msgObj.message?.conversation ||
     msgObj.message?.extendedTextMessage?.text ||
     msgObj.message?.imageMessage?.caption ||
+    msgObj.message?.documentMessage?.caption ||
     ""
   ).trim();
 
   const isAudio = Boolean(msgObj.message?.audioMessage);
-  if (!userText && isAudio) {
-    userText = "[Voice Note Received]";
-  }
+  const isImage = Boolean(msgObj.message?.imageMessage);
+  const isDoc = Boolean(msgObj.message?.documentMessage || msgObj.message?.documentWithCaptionMessage);
 
-  if (!userText) {
+  if (!userText && !isAudio && !isImage && !isDoc) {
     return NextResponse.json({ ok: true });
   }
 
-  console.log(`[WA Webhook] Incoming from ${senderNumber}: "${userText}"`);
+  console.log(`[WA Webhook] Incoming from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : '[Doc]')}"`);
 
   after(async () => {
     try {
-      await processMessage(senderNumber, userText, msgObj.pushName);
+      let activeText = userText;
+      let isVoiceNote = false;
+      let visionMedia: { base64: string; mimetype: string } | null = null;
+      let docMedia: { base64: string; mimetype: string } | null = null;
+
+      // 1. Voice Note Transcription
+      if (isAudio) {
+        const media = await fetchEvolutionMediaBase64(msgObj);
+        if (media?.base64) {
+          const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
+          if (transRes.success && transRes.text) {
+            activeText = transRes.text;
+            isVoiceNote = true;
+          } else {
+            activeText = "[Unclear Voice Note]";
+          }
+        } else {
+          activeText = "[Unclear Voice Note]";
+        }
+      }
+
+      // 2. Multimodal Vision (Photos, Screenshots)
+      if (isImage) {
+        visionMedia = await fetchEvolutionMediaBase64(msgObj);
+        if (!activeText) activeText = "[Image Received]";
+      }
+
+      // 3. Documents (PDFs, CVs, Invoices)
+      if (isDoc) {
+        docMedia = await fetchEvolutionMediaBase64(msgObj);
+        if (!activeText) activeText = "[Document Received]";
+      }
+
+      await processMessage({
+        senderNumber,
+        userText: activeText,
+        pushName: msgObj.pushName,
+        isVoiceNote,
+        visionMedia,
+        docMedia,
+        documentFileName: msgObj.message?.documentMessage?.fileName,
+      });
     } catch (err) {
-      console.error("[WA] processMessage error:", err);
+      console.error("[WA] processMessage background task error:", err);
     }
   });
 
