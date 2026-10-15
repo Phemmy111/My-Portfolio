@@ -366,6 +366,8 @@ Respond ONLY with a valid JSON object matching this schema:
         website_changes: `Implement the requested design revamp and enhancements: ${lastObeyLine.slice(0, 600)}`,
       };
     }
+  }
+
   // DETERMINISTIC DOCUMENT GENERATION RECOVERY:
   // If user requests a document (e.g. "turn it to docs", "make it a doc", "google docs", "the pitch nau", "turn this to doc"):
   const requestsDocument =
