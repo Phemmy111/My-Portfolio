@@ -51,6 +51,71 @@ function cleanWhatsApp(text: string): string {
 }
 
 /**
+ * Formats an outbound delegated message to a contact in polite reported speech,
+ * including dynamic WAT greeting, Femi's name, and Obey's ecosystem links.
+ */
+export async function formatOutboundDelegatedWhatsAppMessage(params: {
+  rawContent: string;
+  userInstruction: string;
+  senderName?: string;
+  isFemi: boolean;
+}): Promise<string> {
+  const { rawContent, userInstruction, senderName, isFemi } = params;
+
+  // Calculate Nigeria WAT greeting
+  const { timeStr } = getNigerianTime();
+  const hourMatch = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  let greeting = "Hello";
+  if (hourMatch) {
+    let hour = parseInt(hourMatch[1], 10);
+    const ampm = hourMatch[3].toUpperCase();
+    if (ampm === "PM" && hour < 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    if (hour < 12) greeting = "Good morning";
+    else if (hour < 17) greeting = "Good afternoon";
+    else greeting = "Good evening";
+  }
+
+  const senderLabel = isFemi ? "Femi" : (senderName ? senderName.trim() : "Femi");
+
+  // Transform message into clear, polite reported speech on Femi's behalf
+  let reportedSpeech = `${senderLabel} asked me to relay this to you: "${rawContent}"`;
+  try {
+    const res = await executeAICompletion({
+      systemPrompt: `You are Obey, the professional AI executive assistant to ${senderLabel}.
+Convert the user's instructions into polite, natural, crisp reported speech addressed to the recipient.
+Always explicitly mention that ${senderLabel} asked you to deliver this message.
+Examples:
+- "tell him I am busy right now" -> "${senderLabel} asked me to let you know that he is currently busy right now."
+- "tell her to send the project files" -> "${senderLabel} asked me to request the project files from you."
+- "tell them I will be around tomorrow" -> "${senderLabel} asked me to inform you that he will be around tomorrow."
+Return ONLY the single transformed reported speech sentence without quotes or intro text.`,
+      userPrompt: `USER COMMAND: "${userInstruction}"\nMESSAGE ESSENCE: "${rawContent}"\nREPORTED SPEECH:`,
+      temperature: 0.2,
+      maxTokens: 120,
+    });
+    const candidate = res.text.trim().replace(/^["']|["']$/g, "");
+    if (candidate.length > 5 && !candidate.toLowerCase().includes("user command")) {
+      reportedSpeech = candidate;
+    }
+  } catch (e) {
+    reportedSpeech = `${senderLabel} asked me to let you know: ${rawContent}`;
+  }
+
+  return `${greeting}!
+
+${reportedSpeech}
+
+—
+*I am Obey, ${senderLabel}'s personal AI executive companion.* If you don't have me yet or would like my assistance, you can access me directly:
+• *WhatsApp:* https://wa.me/2349161488564
+• *Telegram:* https://t.me/ObeyAssistantBot
+• *Website:* https://femiadelekeportfolio.vercel.app
+
+Looking forward to assisting you too!`;
+}
+
+/**
  * Universal Dynamic Intent & Action Engine
  * Dynamically resolves tasks, research, actions, and companion responses without rigid regex templates.
  */
@@ -153,18 +218,26 @@ Respond ONLY with a valid JSON object matching this schema:
   // 3. HANDLE ACTION: WHATSAPP SEND
   if (parsed.intent === "whatsapp_send") {
     if (parsed.is_complete_action && targetPhone && parsed.content) {
+      const isFemi = userIdentifier === "2348120934828";
+      const formattedMessage = await formatOutboundDelegatedWhatsAppMessage({
+        rawContent: parsed.content.trim(),
+        userInstruction: userText,
+        senderName,
+        isFemi,
+      });
+
       await dbCreateUserPendingAction({
         userIdentifier,
         actionType: "whatsapp_message",
         targetRecipient: targetPhone,
-        payload: parsed.content.trim(),
+        payload: formattedMessage,
       });
 
       return {
         reply: cleanWhatsApp(
           `📋 *WhatsApp Message Drafted — Ready for Your Approval:*\n\n` +
           `• *Recipient:* +${targetPhone}\n` +
-          `• *Message Content:*\n"${parsed.content.trim()}"\n\n` +
+          `• *Message Preview:*\n"${formattedMessage}"\n\n` +
           `👉 Reply *YES* (or *1*) to dispatch immediately, or *NO* to cancel.`
         ),
         actionStaged: true,
@@ -218,7 +291,8 @@ Respond ONLY with a valid JSON object matching this schema:
   // 5. HANDLE ACTION: AI PHONE CALL / LIVE WEBRTC VOICE CALL
   const cleanUserPhone = userIdentifier.replace(/\D/g, "");
   const isDirectCallRequest =
-    /\b(call me|can we (talk|speak|call)|want to (talk|speak|call)|voice call|let'?s (talk|speak|call)|can i call you|talk on call|speak with you)\b/i.test(lower) &&
+    /\b(call me|voice call|phone call|call my line|ring my line|can i call you on voice|give me a call)\b/i.test(lower) &&
+    !/\b(project|website|code|artifact|feature|tomorrow|later|idea|email|message|chat|build|fix)\b/i.test(lower) &&
     (!targetPhone || targetPhone === cleanUserPhone);
 
   if (isDirectCallRequest) {
@@ -444,6 +518,10 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
+
+9. STRICT INSTRUCTION ON VOICE CALLS:
+   - NEVER tell the user 'Initiating the call to your line right now', 'Ringing your line', 'Connecting you now', or claim you are calling them on WhatsApp.
+   - Obey does NOT place unprompted outbound phone calls. When the user says casual greetings or words like 'Alright', 'Hello', 'Thanks', answer their chat directly like a normal human.
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 

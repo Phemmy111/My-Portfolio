@@ -288,9 +288,7 @@ async function processMessage(params: ProcessMessageParams) {
       historyText,
     });
 
-    const finalReply = isVoiceNote
-      ? `🎙️ _Heard: "${userText}"_\n\n${companionRes.reply}`
-      : companionRes.reply;
+    const finalReply = companionRes.reply;
 
     if (finalReply && finalReply.trim()) {
       await reply(finalReply);
