@@ -149,6 +149,73 @@ export async function getLatestUserArtifact(userIdentifier: string): Promise<Art
 }
 
 /**
+ * Retrieves the user's recent artifacts (history of generated web pages / code).
+ */
+export async function getUserArtifacts(userIdentifier: string, limit = 5): Promise<Artifact[]> {
+  try {
+    await ensureArtifactsTable();
+    const sql = getSql();
+    const rows = await sql`
+      SELECT id, identifier, title, type, content, description, user_identifier, created_at
+      FROM obey_artifacts
+      WHERE user_identifier = ${userIdentifier}
+      ORDER BY created_at DESC
+      LIMIT ${limit};
+    `;
+    return rows.map((r: any) => ({
+      id: r.id,
+      identifier: r.identifier,
+      title: r.title,
+      type: r.type,
+      content: r.content,
+      description: r.description,
+      user_identifier: r.user_identifier,
+      created_at: r.created_at,
+    }));
+  } catch (err) {
+    console.warn("[Artifacts] Error getting user artifacts:", err);
+    return [];
+  }
+}
+
+/**
+ * Finds a specific user artifact by keywords or falls back to latest.
+ */
+export async function findUserArtifact(userIdentifier: string, query?: string): Promise<Artifact | null> {
+  try {
+    await ensureArtifactsTable();
+    const sql = getSql();
+    if (query && query.trim().length > 2) {
+      const cleanQ = `%${query.trim().toLowerCase()}%`;
+      const rows = await sql`
+        SELECT id, identifier, title, type, content, description, user_identifier, created_at
+        FROM obey_artifacts
+        WHERE user_identifier = ${userIdentifier}
+          AND (LOWER(title) LIKE ${cleanQ} OR LOWER(description) LIKE ${cleanQ})
+        ORDER BY created_at DESC
+        LIMIT 1;
+      `;
+      if (rows.length > 0) {
+        const r = rows[0];
+        return {
+          id: r.id,
+          identifier: r.identifier,
+          title: r.title,
+          type: r.type,
+          content: r.content,
+          description: r.description,
+          user_identifier: r.user_identifier,
+          created_at: r.created_at,
+        };
+      }
+    }
+    return getLatestUserArtifact(userIdentifier);
+  } catch (err) {
+    return getLatestUserArtifact(userIdentifier);
+  }
+}
+
+/**
  * Extracts artifact blocks from AI model responses formatted as:
  * <artifact identifier="..." type="..." title="...">content</artifact>
  * Supports ANY attribute order and auto-heals unclosed tags.

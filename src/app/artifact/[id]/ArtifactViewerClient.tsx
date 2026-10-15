@@ -32,14 +32,52 @@ export default function ArtifactViewerClient({ artifact }: Props) {
     URL.revokeObjectURL(url);
   };
 
-  // Prepare safe sandboxed HTML with Tailwind CSS CDN preloaded
-  const sandboxedHtml = `
+  // Storage polyfill ensuring localStorage never throws SecurityError in sandboxed iframes
+  const storagePolyfill = `
+<script>
+(function() {
+  try {
+    var testKey = '__obey_storage_test__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+  } catch(e) {
+    console.warn('[Obey Preview] Sandbox active, polyfilling localStorage with memory storage');
+    var mem = {};
+    try {
+      Object.defineProperty(window, 'localStorage', {
+        value: {
+          getItem: function(k) { return mem[k] !== undefined ? mem[k] : null; },
+          setItem: function(k, v) { mem[k] = String(v); },
+          removeItem: function(k) { delete mem[k]; },
+          clear: function() { mem = {}; },
+          key: function(i) { return Object.keys(mem)[i] || null; },
+          get length() { return Object.keys(mem).length; }
+        },
+        configurable: true,
+        writable: true
+      });
+    } catch(err) {}
+  }
+})();
+</script>
+`;
+
+  // Prepare safe sandboxed HTML with Tailwind CSS CDN and storage polyfill preloaded
+  const isCompleteDoc = artifact.content.includes("<!DOCTYPE") || artifact.content.includes("<html");
+  let sandboxedHtml = "";
+  if (isCompleteDoc) {
+    sandboxedHtml = artifact.content.includes("<head>")
+      ? artifact.content.replace("<head>", `<head>${storagePolyfill}`)
+      : `${storagePolyfill}${artifact.content}`;
+  } else {
+    sandboxedHtml = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
+  ${storagePolyfill}
   <style>
     body {
       margin: 0;
@@ -59,7 +97,8 @@ export default function ArtifactViewerClient({ artifact }: Props) {
   ${artifact.content}
 </body>
 </html>
-  `;
+    `;
+  }
 
   return (
     <div className="flex-1 flex flex-col bg-zinc-900/60 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -134,7 +173,7 @@ export default function ArtifactViewerClient({ artifact }: Props) {
               key={key}
               srcDoc={sandboxedHtml}
               title={artifact.title}
-              sandbox="allow-scripts allow-modals"
+              sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
               className="w-full flex-1 min-h-[550px] border border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 shadow-inner"
             />
           </div>

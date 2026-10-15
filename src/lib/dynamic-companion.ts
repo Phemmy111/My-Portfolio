@@ -21,6 +21,8 @@ import {
   extractArtifactBlocks,
   stripArtifactBlocks,
   getLatestUserArtifact,
+  getUserArtifacts,
+  findUserArtifact,
 } from "./artifact-engine";
 import { sendWhatsAppImage, sendWhatsAppDocument } from "./whatsapp-gateway";
 
@@ -139,13 +141,15 @@ export async function processDynamicCompanionTurn(params: {
     pendingAction,
     latestExecutedAction,
     userImageMemory,
-    latestArtifact,
+    recentArtifacts,
   ] = await Promise.all([
     dbGetPendingUserAction(userIdentifier),
     dbGetLatestExecutedUserAction(userIdentifier),
     getUserImageMemory(userIdentifier),
-    getLatestUserArtifact(userIdentifier),
+    getUserArtifacts(userIdentifier, 6),
   ]);
+
+  const latestArtifact = recentArtifacts.length > 0 ? recentArtifacts[0] : null;
 
   // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
   if (pendingAction) {
@@ -176,7 +180,9 @@ Speaker: ${isFemi ? "Femi Adeleke (Your Boss & Creator)" : (senderName || "User"
 
 USER MEMORY STATE:
 - Active Image Memory: ${userImageMemory?.last_image_prompt ? `Previous artwork: "${userImageMemory.last_image_prompt}" (Seed: ${userImageMemory.last_image_seed})` : "None"}
-- Active Website Artifact: ${latestArtifact?.title ? `Previous artifact: "${latestArtifact.title}" (${latestArtifact.type})` : "None"}
+- User's Saved Website Artifacts in Memory:
+${recentArtifacts.length > 0 ? recentArtifacts.map((a, i) => `  ${i + 1}. "${a.title}" (ID: ${a.id}, Type: ${a.type})`).join("\n") : "  None created yet"}
+- Active Current Artifact: ${latestArtifact ? `"${latestArtifact.title}" (${latestArtifact.id})` : "None"}
 - Last Dispatched Action: ${latestExecutedAction ? `Dispatched WhatsApp message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}` : "None"}
 
 AVAILABLE TOOLS & ACTIONS:
@@ -190,8 +196,8 @@ AVAILABLE TOOLS & ACTIONS:
    - Parameters: "image_modification" (specific edits to apply).
 5. "create_website_artifact": Use when the user asks you to design, build, code, or create a new website, landing page, HTML UI, calculator, form, or dashboard.
    - Parameters: "website_title" (clear title), "website_specs" (features, styling, layout).
-6. "modify_website_artifact": Use when the user asks to change, update, restyle, or edit their PREVIOUS website/artifact in context (e.g. font, colors, buttons, adding a section).
-   - Parameters: "website_changes" (what to adjust in the existing code).
+6. "modify_website_artifact": Use when the user asks to change, update, restyle, fix, or edit ANY previously created website/artifact in context or by name.
+   - Parameters: "website_title" (title of the artifact to modify, or null for latest), "website_changes" (what to fix or adjust in the code).
 7. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
 8. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
@@ -199,7 +205,11 @@ AVAILABLE TOOLS & ACTIONS:
 
 REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
-- If the assistant in the previous message offered to write code, wire up a button, fix an issue, or update an artifact (e.g., "Would you like me to generate a quick snippet to wire up that 'Save Task' button?"), and the user replies affirmatively ("yes", "sure", "ok", "go ahead", "do it"), connect the context immediately! Select "modify_website_artifact" with "website_changes" describing the fix to rebuild and deliver the working code. NEVER choose "direct_voice_call"!
+- CRITICAL ARTIFACT CONTINUITY & CODE MEMORY:
+  1. You (Obey) have full permanent access to all code you previously generated (listed in "User's Saved Website Artifacts in Memory").
+  2. You NEVER ask the user to "drop the code snippet" or "paste the code" for any artifact you created! You already have their full code in the database.
+  3. If the user previously reported an issue, bug, error, or unresponsiveness in an artifact (such as "Save task button is not responsive", "It does not save the task", localStorage, form submission, or sandbox errors), and the user confirms, replies affirmatively ("yes", "sure", "ok", "go ahead", "do it"), OR says "fix it" / "update it", YOU MUST SELECT "modify_website_artifact" with "website_changes" describing the exact fix to rebuild and deliver the working code! NEVER choose "none" or ask "What's on your mind"!
+  4. If the user refers to any earlier artifact by name or topic (even after working on other tasks or talking about other topics), match that artifact from the list, select "modify_website_artifact", set "website_title" to the matched title, and apply their changes!
 - NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, ALWAYS choose "check_action_status".
@@ -337,22 +347,26 @@ Respond ONLY with a valid JSON object matching this schema:
 
   // Tool: Create or Modify Website Artifact
   if (decision.action === "create_website_artifact" || decision.action === "modify_website_artifact") {
-    const isEdit = decision.action === "modify_website_artifact" && Boolean(latestArtifact);
+    const targetTitle = decision.action_params?.website_title;
+    const targetArtifact = (targetTitle ? await findUserArtifact(userIdentifier, targetTitle) : null) || latestArtifact;
+    const isEdit = decision.action === "modify_website_artifact" && Boolean(targetArtifact);
     let artifactPrompt: string;
 
-    if (isEdit && latestArtifact) {
+    if (isEdit && targetArtifact) {
       const changes = decision.action_params?.website_changes || userText;
-      artifactPrompt = `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
+      artifactPrompt = `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${targetArtifact.title}"
 Current Code:
 \`\`\`html
-${latestArtifact.content}
+${targetArtifact.content}
 \`\`\`
 Requested Changes: "${changes}"
 
 CRITICAL REQUIREMENTS:
 1. Ensure 100% of interactive JavaScript functions properly: all buttons, modal toggles, forms, inputs, and event listeners (e.g. Save, Edit, Delete, Toggle Paid status, dynamic metric recalculation, and localStorage data persistence) must be COMPLETELY WIRED UP and functional with working vanilla JS. NO dummy buttons or empty click handlers!
-2. Return the entire updated runnable single-file HTML code inside:
-<artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+2. Form safety: Ensure modal action buttons have type="button" and form submit handlers call event.preventDefault() to avoid reload failures in sandboxed previews.
+3. Storage safety: Wrap localStorage.getItem/setItem calls in try/catch with in-memory fallback state so saving tasks ALWAYS succeeds even in private/sandboxed windows.
+4. Return the entire updated runnable single-file HTML code inside:
+<artifact identifier="${targetArtifact.identifier || targetArtifact.id}" type="${targetArtifact.type}" title="${targetArtifact.title}">
 ...complete updated runnable code with "${changes}" applied...
 </artifact>
 After closing </artifact>, provide a 1-sentence executive summary of the changes made (do NOT include "Brief confirmation message:" or similar label).`;
