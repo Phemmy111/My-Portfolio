@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { MessageSquare, X, Send, Bot, Sparkles, User, RefreshCw, ChevronDown } from "lucide-react";
+import { MessageSquare, X, Send, Bot, Sparkles, User, RefreshCw, ChevronDown, Phone, Paperclip } from "lucide-react";
 import { formatToWAT } from "@/lib/utils";
 
 interface Message {
@@ -19,7 +19,14 @@ export default function PublicObeyWidget() {
   const [sessionId, setSessionId] = useState("");
   const [visitorName, setVisitorName] = useState("");
   const [visitorEmail, setVisitorEmail] = useState("");
+  const [attachment, setAttachment] = useState<{
+    name: string;
+    base64: string;
+    mimeType: string;
+  } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize or restore session
   useEffect(() => {
@@ -66,15 +73,43 @@ export default function PublicObeyWidget() {
     }
   }, [messages, isOpen, loading]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert("File is too large. Please select a file under 8MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      setAttachment({
+        name: file.name,
+        base64,
+        mimeType: file.type || "application/octet-stream",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || input).trim();
-    if (!text || loading) return;
+    if ((!text && !attachment) || loading) return;
 
+    const currentAttachment = attachment;
     setInput("");
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
     const userMsg: Message = {
       id: "usr_" + Date.now(),
       role: "user",
-      content: text,
+      content: currentAttachment
+        ? `${text ? `${text}\n` : ""}📎 ${currentAttachment.name}`
+        : text,
       timestamp: formatToWAT(new Date()),
     };
 
@@ -89,7 +124,10 @@ export default function PublicObeyWidget() {
           sessionId,
           visitorName,
           visitorEmail,
-          message: text,
+          message: text || (currentAttachment ? `Please review this attached file: ${currentAttachment.name}` : ""),
+          mediaBase64: currentAttachment?.base64,
+          mediaMimeType: currentAttachment?.mimeType,
+          mediaFileName: currentAttachment?.name,
         }),
       });
 
@@ -129,6 +167,7 @@ export default function PublicObeyWidget() {
   };
 
   const quickPills = [
+    "📞 Live Voice Call with Obey",
     "🚀 I need a custom web application",
     "⚡ Looking for AI agents & automations",
     "📅 How can I book a call with Femi?",
@@ -183,7 +222,17 @@ export default function PublicObeyWidget() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 text-zinc-400">
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <a
+                href={`/call${visitorName ? `?name=${encodeURIComponent(visitorName)}` : ""}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-[11px] font-bold border border-emerald-500/30 transition-all mr-0.5"
+                title="Start free live voice call with Obey"
+              >
+                <Phone size={12} />
+                <span>Call Obey</span>
+              </a>
               <button
                 onClick={handleClearChat}
                 className="p-1.5 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors"
@@ -253,8 +302,18 @@ export default function PublicObeyWidget() {
               {quickPills.map((pill, i) => (
                 <button
                   key={i}
-                  onClick={() => handleSend(pill)}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-emerald-500 transition-colors"
+                  onClick={() => {
+                    if (pill.includes("Voice Call")) {
+                      window.open(`/call${visitorName ? `?name=${encodeURIComponent(visitorName)}` : ""}`, "_blank");
+                    } else {
+                      handleSend(pill);
+                    }
+                  }}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-all ${
+                    pill.includes("Voice Call")
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/20 font-bold"
+                      : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-emerald-500"
+                  }`}
                 >
                   {pill}
                 </button>
@@ -262,15 +321,43 @@ export default function PublicObeyWidget() {
             </div>
           )}
 
-          {/* Input Bar with Multiline on Mobile */}
+          {/* Input Bar with File Attachment & Multiline on Mobile */}
           <div className="p-3 bg-white dark:bg-[#0c0c0e] border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-            <div className="flex items-end gap-2">
+            {/* Attachment Preview Badge */}
+            {attachment && (
+              <div className="mb-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-[11px] text-emerald-400">
+                <span className="truncate max-w-[260px]">📎 {attachment.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setAttachment(null)}
+                  className="text-zinc-400 hover:text-white ml-2 p-0.5 rounded-md hover:bg-zinc-800 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-end gap-1.5">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*,.pdf,.txt"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0 mb-0.5"
+                title="Attach photo or document (PDF, TXT)"
+              >
+                <Paperclip size={16} />
+              </button>
+
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  // On desktop: Enter sends message, Shift+Enter creates new line.
-                  // On mobile touch devices: Enter naturally creates a new line without sending!
                   const isMobile =
                     typeof window !== "undefined" &&
                     ("ontouchstart" in window || navigator.maxTouchPoints > 0);
@@ -286,7 +373,7 @@ export default function PublicObeyWidget() {
               <button
                 type="button"
                 onClick={() => handleSend()}
-                disabled={!input.trim() || loading}
+                disabled={(!input.trim() && !attachment) || loading}
                 className="p-2.5 rounded-xl bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-500 transition-all shrink-0 mb-0.5"
                 title="Send message"
               >

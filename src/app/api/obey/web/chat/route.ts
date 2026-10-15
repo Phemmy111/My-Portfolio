@@ -21,6 +21,14 @@ export async function POST(req: NextRequest) {
     const contactId = `web-${sessionId}`;
     const displayName = visitorName || "Web Visitor";
 
+    const mediaBase64 = body.mediaBase64;
+    const mediaMimeType = body.mediaMimeType;
+    const mediaFileName = body.mediaFileName || "attachment";
+
+    const savedUserContent = mediaBase64
+      ? `${userText ? `${userText}\n` : ""}[📎 Attached: ${mediaFileName}]`
+      : userText;
+
     // 1. Save visitor message to Neon DB
     await dbAddGuestMessage({
       id: `web-msg-${Date.now()}`,
@@ -28,7 +36,7 @@ export async function POST(req: NextRequest) {
       sender_name: displayName,
       channel: "web",
       role: "user",
-      content: userText,
+      content: savedUserContent,
     });
 
     // 2. Dispatch to Google Sheets
@@ -36,7 +44,7 @@ export async function POST(req: NextRequest) {
       phoneNumber: contactId,
       senderName: displayName,
       role: "user",
-      message: userText,
+      message: savedUserContent,
       intent: "Website Live Chat",
     });
 
@@ -59,17 +67,20 @@ CRITICAL BEHAVIOR RULES:
 2. GENDER NEUTRAL: Do NOT call visitors "sir" or "ma". Use natural, polite, and neutral language: "Hello", "Hey there", "Glad to connect".
 3. OFFICIAL PORTFOLIO LINK: Femi's official live portfolio website is: https://femiadelekeportfolio.vercel.app. Never invent any other URL.
 4. REPRESENT FEMI EXPERTLY: Know Femi's key strengths: Full-Stack Web Apps (Next.js, React, Node.js, TypeScript), Custom AI Agents, Automated Workflows (n8n), Database Architecture (PostgreSQL/Neon), and scalable MVPs (AutoLearn Spot, OKIKI Store, PassMark).
-5. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email so Femi and you can follow up with a proposal or schedule a brief discovery call.
-6. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
+5. CALLING OPTIONS: If they ask to speak or call Femi or Obey, provide Option 1: Direct Hotline +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at /call.
+6. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email or WhatsApp number so Femi and you can follow up with a proposal or schedule a brief discovery call.
+7. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const userPrompt = historyText
-      ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"\n\nObey (warm, human, helpful):`
-      : `New website visitor (${displayName}): "${userText}"\n\nObey (warm, human, helpful):`;
+      ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`
+      : `New website visitor (${displayName}): "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`;
 
     const aiRes = await executeAICompletion({
       systemPrompt,
       userPrompt,
       temperature: 0.7,
+      mediaBase64,
+      mimeType: mediaMimeType,
     });
 
     const replyText = aiRes.text;

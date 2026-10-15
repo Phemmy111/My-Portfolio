@@ -47,10 +47,33 @@ export async function POST(req: NextRequest) {
       return digits.length >= 10 ? digits : "";
     }
 
-    // Extract caller phone from direct dial or WebRTC metadata/overrides
-    const candidatePhone = normalizePhone(
+    function findPhoneInObject(obj: any): string {
+      if (!obj || typeof obj !== "object") return "";
+      if (obj.userPhone && typeof obj.userPhone === "string") {
+        const n = normalizePhone(obj.userPhone);
+        if (n && n !== FEMI_PERSONAL_NUMBER) return n;
+      }
+      if (obj.customerPhone && typeof obj.customerPhone === "string") {
+        const n = normalizePhone(obj.customerPhone);
+        if (n && n !== FEMI_PERSONAL_NUMBER) return n;
+      }
+      for (const k of Object.keys(obj)) {
+        if (typeof obj[k] === "object" && obj[k] !== null) {
+          const res = findPhoneInObject(obj[k]);
+          if (res) return res;
+        }
+      }
+      return "";
+    }
+
+    // Extract caller phone from direct dial or WebRTC metadata/overrides/artifact
+    let candidatePhone = normalizePhone(
       report.customer?.number ||
       body.call?.customer?.number ||
+      report.artifact?.variableValues?.userPhone ||
+      report.artifact?.variables?.userPhone ||
+      body.call?.artifact?.variableValues?.userPhone ||
+      body.call?.artifact?.variables?.userPhone ||
       report.assistantOverrides?.metadata?.userPhone ||
       report.assistantOverrides?.variableValues?.userPhone ||
       report.metadata?.userPhone ||
@@ -61,6 +84,10 @@ export async function POST(req: NextRequest) {
       body.call?.assistantOverrides?.variableValues?.userPhone ||
       ""
     );
+
+    if (!candidatePhone || candidatePhone === FEMI_PERSONAL_NUMBER) {
+      candidatePhone = findPhoneInObject(body);
+    }
 
     if (candidatePhone && candidatePhone !== FEMI_PERSONAL_NUMBER) {
       recipients.add(candidatePhone);
