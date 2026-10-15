@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
 import { dbAddGuestMessage, dbAddChatMessage } from "@/lib/db";
+import { getVapiProvidersPool } from "@/lib/settings";
 
 export const maxDuration = 60;
 
@@ -58,7 +59,28 @@ export async function POST(req: NextRequest) {
 
         // 2. Send playable audio file / voice note
         if (recordingUrl) {
-          await sendWhatsAppAudio(recordingUrl, userPhone, `🎙️ Call Recording with ${targetNumber}`);
+          let finalAudioPayload = recordingUrl;
+          try {
+            // Check if recordingUrl is access-controlled (returns 401/403 without auth)
+            const checkRes = await fetch(recordingUrl, { method: "HEAD" });
+            if (checkRes.status === 401 || checkRes.status === 403) {
+              const vapiPool = await getVapiProvidersPool();
+              const primaryKey = vapiPool[0]?.apiKey;
+              if (primaryKey) {
+                const authRes = await fetch(recordingUrl, {
+                  headers: { Authorization: `Bearer ${primaryKey}` },
+                });
+                if (authRes.ok) {
+                  const buffer = Buffer.from(await authRes.arrayBuffer());
+                  finalAudioPayload = `data:audio/mp3;base64,${buffer.toString("base64")}`;
+                }
+              }
+            }
+          } catch (audioErr) {
+            console.warn("[Vapi Webhook] Audio access-check error:", audioErr);
+          }
+
+          await sendWhatsAppAudio(finalAudioPayload, userPhone, `🎙️ Call Recording with ${targetNumber}`);
         }
 
         // 3. Save to database memory
