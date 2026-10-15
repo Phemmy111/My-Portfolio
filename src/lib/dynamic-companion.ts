@@ -183,7 +183,24 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 5. HANDLE ACTION: AI PHONE CALL
+  // 5. HANDLE ACTION: AI PHONE CALL / LIVE WEBRTC VOICE CALL
+  const cleanUserPhone = userIdentifier.replace(/\D/g, "");
+  const isDirectCallRequest =
+    /\b(call me|can we (talk|speak|call)|want to (talk|speak|call)|voice call|let'?s (talk|speak|call)|can i call you|talk on call|speak with you)\b/i.test(lower) &&
+    (!targetPhone || targetPhone === cleanUserPhone);
+
+  if (isDirectCallRequest) {
+    const callUrl = `https://femiadelekeportfolio.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
+    return {
+      reply: cleanWhatsApp(
+        `🎙️ *I'd love to speak with you live!* I'm ready to talk right now.\n\n` +
+        `Tap below to launch our instant voice call (100% free, no airtime needed):\n` +
+        `👉 ${callUrl}\n\n` +
+        `Simply tap *"Start Voice Call with Obey"* on your screen and talk naturally. When we're done, I'll send our call recording and summary right here!`
+      ),
+    };
+  }
+
   if (parsed.intent === "phone_call") {
     if (parsed.is_complete_action && targetPhone) {
       const objective = parsed.content || "Status check and inquiry on behalf of the user";
@@ -206,7 +223,7 @@ Respond ONLY with a valid JSON object matching this schema:
     } else if (!targetPhone) {
       return {
         reply: cleanWhatsApp(
-          `Who should I call for you? Please provide the phone number and what you'd like me to say or ask.`
+          `Who should I call for you? Please provide their phone number and what you'd like me to say or ask.`
         ),
       };
     }

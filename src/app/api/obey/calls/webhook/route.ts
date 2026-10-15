@@ -27,7 +27,11 @@ export async function POST(req: NextRequest) {
     const recordingUrl = report.recordingUrl || body.call?.recordingUrl;
     const transcript = report.transcript || body.call?.transcript || "";
     const summary = report.summary || body.call?.summary || "";
-    const targetNumber = report.customer?.number || body.call?.customer?.number || "Unknown";
+    const isWebRTC = !report.customer?.number && !body.call?.customer?.number;
+    const callerName = report.metadata?.userName || report.variableValues?.userName || "";
+    const targetLabel = isWebRTC
+      ? `WebRTC Voice Call${callerName ? ` with ${callerName}` : ""}`
+      : report.customer?.number || body.call?.customer?.number || "Direct Phone";
     const durationSeconds = report.durationSeconds || body.call?.durationSeconds || 0;
 
     // Find who ordered this call (from metadata or assistantOverrides)
@@ -35,6 +39,7 @@ export async function POST(req: NextRequest) {
       report.assistantOverrides?.metadata?.userPhone ||
       report.metadata?.userPhone ||
       report.assistantOverrides?.variableValues?.userPhone ||
+      report.variableValues?.userPhone ||
       body.call?.metadata?.userPhone ||
       FEMI_PERSONAL_NUMBER;
 
@@ -45,12 +50,12 @@ export async function POST(req: NextRequest) {
     const secs = Math.floor(durationSeconds % 60);
 
     const callReportText =
-      `📞 *AI Call Completed!*\n\n` +
-      `• *Called:* ${targetNumber}\n` +
+      `📞 *AI Voice Call Completed!*\n\n` +
+      `• *Channel:* ${targetLabel}\n` +
       `• *Duration:* ${mins > 0 ? `${mins}m ` : ""}${secs}s\n\n` +
       (summary ? `📝 *Executive Summary:*\n${summary.trim()}\n\n` : "") +
       (transcript ? `📄 *Full Transcript:*\n${transcript.trim().slice(0, 1200)}\n\n` : "") +
-      (recordingUrl ? `🎙️ *Recording Link:* ${recordingUrl}\n\n_Sending playable audio note below..._` : "");
+      (recordingUrl ? `🎙️ *Recording:* Sent below as voice note...` : "");
 
     after(async () => {
       try {
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
             console.warn("[Vapi Webhook] Audio access-check error:", audioErr);
           }
 
-          await sendWhatsAppAudio(finalAudioPayload, userPhone, `🎙️ Call Recording with ${targetNumber}`);
+          await sendWhatsAppAudio(finalAudioPayload, userPhone, `🎙️ Call Recording: ${targetLabel}`);
         }
 
         // 3. Save to database memory

@@ -15,6 +15,7 @@
     "@neon/env": "^1.5.3",
     "@neondatabase/serverless": "^1.2.0",
     "@types/nodemailer": "^8.0.2",
+    "@vapi-ai/web": "^2.7.1",
     "cloudinary": "^2.11.0",
     "clsx": "^2.1.1",
     "drizzle-kit": "^0.31.11",
