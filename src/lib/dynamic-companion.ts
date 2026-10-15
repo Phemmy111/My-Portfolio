@@ -194,12 +194,14 @@ AVAILABLE TOOLS & ACTIONS:
    - Parameters: "website_changes" (what to adjust in the existing code).
 7. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
-8. "direct_voice_call": Use ONLY when the user explicitly asks to speak with you or call you on voice (e.g. "call me", "can we speak on voice call", "let's talk on call").
+8. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
 9. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
-- NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, or HTML, it is ALWAYS a website artifact!
+- If the assistant in the previous message offered to write code, wire up a button, fix an issue, or update an artifact (e.g., "Would you like me to generate a quick snippet to wire up that 'Save Task' button?"), and the user replies affirmatively ("yes", "sure", "ok", "go ahead", "do it"), connect the context immediately! Select "modify_website_artifact" with "website_changes" describing the fix to rebuild and deliver the working code. NEVER choose "direct_voice_call"!
+- NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
+- NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, ALWAYS choose "check_action_status".
 - If the user wants to text someone but hasn't provided the phone number yet, choose "none" and ask warmly for their phone number in "conversational_response".
 - For general questions (like business advice, study questions, facts), choose "none" and provide a sharp, concise answer directly in "conversational_response".
@@ -347,11 +349,13 @@ ${latestArtifact.content}
 \`\`\`
 Requested Changes: "${changes}"
 
-Rewrite the complete updated runnable HTML code inside:
+CRITICAL REQUIREMENTS:
+1. Ensure 100% of interactive JavaScript functions properly: all buttons, modal toggles, forms, inputs, and event listeners (e.g. Save, Edit, Delete, Toggle Paid status, dynamic metric recalculation, and localStorage data persistence) must be COMPLETELY WIRED UP and functional with working vanilla JS. NO dummy buttons or empty click handlers!
+2. Return the entire updated runnable single-file HTML code inside:
 <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
 ...complete updated runnable code with "${changes}" applied...
 </artifact>
-Brief confirmation message:`;
+After closing </artifact>, provide a 1-sentence executive summary of the changes made (do NOT include "Brief confirmation message:" or similar label).`;
     } else {
       const title = decision.action_params?.website_title || "Interactive Web Page";
       const specs = decision.action_params?.website_specs || userText;
@@ -359,17 +363,19 @@ Brief confirmation message:`;
 Title: "${title}"
 Specifications: "${specs}"
 
-Create a complete, modern, high-converting, fully responsive HTML landing page with Tailwind CSS (via CDN) and beautiful styling and interactions.
-Enclose the complete runnable code inside:
+CRITICAL REQUIREMENTS:
+1. Create a complete, modern, high-converting, fully responsive HTML landing page/dashboard with Tailwind CSS (via CDN) and beautiful styling and interactions.
+2. Ensure 100% of interactive JavaScript functions work: all forms, modal popups, buttons, event listeners (e.g., 'Save', 'Submit', 'Delete', 'Toggle', 'Filter'), calculations, and localStorage data persistence MUST be fully wired up with working vanilla JavaScript! NO dummy unhooked buttons!
+3. Enclose the complete runnable code inside:
 <artifact identifier="web-${Date.now()}" type="html" title="${title}">
 ...complete runnable HTML code...
 </artifact>
-Brief confirmation message:`;
+After closing </artifact>, provide a 1-sentence executive summary of what was created (do NOT include "Brief confirmation message:" or similar label).`;
     }
 
     try {
       const aiRes = await executeAICompletion({
-        systemPrompt: "You are Obey, an autonomous AI executive engineer. Build modern, responsive, high-converting HTML landing pages using Tailwind CSS. Return complete runnable code inside <artifact> tags.",
+        systemPrompt: "You are Obey, an autonomous AI executive engineer. Build modern, responsive, high-converting HTML landing pages using Tailwind CSS. Every button, form, modal, and data interaction must have working, fully wired JavaScript. Return complete runnable code inside <artifact> tags.",
         userPrompt: artifactPrompt,
         temperature: 0.3,
         maxTokens: 8192,
@@ -394,6 +400,7 @@ Brief confirmation message:`;
 
         const link = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
         let cleanReply = stripArtifactBlocks(aiRes.text).trim();
+        cleanReply = cleanReply.replace(/^(brief confirmation message:?|confirmation message:?|confirmation:?)\s*/i, "").trim();
         if (!cleanReply || cleanReply.length < 10 || cleanReply.includes("```") || cleanReply.includes("<!DOCTYPE") || cleanReply.includes("<html")) {
           cleanReply = isEdit
             ? `✅ I've updated the *${art.title}* with your requested changes!`
