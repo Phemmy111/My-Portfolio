@@ -311,7 +311,9 @@ Respond ONLY with a valid JSON object matching this schema:
   // 7. HANDLE AI IMAGE GENERATION (With Continuity & Revision Memory)
   const userImageMemory = await getUserImageMemory(userIdentifier);
   const isImageRequest =
-    /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower) ||
+    (/\b(generate|create|draw|paint|sketch|make|render|design)\b/i.test(lower) &&
+     /\b(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration|wallpaper|avatar|portrait|painting|drawing|render|artwork|car|house|room|city|cyberpunk|anime|scenery|landscape|building|character)\b/i.test(lower) &&
+     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api)\b/i.test(lower)) ||
     isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
 
   if (isImageRequest) {
@@ -342,6 +344,10 @@ Respond ONLY with a valid JSON object matching this schema:
 
   // 8. LOAD LATEST USER ARTIFACT FOR CONTINUITY & EDITING
   const latestArtifact = await getLatestUserArtifact(userIdentifier);
+  const isArtifactEdit =
+    Boolean(latestArtifact) &&
+    /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
+    /\b(font|color|colour|background|button|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
 
   // 9. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
@@ -364,21 +370,18 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      ? "- This is an ONGOING conversation. DO NOT GREET. NEVER start your message with 'Good morning/afternoon/evening', 'Hello', or 'Hi [Name]'. Jump straight into answering the user's question directly."
      : "- This is the FIRST message of the day. A brief warm greeting is fine, but keep it minimal."}
 
-3. NEVER CONFUSE SOFTWARE REQUESTS WITH CALLS:
-   - NEVER say "initiating the voice call to your line right now" or mention phone calls when asked to build software, landing pages, designs, or code! Only mention calls if the user explicitly asks to speak or call.
-
-4. NEVER POLICE SLEEP OR NAG ABOUT TIME:
+3. NEVER POLICE SLEEP OR NAG ABOUT TIME:
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
 
-5. ELIMINATE REPETITIVE FILLER & PREAMBLE:
+4. ELIMINATE REPETITIVE FILLER & PREAMBLE:
    - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'. Just provide the answer with natural, effortless human confidence.
 
-6. WHO YOU ARE TALKING TO:
+5. WHO YOU ARE TALKING TO:
    ${isFemi
      ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
      : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion. Address them warmly as a trusted friend. NEVER call a stranger "Boss" or "Sir".`}
 
-7. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
+6. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
    - You were architected and engineered by Femi Adeleke, a premier Software Engineer, AI Automation Architect, and Educator based in Ibadan, Nigeria (https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Email: femiadeleke2020@gmail.com | WhatsApp: +234 812 093 4828).
    - If the user asks about websites, mobile apps, software development, or who built you, speak of Femi's actual verified platforms:
      * *OKIKI Electronics Store:* High-performance e-commerce store with catalog filtering and cart management.
@@ -388,38 +391,35 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      * *EduMate & UniVibe:* Educational AI WhatsApp bot and University of Ibadan campus community app.
    - Core Skills: Next.js (App Router), React, TypeScript, Tailwind CSS, Neon Cloud DB, Supabase, n8n automations, Flutter, AI Agent architectures, Paystack integrations.
 
-8. CALLING OPTIONS:
-   - If they ask to speak or call Femi or Obey, provide Option 1: Direct Line +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at https://femiadelekeportfolio.vercel.app/call.
-
-9. INTERACTIVE ARTIFACTS & CONTINUITY:
-   - When the user asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
+7. INTERACTIVE ARTIFACTS & WEB CREATION:
+   - When the user asks you to build, code, design, or edit a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the complete code inside:
      <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
      ...complete runnable code...
      </artifact>
-   ${latestArtifact ? `
-   RECENT ARTIFACT GENERATED FOR THIS USER:
-   Artifact Identifier: "${latestArtifact.identifier || latestArtifact.id}"
-   Title: "${latestArtifact.title}"
-   Current Code:
-   \`\`\`html
-   ${latestArtifact.content.slice(0, 3000)}
-   \`\`\`
-   CONTINUITY INSTRUCTION: If the user asks to edit, revise, change font, color, layout, or content of this artifact (e.g. "change the main font to Times New Roman", "change the car color to blue", "add a button"), rewrite the complete updated code inside:
-   <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
-   ...updated complete runnable code...
-   </artifact>
-   ` : ""}
+   - Obey automatically extracts this code and hosts it as an interactive live webpage.
 
-10. FORMATTING:
+8. FORMATTING:
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
-  const companionUserPrompt = historyText
-    ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
-    : `User: "${userText}"\n\nObey (concise, direct answer):`;
+  const companionUserPrompt = isArtifactEdit && latestArtifact
+    ? `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
+Current Code:
+\`\`\`html
+${latestArtifact.content}
+\`\`\`
+User requested change: "${userText}"
+Rewrite the complete updated code inside:
+<artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+...complete updated code with "${userText}" applied...
+</artifact>
+Brief confirmation message:`
+    : historyText
+      ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
+      : `User: "${userText}"\n\nObey (concise, direct answer):`;
 
   try {
     const aiRes = await executeAICompletion({

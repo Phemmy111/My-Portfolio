@@ -292,7 +292,9 @@ async function processMessage(params: ProcessMessageParams) {
       ? `🎙️ _Heard: "${userText}"_\n\n${companionRes.reply}`
       : companionRes.reply;
 
-    await reply(finalReply);
+    if (finalReply && finalReply.trim()) {
+      await reply(finalReply);
+    }
 
     // Save assistant reply to guest DB
     await dbAddGuestMessage({

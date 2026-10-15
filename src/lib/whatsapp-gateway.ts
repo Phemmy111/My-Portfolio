@@ -283,7 +283,6 @@ export async function sendWhatsAppDocument(
     }
 
     const base64Data = Buffer.from(fileContent, "utf-8").toString("base64");
-    const mediaUri = `data:${mimetype};base64,${base64Data}`;
 
     const res = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
@@ -293,7 +292,7 @@ export async function sendWhatsAppDocument(
       },
       body: JSON.stringify({
         number: cleaned,
-        media: mediaUri,
+        media: base64Data,
         mediatype: "document",
         mimetype: mimetype,
         fileName: fileName.endsWith(".html") ? fileName : `${fileName}.html`,

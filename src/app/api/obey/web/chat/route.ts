@@ -124,28 +124,31 @@ CRITICAL BEHAVIOR RULES:
 5. CALLING OPTIONS: If they ask to speak or call Femi or Obey, provide Option 1: Direct Hotline +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at /call.
 6. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email or WhatsApp number so Femi and you can follow up with a proposal or schedule a brief discovery call.
 7. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.
-8. NEVER CONFUSE SOFTWARE REQUESTS WITH CALLS: Never say "initiating the voice call to your line right now" or mention phone calls when asked to build software, landing pages, designs, or code!
-9. INTERACTIVE ARTIFACTS & CONTINUITY: When the visitor asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
+8. INTERACTIVE ARTIFACTS: When the visitor asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
    <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
    ...complete runnable code...
-   </artifact>
-   ${latestArtifact ? `
-   RECENT ARTIFACT GENERATED FOR THIS VISITOR:
-   Identifier: "${latestArtifact.identifier || latestArtifact.id}"
-   Title: "${latestArtifact.title}"
-   Current Code:
-   \`\`\`html
-   ${latestArtifact.content.slice(0, 3000)}
-   \`\`\`
-   CONTINUITY INSTRUCTION: If the visitor asks to edit, revise, change font, color, layout, or content (e.g. "change font to Times New Roman", "change the car color to blue", "add a button"), rewrite the complete updated code inside:
-   <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
-   ...updated complete runnable code...
-   </artifact>
-   ` : ""}${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
+   </artifact>${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
-    const userPrompt = historyText
-      ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`
-      : `New website visitor (${displayName}): "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`;
+    const isArtifactEdit =
+      Boolean(latestArtifact) &&
+      /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
+      /\b(font|color|colour|background|button|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
+
+    const userPrompt = isArtifactEdit && latestArtifact
+      ? `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
+Current Code:
+\`\`\`html
+${latestArtifact.content}
+\`\`\`
+User requested change: "${userText}"
+Rewrite the complete updated code inside:
+<artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+...complete updated code with "${userText}" applied...
+</artifact>
+Brief confirmation message:`
+      : historyText
+        ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`
+        : `New website visitor (${displayName}): "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`;
 
     const aiRes = await executeAICompletion({
       systemPrompt,
