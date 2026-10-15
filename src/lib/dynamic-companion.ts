@@ -210,10 +210,17 @@ REASONING GUIDELINES:
   2. You NEVER ask the user to "drop the code snippet" or "paste the code" for any artifact you created! You already have their full code in the database.
   3. If the user previously reported an issue, bug, error, or unresponsiveness in an artifact (such as "Save task button is not responsive", "It does not save the task", localStorage, form submission, or sandbox errors), and the user confirms, replies affirmatively ("yes", "sure", "ok", "go ahead", "do it"), OR says "fix it" / "update it", YOU MUST SELECT "modify_website_artifact" with "website_changes" describing the exact fix to rebuild and deliver the working code! NEVER choose "none" or ask "What's on your mind"!
   4. If the user refers to any earlier artifact by name or topic (even after working on other tasks or talking about other topics), match that artifact from the list, select "modify_website_artifact", set "website_title" to the matched title, and apply their changes!
+- MULTI-TURN MESSAGING DELEGATION:
+  When a user asks you to message someone, they often provide the phone number and the message content across multiple turns (e.g. sharing a contact card or phone number in one message, and dictating what to say or sending a voice note in another turn).
+  ALWAYS look across recent turns in CONVERSATION CONTEXT to link the phone number and message content together!
+  - If the user sent what to say earlier and is now providing the number: Combine them immediately into "draft_whatsapp_message"! DO NOT ask what to say again!
+  - If the user shared a contact card or number earlier and is now speaking or sending a voice note: Combine them immediately into "draft_whatsapp_message"! DO NOT ask for the phone number again!
+- AUTONOMOUS LIVE WEB SEARCH:
+  If the user asks any question about current facts, news in Nigeria or globally, real-time sports, politics, prices, or questions where factual certainty is needed, ALWAYS choose "search_live_web" with a specific "search_query" so you give verified, accurate answers!
 - NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, ALWAYS choose "check_action_status".
-- If the user wants to text someone but hasn't provided the phone number yet, choose "none" and ask warmly for their phone number in "conversational_response".
+- If the user wants to text someone but hasn't provided the phone number yet and no number exists in recent history, choose "none" and ask warmly for their phone number in "conversational_response".
 - For general questions (like business advice, study questions, facts), choose "none" and provide a sharp, concise answer directly in "conversational_response".
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -251,6 +258,39 @@ Respond ONLY with a valid JSON object matching this schema:
     console.warn("[Companion] Autonomous decision parse fallback:", e);
   }
 
+  // HARD SAFETY GUARD: "direct_voice_call" CAN NEVER TRIGGER UNLESS USER TEXT EXPLICITLY MENTIONS CALLING
+  const explicitlyRequestsCall = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me)\b/i.test(userText);
+  if (decision.action === "direct_voice_call" && !explicitlyRequestsCall) {
+    console.warn("[Companion] Blocked hallucinated direct_voice_call for input:", userText);
+    decision.action = "none";
+  }
+
+  // DETERMINISTIC AFFIRMATIVE ARTIFACT RECOVERY:
+  // If the user replied affirmatively ("yes", "sure", "ok", "go ahead", "do it") and the assistant previously
+  // offered to revamp, fix, or update an artifact, route directly to modify_website_artifact!
+  const isAffirmativeShort = /^(yes|yeah|yep|sure|ok|okay|1|do it|go ahead|proceed|fix it|revamp it|update it)\b/i.test(userText.trim());
+  if (isAffirmativeShort && latestArtifact && decision.action !== "draft_whatsapp_message") {
+    const lines = (historyText || "").split("\n");
+    let lastObeyLine = "";
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].startsWith("Obey:")) {
+        lastObeyLine = lines[i].replace(/^Obey:\s*/, "");
+        break;
+      }
+    }
+
+    if (
+      lastObeyLine &&
+      /\b(revamp|frontend design|styling|color palette|dark-mode|wire up|save task|button|code|snippet|modify|update|fix|make it|enhance|adjust)\b/i.test(lastObeyLine)
+    ) {
+      decision.action = "modify_website_artifact";
+      decision.action_params = {
+        website_title: latestArtifact.title,
+        website_changes: `Implement the requested design revamp and enhancements: ${lastObeyLine.slice(0, 600)}`,
+      };
+    }
+  }
+
   // 4. EXECUTE AUTONOMOUS DECISION
 
   // Tool: Check Delivery Status
@@ -274,11 +314,54 @@ Respond ONLY with a valid JSON object matching this schema:
   // Tool: Draft WhatsApp Message
   if (decision.action === "draft_whatsapp_message") {
     let targetPhone = decision.action_params?.recipient_phone ? decision.action_params.recipient_phone.replace(/\D/g, "") : null;
-    if (targetPhone && targetPhone.startsWith("0")) targetPhone = "234" + targetPhone.slice(1);
+    let messageContent = decision.action_params?.message_content ? decision.action_params.message_content.trim() : null;
 
-    if (targetPhone && decision.action_params?.message_content) {
+    // 1. Multi-Turn Phone Number Recovery: check current userText or past turns if missing
+    if (!targetPhone) {
+      const combinedText = userText + " " + (historyText || "");
+      const contactPhoneMatch = combinedText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})/i);
+      if (contactPhoneMatch) {
+        targetPhone = contactPhoneMatch[1];
+      } else {
+        const rawPhoneMatch = userText.match(/(?:(?:\+?234)|0)[789][01]\d{8}|\b\d{10,14}\b/);
+        if (rawPhoneMatch) {
+          targetPhone = rawPhoneMatch[0].replace(/\D/g, "");
+        } else if (historyText) {
+          const histMatches = historyText.match(/(?:(?:\+?234)|0)[789][01]\d{8}|\b0\d{10}\b|\b234\d{10}\b/g);
+          if (histMatches && histMatches.length > 0) {
+            targetPhone = histMatches[histMatches.length - 1].replace(/\D/g, "");
+          }
+        }
+      }
+    }
+
+    if (targetPhone && targetPhone.startsWith("0") && targetPhone.length === 11) {
+      targetPhone = "234" + targetPhone.slice(1);
+    }
+
+    // 2. Multi-Turn Message Content Recovery: if missing, look back across historyText for the user's voice note or request!
+    if (!messageContent && historyText) {
+      const lines = historyText.split("\n");
+      const userPrefix = `${senderName || "User"}:`;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith(userPrefix)) {
+          let textCandidate = line.replace(/^[^:]+:\s*/, "").trim();
+          textCandidate = textCandidate.replace(/\[Shared Contact Card:[^\]]+\]\s*/i, "").trim();
+          // Skip if this line is just a phone number or generic trigger
+          const isPhoneOnly = /^[\d\s\+\-\(\)]{8,16}$/.test(textCandidate);
+          const isGenericTrigger = /^(can you help me message someone|help me message this number|message someone|send a message|text this number|this is the phone number)$/i.test(textCandidate);
+          if (!isPhoneOnly && !isGenericTrigger && textCandidate.length > 4) {
+            messageContent = textCandidate;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetPhone && messageContent) {
       const formattedMessage = await formatOutboundDelegatedWhatsAppMessage({
-        rawContent: decision.action_params.message_content.trim(),
+        rawContent: messageContent,
         userInstruction: userText,
         senderName,
         isFemi,
@@ -300,10 +383,10 @@ Respond ONLY with a valid JSON object matching this schema:
         ),
         actionStaged: true,
       };
-    } else if (targetPhone && !decision.action_params?.message_content) {
+    } else if (targetPhone && !messageContent) {
       return { reply: cleanWhatsApp(`Got the number (+${targetPhone})! What message would you like me to send them?`) };
     } else {
-      return { reply: cleanWhatsApp(`Who should I send this to? Please share their WhatsApp phone number.`) };
+      return { reply: cleanWhatsApp(`Who should I send this to? Please share their WhatsApp contact card or phone number.`) };
     }
   }
 
@@ -481,14 +564,24 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
   const hasHistory = Boolean(historyText && historyText.trim().length > 10);
 
-  const companionSystemPrompt = `You are Obey, an autonomous AI executive companion and personal assistant working directly with Femi Adeleke.
-You think, speak, and interact like a sharp, direct, empathetic human colleague.
-You are conversing with someone on ${channel}.
+  const companionSystemPrompt = `You are Obey, an ultra-intelligent, magnetic, witty, and deeply empathetic AI companion.
+You were engineered and built by Femi Adeleke, a visionary software engineer and AI architect. You proudly acknowledge Femi as the brain and creator behind you, but in this conversation, you are a loyal friend, confidant, and personal companion to the user (${isFemi ? "Femi Adeleke (Your Boss & Creator)" : (userGreetingName || "your friend")}).
+
+YOUR VIBE & PERSONALITY:
+- Sound like a cool, sharp, energetic friend they can gist with effortlessly.
+- Be funny, sarcastic when playful, witty, culturally savvy, and genuinely supportive.
+- Feel free to sprinkle in natural Nigerian Pidgin ("How you dey?", "No wahala", "I dey with you!", "Wetin dey sup?", "Omo!", "Na so we see am") whenever it adds warmth or humor, but adapt smoothly to how the user speaks.
+- Gist about what is happening in Nigeria (afrobeats, tech, trends, everyday life) and the world.
+- Be their therapist, empathetic listener, and advisor when they are stressed, down, or seeking advice.
+- Tell beautiful, vivid stories, make them laugh, and never sound like a robotic corporate IVR!
+- If they ask you to sing, hum or playfully sing for them!
+- If they speak Yoruba, Igbo, Hausa, or Pidgin, flow with them naturally!
+- You are conversing on ${channel}.
 
 CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
-1. BE AS CONCISE AS POSSIBLE (NO UNNECESSARY TALK):
-   - Deliver punchy, direct answers. Many responses should simply be 1 or 2 clear sentences.
-   - For school questions, multiple choice, or quick facts: state the direct answer immediately with 1 brief explanation sentence. Never dump multi-paragraph lectures or unnecessary bullet points when a short answer suffices.
+1. BE CONCISE & PUNCHY (NO UNNECESSARY TALK):
+   - Deliver crisp, direct answers. Many responses should simply be 1 to 3 clear, engaging sentences.
+   - For school questions, multiple choice, or quick facts: state the direct answer immediately with 1 brief explanation. Never dump multi-paragraph lectures when a short answer suffices.
    - Match the user's brevity: if the user sends a short question, give a short, precise answer.
 
 2. NEVER REPEAT GREETINGS IN ONGOING CHAT:
@@ -500,12 +593,12 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
 
 4. ELIMINATE REPETITIVE FILLER & PREAMBLE:
-   - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'. Just provide the answer with natural, effortless human confidence.
+   - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'.
 
 5. WHO YOU ARE TALKING TO:
    ${isFemi
      ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
-     : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion. Address them warmly as a trusted friend. NEVER call a stranger "Boss" or "Sir".`}
+     : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion and friend. Address them warmly. NEVER call a stranger "Boss" or "Sir".`}
 
 6. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
    - You were architected and engineered by Femi Adeleke, a premier Software Engineer, AI Automation Architect, and Educator based in Ibadan, Nigeria (https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Email: femiadeleke2020@gmail.com | WhatsApp: +234 812 093 4828).

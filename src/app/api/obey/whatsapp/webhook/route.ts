@@ -211,7 +211,7 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
     }
   }
 
-  // 3. Proactive First-Contact Notification to Femi (in background)
+  // 3. Proactive First-Contact Notification to Femi & Welcome to New User
   if (!isFemi && pastMessages.length <= 1) {
     try {
       const timeWAT = formatToWAT(new Date());
@@ -224,6 +224,39 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
       await sendWhatsAppMessage(firstContactAlert, FEMI_PERSONAL_NUMBER);
     } catch (e) {
       console.warn("[WA] First contact alert error:", e);
+    }
+
+    // Welcome new users with concise superpower showcase if it's their first interaction or a greeting
+    const isFirstGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|who are you|what can you do|start|help)\b/i.test(lower.trim()) || pastMessages.length === 0;
+    if (isFirstGreeting) {
+      const welcomeName = pushName ? `, ${pushName}` : "";
+      const welcomeText =
+        `👋 *Hello${welcomeName}! I am Obey.*
+
+I am an autonomous AI executive companion built by *Femi Adeleke*. I am here to assist, entertain, and make life easier for you across WhatsApp, Web, and Voice!
+
+🚀 *Here are my superpowers:*
+🎙️ *Voice Notes:* Send me any voice note in English or Pidgin — I listen, analyze, and execute your instructions.
+📞 *Live Voice Calls:* Tap my call link anytime for a 100% free WebRTC voice chat — we fit gist about anything!
+🌐 *Instant Websites & Tools:* Ask me to build a website, landing page, or dashboard, and I'll send you the live preview link and code.
+🎨 *AI Image Generation:* Describe any artwork or photo, and I'll generate it instantly.
+📄 *Documents & Vision:* Send screenshots, PDFs, invoices, or contracts — I read and extract key insights.
+🔎 *Live Web Search:* Ask me for real-time news, facts, and trends across Nigeria and the world.
+📲 *Smart Delegation:* Ask me to message someone, and I'll format and dispatch it for you.
+
+How can I assist you today?`;
+
+      await reply(welcomeText);
+      try {
+        await dbAddGuestMessage({
+          id: `guest-welcome-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: "Obey",
+          role: "assistant",
+          content: welcomeText,
+        });
+      } catch {}
+      return;
     }
   }
 
@@ -352,6 +385,40 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
   }
 }
 
+/**
+ * Extracts contact details from shared WhatsApp contact cards (vCards)
+ */
+function extractContactCardInfo(msg: any): { name: string; phone: string } | null {
+  if (!msg) return null;
+  const contact =
+    msg.contactMessage ||
+    msg.extendedTextMessage?.contextInfo?.quotedMessage?.contactMessage ||
+    (msg.contactsArrayMessage?.contacts && msg.contactsArrayMessage.contacts[0]) ||
+    (msg.extendedTextMessage?.contextInfo?.quotedMessage?.contactsArrayMessage?.contacts &&
+      msg.extendedTextMessage.contextInfo.quotedMessage.contactsArrayMessage.contacts[0]);
+
+  if (!contact) return null;
+  const name = contact.displayName || "Contact";
+  const vcard = contact.vcard || "";
+
+  let phone = "";
+  const waidMatch = vcard.match(/waid=(\d+)/i);
+  if (waidMatch) {
+    phone = waidMatch[1];
+  } else {
+    const telMatch = vcard.match(/TEL[^:]*:([^\r\n]+)/i);
+    if (telMatch) {
+      phone = telMatch[1].replace(/\D/g, "");
+    }
+  }
+
+  if (phone) {
+    if (phone.startsWith("0") && phone.length === 11) phone = "234" + phone.slice(1);
+    return { name, phone };
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   let body: any;
   try {
@@ -395,11 +462,19 @@ export async function POST(req: NextRequest) {
     ""
   ).trim();
 
+  // Extract shared WhatsApp contact cards (e.g. vCard attachments)
+  const contactCard = extractContactCardInfo(msgObj.message);
+  if (contactCard) {
+    const contactTag = `[Shared Contact Card: ${contactCard.name} (Phone: +${contactCard.phone})]`;
+    userText = userText ? `${contactTag} ${userText}` : contactTag;
+  }
+
   const isAudio = Boolean(msgObj.message?.audioMessage);
   const isImage = Boolean(msgObj.message?.imageMessage);
   const isDoc = Boolean(msgObj.message?.documentMessage || msgObj.message?.documentWithCaptionMessage);
+  const isContact = Boolean(contactCard);
 
-  if (!userText && !isAudio && !isImage && !isDoc) {
+  if (!userText && !isAudio && !isImage && !isDoc && !isContact) {
     return NextResponse.json({ ok: true });
   }
 
