@@ -269,10 +269,24 @@ Respond ONLY with a valid JSON object matching this schema:
     console.warn("[Companion] Autonomous decision parse fallback:", e);
   }
 
-  // HARD SAFETY GUARD: "direct_voice_call" CAN NEVER TRIGGER UNLESS USER TEXT EXPLICITLY MENTIONS CALLING
-  const explicitlyRequestsCall = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me)\b/i.test(userText);
-  if (decision.action === "direct_voice_call" && !explicitlyRequestsCall) {
-    console.warn("[Companion] Blocked hallucinated direct_voice_call for input:", userText);
+  // Find last Obey line in conversation history
+  const historyLines = (historyText || "").split("\n");
+  let lastObeyLine = "";
+  for (let i = historyLines.length - 1; i >= 0; i--) {
+    if (historyLines[i].startsWith("Obey:")) {
+      lastObeyLine = historyLines[i].replace(/^Obey:\s*/, "").trim();
+      break;
+    }
+  }
+
+  // Check if previous delegation task was already completed / closed:
+  const lastTaskAlreadyClosed = /\b(successfully sent your message|already delivered your message|message dispatched|action cancelled)\b/i.test(lastObeyLine);
+
+  // HARD SAFETY GUARD & VOICE CALL INTENT DETECTION:
+  const explicitlyRequestsCall = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me|let'?s call|want to call|make a call|get on a call|talk to you.*call|can we call)\b/i.test(userText);
+  if (explicitlyRequestsCall) {
+    decision.action = "direct_voice_call";
+  } else if (decision.action === "direct_voice_call") {
     decision.action = "none";
   }
 
@@ -291,7 +305,7 @@ Respond ONLY with a valid JSON object matching this schema:
     };
   }
 
-  // Look up recent phone number in userText or historyText
+  // Look up recent phone number in userText, or in historyText ONLY IF the previous task isn't already closed
   let recentPhoneInContext: string | null = contactCardPhone;
   if (!recentPhoneInContext) {
     const rawMatch = userText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})|(?:\+?234|0)[789][01]\d{8}|\b234\d{10}\b|\b0\d{10}\b/i);
@@ -299,7 +313,8 @@ Respond ONLY with a valid JSON object matching this schema:
       recentPhoneInContext = (rawMatch[1] || rawMatch[0]).replace(/\D/g, "");
     }
   }
-  if (!recentPhoneInContext && historyText) {
+  // ONLY look back into history if a delegation task is actively in flight (not already completed/closed!)
+  if (!recentPhoneInContext && historyText && !lastTaskAlreadyClosed) {
     const histMatches = Array.from(historyText.matchAll(/(?:Phone:\s*\+?|waid=|\+?)(\d{10,14})/gi));
     if (histMatches.length > 0) {
       recentPhoneInContext = histMatches[histMatches.length - 1][1].replace(/\D/g, "");
@@ -309,17 +324,7 @@ Respond ONLY with a valid JSON object matching this schema:
     recentPhoneInContext = "234" + recentPhoneInContext.slice(1);
   }
 
-  // Find last Obey line in conversation history
-  const historyLines = (historyText || "").split("\n");
-  let lastObeyLine = "";
-  for (let i = historyLines.length - 1; i >= 0; i--) {
-    if (historyLines[i].startsWith("Obey:")) {
-      lastObeyLine = historyLines[i].replace(/^Obey:\s*/, "").trim();
-      break;
-    }
-  }
-
-  const obeyAskedForMessage = /send a message or text to this number|what message would you like me to send|what would you like me to say|who should i send this to|received the contact for/i.test(lastObeyLine);
+  const obeyAskedForMessage = !lastTaskAlreadyClosed && /send a message or text to this number|what message would you like me to send|what would you like me to say|who should i send this to|received the contact for/i.test(lastObeyLine);
 
   const isAffirmativeShort = /^(yes|yeah|yep|sure|ok|okay|1|do it|go ahead|proceed|fix it|revamp it|update it)\b/i.test(userText.trim());
 
@@ -333,18 +338,20 @@ Respond ONLY with a valid JSON object matching this schema:
   }
 
   // DETERMINISTIC MULTI-TURN MESSAGING RECOVERY:
-  // If recent turns contain a recipient phone number, and the user sends message content (text or voice note):
+  // If a delegation task is actively in flight, and user sends the message:
   const userDictatingMessage =
-    /^(tell|let|inform|say to|message|text|ask|pls tell|please tell|remind|send to him|send to her)\b/i.test(userText.trim()) ||
-    Boolean(isVoiceNote) ||
-    (obeyAskedForMessage && userText.trim().length > 3 && !isAffirmativeShort);
+    !explicitlyRequestsCall &&
+    (/^(tell|let him|let her|inform|say to|message|text|ask him|ask her|pls tell|please tell|remind|send to him|send to her)\b/i.test(userText.trim()) ||
+     (obeyAskedForMessage && (Boolean(isVoiceNote) || userText.trim().length > 3) && !isAffirmativeShort));
 
   if (
     recentPhoneInContext &&
     userDictatingMessage &&
     decision.action !== "create_website_artifact" &&
     decision.action !== "modify_website_artifact" &&
-    decision.action !== "check_action_status"
+    decision.action !== "create_document_file" &&
+    decision.action !== "check_action_status" &&
+    decision.action !== "direct_voice_call"
   ) {
     decision.action = "draft_whatsapp_message";
     decision.action_params = {
