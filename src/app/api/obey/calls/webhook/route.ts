@@ -38,23 +38,45 @@ export async function POST(req: NextRequest) {
     const recipients = new Set<string>();
     recipients.add(FEMI_PERSONAL_NUMBER);
 
-    // 1. If caller dialed via phone
-    const directCaller = (report.customer?.number || body.call?.customer?.number || "").replace(/\D/g, "");
-    if (directCaller && directCaller.length >= 10) {
-      recipients.add(directCaller);
+    function normalizePhone(raw: string | undefined | null): string {
+      if (!raw) return "";
+      let digits = String(raw).replace(/\D/g, "");
+      if (digits.startsWith("0") && digits.length === 11) {
+        digits = "234" + digits.slice(1);
+      }
+      return digits.length >= 10 ? digits : "";
     }
 
-    // 2. If WebRTC or metadata specified a user's phone
-    const metaUserPhone = (
+    // Extract caller phone from direct dial or WebRTC metadata/overrides
+    const candidatePhone = normalizePhone(
+      report.customer?.number ||
+      body.call?.customer?.number ||
       report.assistantOverrides?.metadata?.userPhone ||
-      report.metadata?.userPhone ||
       report.assistantOverrides?.variableValues?.userPhone ||
+      report.metadata?.userPhone ||
       report.variableValues?.userPhone ||
       body.call?.metadata?.userPhone ||
+      body.call?.variableValues?.userPhone ||
+      body.call?.assistantOverrides?.metadata?.userPhone ||
+      body.call?.assistantOverrides?.variableValues?.userPhone ||
       ""
-    ).replace(/\D/g, "");
-    if (metaUserPhone && metaUserPhone.length >= 10) {
-      recipients.add(metaUserPhone);
+    );
+
+    if (candidatePhone && candidatePhone !== FEMI_PERSONAL_NUMBER) {
+      recipients.add(candidatePhone);
+      console.log(`[Vapi Webhook] Added caller to recipients: ${candidatePhone}`);
+    }
+
+    // Transcript fallback extraction: If WebRTC caller spoke their number during the conversation
+    if (recipients.size === 1 && transcript) {
+      const match = transcript.match(/(?:(?:\+?234)|0)[789][01]\d{8}/);
+      if (match) {
+        const spokenPhone = normalizePhone(match[0]);
+        if (spokenPhone && spokenPhone !== FEMI_PERSONAL_NUMBER) {
+          recipients.add(spokenPhone);
+          console.log(`[Vapi Webhook] Detected spoken phone number in transcript: ${spokenPhone}`);
+        }
+      }
     }
 
     const mins = Math.floor(durationSeconds / 60);

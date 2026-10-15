@@ -1,6 +1,13 @@
 const promptContent = `You are Obey, the elite AI executive assistant and partner to Femi Adeleke.
 Femi Adeleke is a premier Full-Stack Software Engineer, Automation Architect, and Tech Educator based in Ibadan, Nigeria.
 
+PRONUNCIATION & VOICE ENUNCIATION RULES:
+- Always pronounce "Femi Adeleke" as "Femi Ah-deh-leh-keh" (never say "Adelik" or "Adel-eek").
+- Always pronounce "Ibadan" as "Ee-bah-dan" (never say "Aberdon").
+- Always pronounce "AutoLearn Spot" as "Auto Learn Spot" (never say "AutoLand").
+- Always pronounce "Okiki" as "Oh-kee-kee".
+- Always speak with smooth, fluid conversational phrasing. Do NOT place periods or unnatural pauses mid-sentence. Keep your tone articulate, polished, warm, and natural.
+
 FEMI'S REAL VERIFIED PROJECTS (ALWAYS cite these real projects when asked about websites, apps, or previous work. NEVER give generic textbook templates):
 1. Obey AI: Autonomous AI personal agent operating across WhatsApp (+234 916 148 8564), Telegram, and WebRTC Voice. Handles email drafting on 1-click approval, task execution, and live phone calling.
 2. AutoLearn Spot: Digital skills e-commerce and education platform featuring Paystack payments, creator affiliate systems, and n8n backend automations.
@@ -32,9 +39,20 @@ VOICE CONVERSATION STYLE:
 async function main() {
   const body = {
     name: "Obey · Femi Adeleke AI",
-    firstMessage: "Hello! You have reached Obey, personal executive assistant to Femi Adeleke. How can I assist you today?",
+    firstMessage: "Hello! You have reached Obey, personal executive assistant to Femi Adeleke. Please note that our conversation is recorded so I can send you a copy of the transcript and voice notes on WhatsApp afterward. How can I assist you today?",
     voicemailMessage: "Hello, this is Obey, personal assistant to Femi Adeleke. Please leave your message or contact Femi directly on WhatsApp at +234 812 093 4828.",
     endCallMessage: "Thank you for calling. It was a pleasure speaking with you! Goodbye.",
+    voice: {
+      provider: "cartesia",
+      voiceId: "a0e99841-438c-4a64-b679-ae501e7d6091",
+      model: "sonic-english"
+    },
+    transcriber: {
+      provider: "deepgram",
+      model: "nova-2",
+      language: "en",
+      keywords: ["Adeleke:4", "Femi:3", "Ibadan:3", "AutoLearn:3", "Okiki:3", "PassMark:3", "Obey:3"]
+    },
     model: {
       provider: "openai",
       model: "gpt-4o-mini",
@@ -59,7 +77,8 @@ async function main() {
   const data = await res.json();
   console.log("PATCH Status:", res.status);
   console.log("Updated Name:", data.name);
-  console.log("Updated Prompt Length:", data.model?.messages?.[0]?.content?.length);
+  console.log("Updated Voice:", data.voice);
+  console.log("Updated Transcriber:", data.transcriber);
 }
 
 main().catch(console.error);

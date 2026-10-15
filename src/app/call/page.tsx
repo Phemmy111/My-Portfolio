@@ -27,6 +27,9 @@ function CallInterface() {
   const rawPhone = searchParams.get("phone") || "";
   const rawName = searchParams.get("name") || "";
 
+  const [inputPhone, setInputPhone] = useState(rawPhone || "");
+  const [inputName, setInputName] = useState(rawName || "");
+
   const [callStatus, setCallStatus] = useState<
     "idle" | "loading" | "connecting" | "active" | "ended" | "error"
   >("idle");
@@ -40,6 +43,20 @@ function CallInterface() {
 
   const vapiRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize from localStorage if query params were empty
+  useEffect(() => {
+    try {
+      if (!inputPhone) {
+        const savedPhone = localStorage.getItem("obey_call_phone");
+        if (savedPhone) setInputPhone(savedPhone);
+      }
+      if (!inputName) {
+        const savedName = localStorage.getItem("obey_call_name");
+        if (savedName) setInputName(savedName);
+      }
+    } catch {}
+  }, []);
 
   // Fetch Vapi configuration
   useEffect(() => {
@@ -136,8 +153,19 @@ function CallInterface() {
         });
       }
 
-      const userPhone = rawPhone.replace(/\D/g, "") || "2348120934828";
-      const userName = rawName || "Friend";
+      let cleanPhone = (inputPhone || rawPhone || "").replace(/\D/g, "");
+      if (cleanPhone.startsWith("0") && cleanPhone.length === 11) {
+        cleanPhone = "234" + cleanPhone.slice(1);
+      }
+      const userPhone = cleanPhone.length >= 10 ? cleanPhone : "";
+      const userName = (inputName || rawName || "").trim() || "Friend";
+
+      if (userPhone) {
+        try {
+          localStorage.setItem("obey_call_phone", userPhone);
+          if (userName && userName !== "Friend") localStorage.setItem("obey_call_name", userName);
+        } catch {}
+      }
 
       await vapiRef.current.start(vapiConfig.assistantId, {
         metadata: {
@@ -310,6 +338,35 @@ function CallInterface() {
           </div>
         )}
 
+        {/* Pre-Call Setup: WhatsApp Number & Name for Instant Report Delivery */}
+        {callStatus === "idle" && (
+          <div className="w-full max-w-md mx-auto mb-6 p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 text-left space-y-3 shadow-xl">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} className="text-emerald-400" />
+              <span className="text-xs font-bold text-zinc-200">Get Your Call Recording on WhatsApp</span>
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Enter your WhatsApp number so Obey can send you your audio recording, transcript, and executive summary immediately after the call.
+            </p>
+            <div className="space-y-2">
+              <input
+                type="tel"
+                value={inputPhone}
+                onChange={(e) => setInputPhone(e.target.value)}
+                placeholder="WhatsApp Number (e.g. +234 812 093 4828 or 080...)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+              <input
+                type="text"
+                value={inputName}
+                onChange={(e) => setInputName(e.target.value)}
+                placeholder="Your Name (Optional, e.g. Tunde)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Action Controls */}
         <div className="flex items-center justify-center gap-4">
           {callStatus === "active" ? (
@@ -368,11 +425,17 @@ function CallInterface() {
           )}
         </div>
 
-        {rawPhone && callStatus === "ended" && (
-          <p className="mt-4 text-[11px] text-zinc-500">
-            💬 A summary & audio recording are being processed for WhatsApp number:{" "}
-            <span className="text-zinc-300 font-mono">+{rawPhone}</span>
-          </p>
+        {callStatus === "ended" && (
+          <div className="mt-4 p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-center max-w-md mx-auto space-y-1">
+            <p className="text-xs font-bold text-emerald-400">
+              🎙️ Call Completed & Dispatched
+            </p>
+            <p className="text-[11px] text-zinc-400">
+              {inputPhone || rawPhone
+                ? `The summary transcript & audio recording are being sent to your WhatsApp (+${inputPhone || rawPhone}) and Femi Adeleke.`
+                : `The call summary and recording have been archived and dispatched to Femi Adeleke.`}
+            </p>
+          </div>
         )}
       </main>
 
