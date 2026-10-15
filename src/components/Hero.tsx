@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { GitFork, MessageCircle, ArrowDown, Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
+import { GitFork, MessageCircle, ArrowDown, Sparkles, ChevronRight, ChevronLeft, Phone } from "lucide-react";
 import { PERSONAL } from "@/lib/data";
 
 // 11 distinct roles with unique, strange transition animations
@@ -342,13 +342,26 @@ export default function Hero() {
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-wrap gap-4 pt-2">
+            <div className="flex flex-wrap gap-3.5 pt-2">
               <a
                 href="#contact"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-bold hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 hover:scale-105 shadow-md dark:shadow-white/10"
               >
                 <MessageCircle size={18} />
                 Hire Me
+              </a>
+              <a
+                href="/call"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all duration-200 hover:scale-105 shadow-md shadow-emerald-600/30 group"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-200" />
+                </span>
+                <Phone size={16} />
+                <span>Call Obey (Voice AI)</span>
               </a>
               <a
                 href="#projects"
@@ -360,7 +373,7 @@ export default function Hero() {
                 href={PERSONAL.github}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-zinc-400 dark:border-zinc-800 bg-white/70 dark:bg-[#080808] text-zinc-950 dark:text-zinc-200 font-bold hover:border-black dark:hover:border-zinc-600 hover:text-black dark:hover:text-white transition-all duration-200 shadow-xs"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-full border border-zinc-400 dark:border-zinc-800 bg-white/70 dark:bg-[#080808] text-zinc-950 dark:text-zinc-200 font-bold hover:border-black dark:hover:border-zinc-600 hover:text-black dark:hover:text-white transition-all duration-200 shadow-xs"
               >
                 <GitFork size={18} />
                 GitHub
