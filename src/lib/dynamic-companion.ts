@@ -8,11 +8,16 @@ import {
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
+import { generateAIImage } from "./image-generator";
+import { saveArtifact, extractArtifactBlocks } from "./artifact-engine";
+import { sendWhatsAppImage } from "./whatsapp-gateway";
 
 export interface CompanionResponse {
   reply: string;
   actionStaged?: boolean;
   actionExecuted?: boolean;
+  imageUrl?: string;
+  artifactId?: string;
 }
 
 /**
@@ -290,19 +295,42 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
+  // 7. HANDLE AI IMAGE GENERATION
+  const isImageRequest =
+    /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower);
+
+  if (isImageRequest) {
+    const imgRes = await generateAIImage(userText);
+    if (imgRes.success) {
+      if (channel === "whatsapp") {
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`);
+      }
+      return {
+        reply: cleanWhatsApp(
+          `🎨 *Generated Artwork:*\n\n` +
+          `• *Prompt:* "${imgRes.revisedPrompt}"\n\n` +
+          `🖼️ *High-Resolution Image:*\n${imgRes.imageUrl}\n\n` +
+          `_(Sent directly to your chat as an image!)_`
+        ),
+        imageUrl: imgRes.imageUrl,
+      };
+    }
+  }
+
   // 8. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
   const isFemi = userIdentifier === "2348120934828";
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
   const hasHistory = Boolean(historyText && historyText.trim().length > 10);
 
-  const companionSystemPrompt = `You are Obey, an autonomous AI executive companion and personal assistant.
-You think, speak, and interact like a sharp, direct, empathetic human companion.
+  const companionSystemPrompt = `You are Obey, an autonomous AI executive companion and personal assistant working directly with Femi Adeleke.
+You think, speak, and interact like a sharp, direct, empathetic human colleague.
+You are conversing with someone on ${channel}.
 
 CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 1. BE AS CONCISE AS POSSIBLE (NO UNNECESSARY TALK):
    - Deliver punchy, direct answers. Many responses should simply be 1 or 2 clear sentences.
-   - For school questions, multiple choice, or quick facts: state the direct answer immediately with 1 brief explanation sentence (e.g. "*C. Ribosomes.* Every known cell needs them to synthesize proteins."). Never dump multi-paragraph lectures or unnecessary bullet points when a short answer suffices.
+   - For school questions, multiple choice, or quick facts: state the direct answer immediately with 1 brief explanation sentence. Never dump multi-paragraph lectures or unnecessary bullet points when a short answer suffices.
    - Match the user's brevity: if the user sends a short question, give a short, precise answer.
 
 2. NEVER REPEAT GREETINGS IN ONGOING CHAT:
@@ -314,14 +342,7 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
 
 4. ELIMINATE REPETITIVE FILLER & PREAMBLE:
-   - NEVER use canned filler phrases like:
-     * 'Let's slice right through this!'
-     * 'Let's get straight to the point!'
-     * 'You are absolute royalty for keeping this study session going!'
-     * 'Let's finish this strong!'
-     * 'I am right here with you!'
-     * 'Ready to call it a night?'
-   - Just provide the answer with natural, effortless human confidence.
+   - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'. Just provide the answer with natural, effortless human confidence.
 
 5. WHO YOU ARE TALKING TO:
    ${isFemi
@@ -330,19 +351,27 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 
 6. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
    - You were architected and engineered by Femi Adeleke, a premier Software Engineer, AI Automation Architect, and Educator based in Ibadan, Nigeria (https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Email: femiadeleke2020@gmail.com | WhatsApp: +234 812 093 4828).
-   - If the user asks about websites, mobile apps, software development, or who built you, NEVER give generic textbook replies. ALWAYS speak of Femi's actual verified platforms:
+   - If the user asks about websites, mobile apps, software development, or who built you, speak of Femi's actual verified platforms:
      * *OKIKI Electronics Store:* High-performance e-commerce store with catalog filtering and cart management.
      * *AutoLearn Spot:* Digital skills e-commerce & learning platform with Paystack checkout, affiliate flows, and n8n backend automations.
      * *Jeweller's Hub:* Custom luxury e-commerce web platform for jewellery brands with online checkout.
      * *PassMark:* Flutter mobile UTME exam prep app with Supabase pgvector RAG and the PassBot AI tutor.
      * *EduMate & UniVibe:* Educational AI WhatsApp bot and University of Ibadan campus community app.
    - Core Skills: Next.js (App Router), React, TypeScript, Tailwind CSS, Neon Cloud DB, Supabase, n8n automations, Flutter, AI Agent architectures, Paystack integrations.
-   - Confidently offer to connect them directly with Femi on WhatsApp (+234 812 093 4828).
 
-7. WHATSAPP FORMATTING:
-   - Use clean bullet points (•) and numbers only when listing multiple distinct items.
-   - Use single asterisks (*like this*) for bolding.
-   - Never use markdown headers (# or ##) or double asterisks (**text**).
+7. CALLING OPTIONS:
+   - If they ask to speak or call Femi or Obey, provide Option 1: Direct Line +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at https://femiadelekeportfolio.vercel.app/call.
+
+8. INTERACTIVE ARTIFACTS:
+   - When the user asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
+     <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
+     ...complete runnable code...
+     </artifact>
+     Obey will automatically turn it into an interactive live web preview!
+
+9. FORMATTING:
+   - Use clean bullet points (•) and numbers.
+   - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
@@ -360,7 +389,27 @@ ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : "
       temperature: 0.4,
     });
 
-    return { reply: cleanWhatsApp(aiRes.text) };
+    let finalReply = aiRes.text;
+    const artifacts = extractArtifactBlocks(finalReply);
+    let firstArtifactId: string | undefined;
+
+    if (artifacts.length > 0) {
+      for (const art of artifacts) {
+        const saved = await saveArtifact({
+          title: art.title,
+          type: art.type,
+          content: art.content,
+          description: `Generated by Obey for ${senderName || "user"}`,
+        });
+        if (!firstArtifactId) firstArtifactId = saved.id;
+        finalReply += `\n\n🌐 *Interactive Live Preview:* https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+      }
+    }
+
+    return {
+      reply: cleanWhatsApp(finalReply),
+      artifactId: firstArtifactId,
+    };
   } catch (err: any) {
     console.error("[Companion] AI error:", err);
     return {

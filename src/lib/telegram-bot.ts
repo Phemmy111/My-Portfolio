@@ -74,6 +74,55 @@ export async function sendTelegramMessage(
 }
 
 /**
+ * Dispatches a photo or AI generated artwork to Telegram.
+ */
+export async function sendTelegramPhoto(
+  photoUrl: string,
+  caption?: string,
+  options?: {
+    chatId?: string;
+    inlineKeyboard?: Array<Array<{ text: string; callback_data?: string; url?: string }>>;
+  }
+): Promise<{ success: boolean; messageId?: number; error?: string }> {
+  try {
+    const token = await getSetting("TELEGRAM_BOT_TOKEN");
+    const targetChatId = options?.chatId || (await getSetting("TELEGRAM_CHAT_ID"));
+
+    if (!token || !targetChatId) {
+      return { success: false, error: "Telegram Bot Token or Chat ID not configured" };
+    }
+
+    const payload: Record<string, any> = {
+      chat_id: targetChatId,
+      photo: photoUrl,
+      caption: caption?.slice(0, 1024),
+      parse_mode: "Markdown",
+    };
+
+    if (options?.inlineKeyboard && options.inlineKeyboard.length > 0) {
+      payload.reply_markup = {
+        inline_keyboard: options.inlineKeyboard,
+      };
+    }
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      return { success: true, messageId: data.result?.message_id };
+    }
+    return { success: false, error: data.description || "Failed to send photo" };
+  } catch (err: any) {
+    console.error("[Telegram] sendTelegramPhoto error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Handles incoming Telegram webhooks (when Femi texts Obey on his phone).
  */
 export async function handleTelegramWebhook(body: any): Promise<void> {
@@ -482,5 +531,9 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     }
   }
 
-  await sendTelegramMessage(replyText, { chatId, inlineKeyboard: keyboard });
+  if (companionRes.imageUrl) {
+    await sendTelegramPhoto(companionRes.imageUrl, replyText, { chatId, inlineKeyboard: keyboard });
+  } else {
+    await sendTelegramMessage(replyText, { chatId, inlineKeyboard: keyboard });
+  }
 }
