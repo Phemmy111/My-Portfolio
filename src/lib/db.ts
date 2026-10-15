@@ -225,10 +225,10 @@ export async function dbGetChatMessages(limit: number = 100) {
     const rows = await db`
       SELECT id, role, content, cards, created_at
       FROM obey_chat_messages
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT ${limit}
     `;
-    return rows;
+    return rows ? [...rows].reverse() : [];
   } catch (err) {
     console.warn("dbGetChatMessages fallback:", err);
     return [];
@@ -334,10 +334,10 @@ export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50
       SELECT id, phone_number, sender_name, channel, role, content, created_at
       FROM guest_chat_messages
       WHERE phone_number = ${phoneNumber}
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT ${limit}
     `;
-    return rows;
+    return rows ? [...rows].reverse() : [];
   } catch (e) {
     console.warn("dbGetGuestMessages fallback:", e);
     return [];

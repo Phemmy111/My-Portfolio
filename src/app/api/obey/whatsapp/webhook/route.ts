@@ -123,10 +123,10 @@ async function processMessage(params: ProcessMessageParams) {
     console.warn("[WA] DB save error:", err);
   }
 
-  // 2. Load conversation history
-  const pastMessages = await dbGetGuestMessages(replyTo, 15);
+  // 2. Load conversation history (Fetch recent 40 messages, keep last 25 turns)
+  const pastMessages = await dbGetGuestMessages(replyTo, 40);
   const historyText = pastMessages
-    .slice(-10)
+    .slice(-25)
     .map((m) => `${m.role === "user" ? (pushName || "User") : "Obey"}: ${m.content}`)
     .join("\n");
 
@@ -355,6 +355,7 @@ How can I assist you today?`;
       senderName: pushName,
       channel: "whatsapp",
       historyText,
+      isVoiceNote,
     });
 
     const finalReply = companionRes.reply;
@@ -390,12 +391,18 @@ How can I assist you today?`;
  */
 function extractContactCardInfo(msg: any): { name: string; phone: string } | null {
   if (!msg) return null;
+  const quoted =
+    msg.extendedTextMessage?.contextInfo?.quotedMessage ||
+    msg.audioMessage?.contextInfo?.quotedMessage ||
+    msg.imageMessage?.contextInfo?.quotedMessage ||
+    msg.documentMessage?.contextInfo?.quotedMessage ||
+    msg.contextInfo?.quotedMessage;
+
   const contact =
     msg.contactMessage ||
-    msg.extendedTextMessage?.contextInfo?.quotedMessage?.contactMessage ||
     (msg.contactsArrayMessage?.contacts && msg.contactsArrayMessage.contacts[0]) ||
-    (msg.extendedTextMessage?.contextInfo?.quotedMessage?.contactsArrayMessage?.contacts &&
-      msg.extendedTextMessage.contextInfo.quotedMessage.contactsArrayMessage.contacts[0]);
+    quoted?.contactMessage ||
+    (quoted?.contactsArrayMessage?.contacts && quoted.contactsArrayMessage.contacts[0]);
 
   if (!contact) return null;
   const name = contact.displayName || "Contact";
@@ -493,7 +500,7 @@ export async function POST(req: NextRequest) {
         if (media?.base64) {
           const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
           if (transRes.success && transRes.text) {
-            activeText = transRes.text;
+            activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
             isVoiceNote = true;
           } else {
             activeText = "[Unclear Voice Note]";

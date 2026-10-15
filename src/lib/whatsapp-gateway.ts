@@ -284,6 +284,21 @@ export async function sendWhatsAppDocument(
 
     const base64Data = Buffer.from(fileContent, "utf-8").toString("base64");
 
+    let finalFileName = fileName.trim();
+    if (!/\.[a-zA-Z0-9]{2,5}$/.test(finalFileName)) {
+      if (mimetype.includes("msword") || mimetype.includes("word") || mimetype.includes("officedocument")) {
+        finalFileName += ".doc";
+      } else if (mimetype.includes("pdf")) {
+        finalFileName += ".pdf";
+      } else if (mimetype.includes("markdown")) {
+        finalFileName += ".md";
+      } else if (mimetype.includes("plain")) {
+        finalFileName += ".txt";
+      } else {
+        finalFileName += ".html";
+      }
+    }
+
     const res = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: {
@@ -295,8 +310,8 @@ export async function sendWhatsAppDocument(
         media: base64Data,
         mediatype: "document",
         mimetype: mimetype,
-        fileName: fileName.endsWith(".html") ? fileName : `${fileName}.html`,
-        caption: caption || `📄 ${fileName}`,
+        fileName: finalFileName,
+        caption: caption || `📄 ${finalFileName}`,
       }),
     });
 

@@ -130,8 +130,9 @@ export async function processDynamicCompanionTurn(params: {
   historyText?: string;
   mediaBase64?: string;
   mediaMimeType?: string;
+  isVoiceNote?: boolean;
 }): Promise<CompanionResponse> {
-  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType } = params;
+  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType, isVoiceNote = false } = params;
   const lower = userText.toLowerCase().trim();
   const isFemi = userIdentifier === "2348120934828";
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
@@ -198,13 +199,20 @@ AVAILABLE TOOLS & ACTIONS:
    - Parameters: "website_title" (clear title), "website_specs" (features, styling, layout).
 6. "modify_website_artifact": Use when the user asks to change, update, restyle, fix, or edit ANY previously created website/artifact in context or by name.
    - Parameters: "website_title" (title of the artifact to modify, or null for latest), "website_changes" (what to fix or adjust in the code).
-7. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
+7. "create_document_file": Use when the user asks to turn an idea, pitch, chat, summary, notes, plan, proposal, contract, guide, or story into a document, doc, Word doc, Google Doc, PDF, text file, or markdown file.
+   - Look back across prior conversation turns to identify EXACTLY what topic, pitch, or concept they want turned into a document (e.g. Havilah Farms agricultural pitch, meeting notes, project proposal).
+   - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
+8. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
-8. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
-9. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
+9. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
+10. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
+- CRITICAL DOCUMENT & FILE CONTINUITY:
+  When the user says "Can you turn it to docs?", "turn into doc", "make it a doc", "put it in google doc", "turn it to PDF", "export as document", "the pitch nau", "this":
+  1. DO NOT ask "What is this?" or "Which idea are we revisiting?" if a pitch, concept, business idea, outline, story, or project was discussed anywhere in recent turns!
+  2. ALWAYS select "create_document_file", identify the exact pitch or topic from CONVERSATION CONTEXT (e.g. "Havilah Farms Agri-Youth Hub & Smart Greenhouse Farming"), set "document_title", and set "document_topic"!
 - CRITICAL ARTIFACT CONTINUITY & CODE MEMORY:
   1. You (Obey) have full permanent access to all code you previously generated (listed in "User's Saved Website Artifacts in Memory").
   2. You NEVER ask the user to "drop the code snippet" or "paste the code" for any artifact you created! You already have their full code in the database.
@@ -226,7 +234,7 @@ REASONING GUIDELINES:
 Respond ONLY with a valid JSON object matching this schema:
 {
   "thought": "1-sentence executive reasoning analyzing what the user is asking and which tool applies",
-  "action": "check_action_status" | "draft_whatsapp_message" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "search_live_web" | "direct_voice_call" | "none",
+  "action": "check_action_status" | "draft_whatsapp_message" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "create_document_file" | "search_live_web" | "direct_voice_call" | "none",
   "action_params": {
     "recipient_phone": "phone number or null",
     "message_content": "message or null",
@@ -235,6 +243,9 @@ Respond ONLY with a valid JSON object matching this schema:
     "website_title": "title or null",
     "website_specs": "specs or null",
     "website_changes": "changes or null",
+    "document_title": "title or null",
+    "document_topic": "topic or null",
+    "document_format": "doc" | "pdf" | "txt" | "md" | null,
     "search_query": "query or null"
   },
   "conversational_response": "Concise, warm, direct response if action is none or clarifying"
@@ -265,20 +276,86 @@ Respond ONLY with a valid JSON object matching this schema:
     decision.action = "none";
   }
 
-  // DETERMINISTIC AFFIRMATIVE ARTIFACT RECOVERY:
-  // If the user replied affirmatively ("yes", "sure", "ok", "go ahead", "do it") and the assistant previously
-  // offered to revamp, fix, or update an artifact, route directly to modify_website_artifact!
-  const isAffirmativeShort = /^(yes|yeah|yep|sure|ok|okay|1|do it|go ahead|proceed|fix it|revamp it|update it)\b/i.test(userText.trim());
-  if (isAffirmativeShort && latestArtifact && decision.action !== "draft_whatsapp_message") {
-    const lines = (historyText || "").split("\n");
-    let lastObeyLine = "";
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].startsWith("Obey:")) {
-        lastObeyLine = lines[i].replace(/^Obey:\s*/, "");
-        break;
-      }
-    }
+  // Contact card parsing from userText
+  const currentContactCardMatch = userText.match(/\[Shared Contact Card:\s*([^(\]]+)(?:\(Phone:\s*\+?(\d+)\))?\]/i);
+  const contactCardPhone = currentContactCardMatch ? (currentContactCardMatch[2] || "").trim() : null;
+  const contactCardName = currentContactCardMatch ? currentContactCardMatch[1].trim() : null;
+  const textWithoutContactCard = userText.replace(/\[Shared Contact Card:[^\]]+\]/gi, "").trim();
 
+  // If user ONLY shared a contact card without extra instructions, acknowledge warmly and ask what to send:
+  if (currentContactCardMatch && contactCardPhone && (!textWithoutContactCard || textWithoutContactCard.length < 3)) {
+    return {
+      reply: cleanWhatsApp(
+        `Got it! I've received the contact for *${contactCardName || "Contact"}* (+${contactCardPhone}).\n\nWhat message would you like me to send them? You can type it or send a quick voice note!`
+      ),
+    };
+  }
+
+  // Look up recent phone number in userText or historyText
+  let recentPhoneInContext: string | null = contactCardPhone;
+  if (!recentPhoneInContext) {
+    const rawMatch = userText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})|(?:\+?234|0)[789][01]\d{8}|\b234\d{10}\b|\b0\d{10}\b/i);
+    if (rawMatch) {
+      recentPhoneInContext = (rawMatch[1] || rawMatch[0]).replace(/\D/g, "");
+    }
+  }
+  if (!recentPhoneInContext && historyText) {
+    const histMatches = Array.from(historyText.matchAll(/(?:Phone:\s*\+?|waid=|\+?)(\d{10,14})/gi));
+    if (histMatches.length > 0) {
+      recentPhoneInContext = histMatches[histMatches.length - 1][1].replace(/\D/g, "");
+    }
+  }
+  if (recentPhoneInContext && recentPhoneInContext.startsWith("0") && recentPhoneInContext.length === 11) {
+    recentPhoneInContext = "234" + recentPhoneInContext.slice(1);
+  }
+
+  // Find last Obey line in conversation history
+  const historyLines = (historyText || "").split("\n");
+  let lastObeyLine = "";
+  for (let i = historyLines.length - 1; i >= 0; i--) {
+    if (historyLines[i].startsWith("Obey:")) {
+      lastObeyLine = historyLines[i].replace(/^Obey:\s*/, "").trim();
+      break;
+    }
+  }
+
+  const obeyAskedForMessage = /send a message or text to this number|what message would you like me to send|what would you like me to say|who should i send this to|received the contact for/i.test(lastObeyLine);
+
+  const isAffirmativeShort = /^(yes|yeah|yep|sure|ok|okay|1|do it|go ahead|proceed|fix it|revamp it|update it)\b/i.test(userText.trim());
+
+  // If Obey asked for message or to send message, and user answered "yes":
+  if (isAffirmativeShort && obeyAskedForMessage && recentPhoneInContext) {
+    return {
+      reply: cleanWhatsApp(
+        `Awesome! What message would you like me to send to *+${recentPhoneInContext}*? You can type it or send a quick voice note.`
+      ),
+    };
+  }
+
+  // DETERMINISTIC MULTI-TURN MESSAGING RECOVERY:
+  // If recent turns contain a recipient phone number, and the user sends message content (text or voice note):
+  const userDictatingMessage =
+    /^(tell|let|inform|say to|message|text|ask|pls tell|please tell|remind|send to him|send to her)\b/i.test(userText.trim()) ||
+    Boolean(isVoiceNote) ||
+    (obeyAskedForMessage && userText.trim().length > 3 && !isAffirmativeShort);
+
+  if (
+    recentPhoneInContext &&
+    userDictatingMessage &&
+    decision.action !== "create_website_artifact" &&
+    decision.action !== "modify_website_artifact" &&
+    decision.action !== "check_action_status"
+  ) {
+    decision.action = "draft_whatsapp_message";
+    decision.action_params = {
+      recipient_phone: recentPhoneInContext,
+      message_content: textWithoutContactCard || userText.trim(),
+    };
+  }
+
+  // DETERMINISTIC AFFIRMATIVE ARTIFACT RECOVERY:
+  // If the user replied affirmatively and the assistant previously offered to revamp, fix, or update an artifact:
+  if (isAffirmativeShort && latestArtifact && decision.action !== "draft_whatsapp_message") {
     if (
       lastObeyLine &&
       /\b(revamp|frontend design|styling|color palette|dark-mode|wire up|save task|button|code|snippet|modify|update|fix|make it|enhance|adjust)\b/i.test(lastObeyLine)
@@ -289,6 +366,33 @@ Respond ONLY with a valid JSON object matching this schema:
         website_changes: `Implement the requested design revamp and enhancements: ${lastObeyLine.slice(0, 600)}`,
       };
     }
+  // DETERMINISTIC DOCUMENT GENERATION RECOVERY:
+  // If user requests a document (e.g. "turn it to docs", "make it a doc", "google docs", "the pitch nau", "turn this to doc"):
+  const requestsDocument =
+    /\b(turn it to doc|turn it to docs|turn into doc|turn into docs|make it a doc|make it docs|export as doc|google doc|google docs|turn to google doc|turn this to doc|create a doc|generate doc|put it in doc|save as doc|convert to doc|send as doc|give me doc|turn it to pdf|send as pdf|the pitch nau)\b/i.test(userText.trim()) ||
+    (/\b(docs?|document|pdf|word doc)\b/i.test(userText.trim()) && /\b(pitch|idea|this|convert|turn|make|generate)\b/i.test(userText.trim()));
+
+  if (requestsDocument && decision.action !== "draft_whatsapp_message") {
+    let detectedTopic = "";
+    let detectedTitle = "Executive Document";
+
+    const hist = (historyText || "").split("\n");
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const line = hist[i];
+      if (/Agri-Youth|Greenhouse|Havilah|Farms|business idea|pitch|concept|proposal|outline|startup/i.test(line)) {
+        detectedTopic = line;
+        const titleMatch = line.match(/\*([^*]+)\*/);
+        if (titleMatch) detectedTitle = titleMatch[1].trim();
+        break;
+      }
+    }
+
+    decision.action = "create_document_file";
+    decision.action_params = {
+      document_title: detectedTitle || "Business Proposal & Execution Plan",
+      document_topic: detectedTopic || userText,
+      document_format: /pdf/i.test(userText) ? "pdf" : "doc",
+    };
   }
 
   // 4. EXECUTE AUTONOMOUS DECISION
@@ -519,6 +623,79 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
     }
   }
 
+  // Tool: Create Document File (.doc, .docx, .txt, .md, .pdf)
+  if (decision.action === "create_document_file") {
+    try {
+      const docTitle = decision.action_params?.document_title || "Executive Document";
+      const docTopic = decision.action_params?.document_topic || userText;
+      const docFormat = decision.action_params?.document_format || "doc";
+      const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
+
+      const docPrompt = `You are Obey, an elite executive assistant and business architect.
+Generate a comprehensive, beautifully structured, publication-grade executive document for: "${docTitle}".
+Full context & source details discussed: "${docTopic}".
+User/Recipient: ${userGreetingName || "Leader"}
+
+Structure the document with:
+1. Document Header & Date (${watDate})
+2. Executive Summary
+3. Vision & Core Value Proposition
+4. Detailed Operational / Business Breakdown
+5. Key Implementation Milestones & Roadmap
+6. Resource Requirements & Next Steps
+
+Format the output in clean, elegant Word-compatible HTML markup with clear <h1>, <h2>, <h3>, <p>, <ul>, and <table> styling:
+(Use clean inline CSS: font-family: Arial, sans-serif; line-height: 1.6; color: #111; max-width: 800px; margin: auto; padding: 30px;).
+Ensure it looks stunning and opens natively in Microsoft Word, Google Docs, or an internet browser!
+Return ONLY the complete HTML document starting with <!DOCTYPE html><html>...</html>.`;
+
+      const docRes = await executeAICompletion({
+        systemPrompt: "You are an elite executive document writer. Generate professional, polished, high-value business documents and proposals.",
+        userPrompt: docPrompt,
+        temperature: 0.3,
+      });
+
+      const safeTitle = docTitle.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_") || "Document";
+      const fileContent = docRes.text;
+
+      // Save as artifact so it has a permanent web link
+      const saved = await saveArtifact({
+        title: docTitle,
+        type: "document",
+        content: fileContent,
+        user_identifier: userIdentifier,
+      });
+
+      const link = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+
+      // If channel is WhatsApp, dispatch the .doc / .txt / .md file directly to the chat!
+      if (channel === "whatsapp") {
+        const ext = docFormat === "pdf" ? ".pdf" : docFormat === "txt" ? ".txt" : docFormat === "md" ? ".md" : ".doc";
+        const mime = docFormat === "pdf" ? "application/pdf" : docFormat === "txt" ? "text/plain" : docFormat === "md" ? "text/markdown" : "application/msword";
+        await sendWhatsAppDocument(fileContent, `${safeTitle}${ext}`, userIdentifier, `📄 *${docTitle}*`, mime);
+      }
+
+      return {
+        reply: cleanWhatsApp(
+          `📄 *${docTitle} is ready!*
+
+I've converted the pitch and plan into a complete, professional executive document and dispatched the file directly here for you.
+
+🌐 *Live Interactive Document:*
+${link}
+
+📁 *Word & Google Docs Compatible:*
+Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.`
+        ),
+        artifactId: saved.id,
+        artifactTitle: docTitle,
+        artifactContent: fileContent,
+      };
+    } catch (err) {
+      console.error("[Companion] Document generation error:", err);
+    }
+  }
+
   // Tool: Direct Voice Call WebRTC link
   if (decision.action === "direct_voice_call") {
     const cleanUserPhone = userIdentifier.replace(/\D/g, "");
@@ -553,14 +730,7 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
     }
   }
 
-  // If the autonomous reasoner already provided a direct conversational response and no live search is needed:
-  if (decision.action === "none" && decision.conversational_response && decision.conversational_response.trim().length > 5 && !liveSearchFindings) {
-    return {
-      reply: cleanWhatsApp(decision.conversational_response),
-    };
-  }
-
-  // 5. COMPANION & CONVERSATIONAL SYNTHESIS (Concise, 100% Human, No Filler)
+  // 5. COMPANION & CONVERSATIONAL SYNTHESIS (Concise, 100% Human, Deep Emotional Intelligence)
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
   const hasHistory = Boolean(historyText && historyText.trim().length > 10);
 
@@ -592,15 +762,28 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 3. NEVER POLICE SLEEP OR NAG ABOUT TIME:
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
 
-4. ELIMINATE REPETITIVE FILLER & PREAMBLE:
-   - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'.
+4. ELIMINATE REPETITIVE CRUTCHES & FILLER:
+   - NEVER start messages with repetitive verbal crutches like:
+     * "I'm all ears..."
+     * "I'm listening..."
+     * "What's that one more thing?"
+     * "Take all the time you need..."
+     * "Challenge accepted!"
+     * "Tell me about..."
+     * "Let's slice right through this!"
+   - Jump directly into answering or conversing naturally.
 
-5. WHO YOU ARE TALKING TO:
+5. CRITICAL CONTEXTUAL MEMORY & CHAT CONTINUITY:
+   - NEVER say "I don't have access to your personal chat history" or "I don't have access to your messages"! You have direct access to recent conversation history in the dialogue below.
+   - When the user asks about an idea, pitch, topic, story, or person discussed earlier (e.g. "the pitch", "the agricultural idea", "this", "him", "my boyfriend", "Havilah Farms"), NEVER ask "What is 'this'?" or "Which idea are we revisiting?". Look directly at the dialogue history, connect the dots, and answer with 100% intelligence and empathy!
+   - Understand pronouns and references in context: if the user says "Can you turn it to docs?", "it" refers to the pitch or topic just discussed!
+
+6. WHO YOU ARE TALKING TO:
    ${isFemi
      ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
      : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion and friend. Address them warmly. NEVER call a stranger "Boss" or "Sir".`}
 
-6. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
+7. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
    - You were architected and engineered by Femi Adeleke, a premier Software Engineer, AI Automation Architect, and Educator based in Ibadan, Nigeria (https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Email: femiadeleke2020@gmail.com | WhatsApp: +234 812 093 4828).
    - If the user asks about websites, mobile apps, software development, or who built you, speak of Femi's actual verified platforms:
      * *OKIKI Electronics Store:* High-performance e-commerce store with catalog filtering and cart management.
@@ -610,16 +793,16 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      * *EduMate & UniVibe:* Educational AI WhatsApp bot and University of Ibadan campus community app.
    - Core Skills: Next.js (App Router), React, TypeScript, Tailwind CSS, Neon Cloud DB, Supabase, n8n automations, Flutter, AI Agent architectures, Paystack integrations.
 
-7. FORMATTING:
+8. FORMATTING:
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
 
-8. STRICT INSTRUCTION ON VOICE CALLS:
+9. STRICT INSTRUCTION ON VOICE CALLS:
    - NEVER tell the user 'Initiating the call to your line right now', 'Ringing your line', 'Connecting you now', or claim you are calling them on WhatsApp.
    - Obey does NOT place unprompted outbound phone calls. When the user says casual greetings or words like 'Alright', 'Hello', 'Thanks', answer their chat directly like a normal human.
 
-9. RECENT ACTIVITY & ACTION STATUS:
+10. RECENT ACTIVITY & ACTION STATUS:
 ${latestExecutedAction ? `   - You recently dispatched an approved message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
@@ -643,7 +826,7 @@ ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : "
   } catch (err: any) {
     console.error("[Companion] AI error:", err);
     return {
-      reply: "Please, I am busy right now. Check back with me in a moment. Thanks!",
+      reply: cleanWhatsApp(decision.conversational_response || "Please, I am busy right now. Check back with me in a moment. Thanks!"),
     };
   }
 }
