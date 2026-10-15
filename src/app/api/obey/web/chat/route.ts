@@ -65,8 +65,9 @@ export async function POST(req: NextRequest) {
     const lower = userText.toLowerCase();
     const userImageMemory = await getUserImageMemory(contactId);
     const isImageRequest =
-      /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower) ||
-      isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
+      !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api|font|button|buttons|navbar|header|footer)\b/i.test(lower) &&
+      (/\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower) ||
+       isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt)));
 
     if (isImageRequest) {
       const isEdit = Boolean(userImageMemory?.last_image_prompt && isImageRevisionRequest(userText, true));

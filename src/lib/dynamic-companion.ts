@@ -320,19 +320,41 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 7. HANDLE AI IMAGE GENERATION & EDITING (With Full Seed Continuity & Revision Memory)
+  // 7. ARTIFACT & WEBSITE INTENT RESOLUTION (Takes precedence over image revision fallback)
+  const latestArtifact = await getLatestUserArtifact(userIdentifier);
+  const isArtifactGenIntent = parsed.intent === "website_artifact";
+  const isArtifactEditIntent = parsed.intent === "artifact_edit";
+
+  const isFallbackArtifactGen =
+    !parsed.intent.startsWith("image_") &&
+    /\b(build|create|code|develop|make|generate|design)\b/i.test(lower) &&
+    /\b(website|webpage|landing page|web page|html page|portfolio page|calculator|dashboard|contact form|login page|checkout page)\b/i.test(lower);
+
+  const isFallbackArtifactEdit =
+    !parsed.intent.startsWith("image_") &&
+    Boolean(latestArtifact) &&
+    /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
+    /\b(font|color|colour|background|button|buttons|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
+
+  const isArtifactRequest = isArtifactGenIntent || isArtifactEditIntent || isFallbackArtifactGen || isFallbackArtifactEdit;
+  const isArtifactEdit = (isArtifactEditIntent || isFallbackArtifactEdit) && Boolean(latestArtifact);
+
+  // 8. HANDLE AI IMAGE GENERATION & EDITING (Only executed if NOT an artifact request)
   const userImageMemory = await getUserImageMemory(userIdentifier);
   const isImageGenIntent = parsed.intent === "image_generate";
   const isImageEditIntent = parsed.intent === "image_edit";
 
   const isFallbackImageRequest =
+    !isArtifactRequest &&
     (/\b(generate|create|draw|paint|sketch|make|render|design)\b/i.test(lower) &&
      /\b(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration|wallpaper|avatar|portrait|painting|drawing|render|artwork)\b/i.test(lower) &&
-     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api)\b/i.test(lower));
+     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api|font|button)\b/i.test(lower));
 
-  const isFallbackImageEdit = isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
+  const isFallbackImageEdit =
+    !isArtifactRequest &&
+    isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
 
-  if (isImageGenIntent || isImageEditIntent || isFallbackImageRequest || isFallbackImageEdit) {
+  if (!isArtifactRequest && (isImageGenIntent || isImageEditIntent || isFallbackImageRequest || isFallbackImageEdit)) {
     const isEdit = isImageEditIntent || isFallbackImageEdit;
 
     let promptToUse = parsed.image_prompt || userText;
@@ -368,23 +390,6 @@ Respond ONLY with a valid JSON object matching this schema:
       };
     }
   }
-
-  // 8. LOAD LATEST USER ARTIFACT FOR CONTINUITY & EDITING
-  const latestArtifact = await getLatestUserArtifact(userIdentifier);
-  const isArtifactGenIntent = parsed.intent === "website_artifact";
-  const isArtifactEditIntent = parsed.intent === "artifact_edit";
-
-  const isFallbackArtifactGen =
-    /\b(build|create|code|develop|make|generate|design)\b/i.test(lower) &&
-    /\b(website|webpage|landing page|web page|html page|portfolio page|calculator|dashboard|contact form|login page|checkout page)\b/i.test(lower);
-
-  const isFallbackArtifactEdit =
-    Boolean(latestArtifact) &&
-    /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
-    /\b(font|color|colour|background|button|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
-
-  const isArtifactRequest = isArtifactGenIntent || isArtifactEditIntent || isFallbackArtifactGen || isFallbackArtifactEdit;
-  const isArtifactEdit = (isArtifactEditIntent || isFallbackArtifactEdit) && Boolean(latestArtifact);
 
   // 9. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();

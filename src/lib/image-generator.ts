@@ -102,9 +102,13 @@ export async function getUserImageMemory(
 export function isImageRevisionRequest(userText: string, hasPreviousImage: boolean): boolean {
   if (!hasPreviousImage) return false;
   const lower = userText.toLowerCase().trim();
+  // Exclude web, coding, and UI artifact terms so artifact edits are never misclassified as image revisions
+  if (/\b(font|button|buttons|html|css|navbar|header|footer|section|website|webpage|landing page|card|cards|pricing|layout|code|script|link|text|page|table|form|input|hero)\b/i.test(lower)) {
+    return false;
+  }
   return (
     /\b(change|make|turn|switch|adjust|replace|recolor|modify|add|remove|update|now make|make it|set the|paint the)\b/i.test(lower) &&
-    /\b(color|colour|blue|red|green|black|white|yellow|orange|purple|pink|silver|gold|grey|gray|rain|raining|snow|night|day|sunset|sunrise|background|wheels|sky|cyberpunk|anime|style|lighting|weather)\b/i.test(lower)
+    /\b(color|colour|blue|red|green|black|white|yellow|orange|purple|pink|silver|gold|grey|gray|rain|raining|snow|night|day|sunset|sunrise|background|wheels|sky|cyberpunk|anime|style|lighting|weather|car|tree|city|room|landscape)\b/i.test(lower)
   );
 }
 
