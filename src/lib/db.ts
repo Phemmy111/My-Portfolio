@@ -344,6 +344,44 @@ export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50
   }
 }
 
+export async function dbGetRecentActiveGuestNumber(withinMinutes: number = 30): Promise<string | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createGuestChatTables();
+    // 1. First priority: Guest whose recent chat mentions calling or WebRTC link
+    const callIntentRows = await db`
+      SELECT phone_number
+      FROM guest_chat_messages
+      WHERE phone_number NOT IN ('2348120934828', '+2348120934828', 'femi', 'admin')
+        AND created_at >= NOW() - (${withinMinutes} || ' minutes')::interval
+        AND (content ILIKE '%call%' OR content ILIKE '%webrtc%' OR content ILIKE '%/call%')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    if (callIntentRows && callIntentRows.length > 0) {
+      return callIntentRows[0].phone_number;
+    }
+
+    // 2. Second priority: Any recent guest who messaged within the last 15 minutes
+    const recentRows = await db`
+      SELECT phone_number
+      FROM guest_chat_messages
+      WHERE phone_number NOT IN ('2348120934828', '+2348120934828', 'femi', 'admin')
+        AND created_at >= NOW() - INTERVAL '15 minutes'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    if (recentRows && recentRows.length > 0) {
+      return recentRows[0].phone_number;
+    }
+    return null;
+  } catch (err) {
+    console.warn("dbGetRecentActiveGuestNumber fallback:", err);
+    return null;
+  }
+}
+
 export async function dbGetInboxThreads() {
   const db = getSql();
   if (!db) return [];

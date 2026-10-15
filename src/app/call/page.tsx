@@ -29,6 +29,9 @@ function CallInterface() {
 
   const [inputPhone, setInputPhone] = useState(rawPhone || "");
   const [inputName, setInputName] = useState(rawName || "");
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [modalPhone, setModalPhone] = useState(rawPhone || "");
+  const [modalName, setModalName] = useState(rawName || "");
 
   const [callStatus, setCallStatus] = useState<
     "idle" | "loading" | "connecting" | "active" | "ended" | "error"
@@ -47,16 +50,26 @@ function CallInterface() {
   // Initialize from localStorage if query params were empty
   useEffect(() => {
     try {
-      if (!inputPhone) {
+      if (rawPhone) {
+        localStorage.setItem("obey_call_phone", rawPhone);
+      } else {
         const savedPhone = localStorage.getItem("obey_call_phone");
-        if (savedPhone) setInputPhone(savedPhone);
+        if (savedPhone) {
+          setInputPhone(savedPhone);
+          setModalPhone(savedPhone);
+        }
       }
-      if (!inputName) {
+      if (rawName) {
+        localStorage.setItem("obey_call_name", rawName);
+      } else {
         const savedName = localStorage.getItem("obey_call_name");
-        if (savedName) setInputName(savedName);
+        if (savedName) {
+          setInputName(savedName);
+          setModalName(savedName);
+        }
       }
     } catch {}
-  }, []);
+  }, [rawPhone, rawName]);
 
   // Fetch Vapi configuration
   useEffect(() => {
@@ -92,11 +105,31 @@ function CallInterface() {
     };
   }, [callStatus]);
 
-  const startCall = async () => {
+  const startCall = async (overridePhone?: string, overrideName?: string) => {
     if (!vapiConfig) {
       setErrorMessage("Voice service not ready. Please wait a moment.");
       return;
     }
+
+    const effectiveRawPhone = overridePhone !== undefined ? overridePhone : (inputPhone || rawPhone || "");
+    const effectiveRawName = overrideName !== undefined ? overrideName : (inputName || rawName || "");
+
+    let cleanPhone = effectiveRawPhone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0") && cleanPhone.length === 11) {
+      cleanPhone = "234" + cleanPhone.slice(1);
+    }
+    const userPhone = cleanPhone.length >= 10 ? cleanPhone : "";
+    const userName = effectiveRawName.trim() || "Friend";
+
+    // If caller hasn't entered a phone number and overridePhone wasn't explicitly provided, show modal prompt
+    if (!userPhone && overridePhone === undefined) {
+      setModalPhone(inputPhone || "");
+      setModalName(inputName || "");
+      setShowPhoneModal(true);
+      return;
+    }
+
+    setShowPhoneModal(false);
 
     try {
       setCallStatus("connecting");
@@ -153,13 +186,6 @@ function CallInterface() {
         });
       }
 
-      let cleanPhone = (inputPhone || rawPhone || "").replace(/\D/g, "");
-      if (cleanPhone.startsWith("0") && cleanPhone.length === 11) {
-        cleanPhone = "234" + cleanPhone.slice(1);
-      }
-      const userPhone = cleanPhone.length >= 10 ? cleanPhone : "";
-      const userName = (inputName || rawName || "").trim() || "Friend";
-
       if (userPhone) {
         try {
           localStorage.setItem("obey_call_phone", userPhone);
@@ -168,6 +194,7 @@ function CallInterface() {
       }
 
       await vapiRef.current.start(vapiConfig.assistantId, {
+        customer: userPhone ? { number: userPhone, name: userName } : undefined,
         metadata: {
           userPhone,
           userName,
@@ -434,7 +461,7 @@ function CallInterface() {
           ) : callStatus === "ended" ? (
             <button
               type="button"
-              onClick={startCall}
+              onClick={() => startCall()}
               className="px-7 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
             >
               <PhoneCall size={18} />
@@ -443,7 +470,7 @@ function CallInterface() {
           ) : (
             <button
               type="button"
-              onClick={startCall}
+              onClick={() => startCall()}
               disabled={!vapiConfig}
               className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2.5 shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 disabled:opacity-50"
             >
@@ -463,6 +490,81 @@ function CallInterface() {
                 ? `The summary transcript & audio recording are being sent to your WhatsApp (+${inputPhone || rawPhone}) and Femi Adeleke.`
                 : `The call summary and recording have been archived and dispatched to Femi Adeleke.`}
             </p>
+          </div>
+        )}
+
+        {/* Modal for Prompting WhatsApp Number before connecting */}
+        {showPhoneModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700 p-6 text-left shadow-2xl space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <MessageSquare size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Receive Your Call Recording</h3>
+                  <p className="text-[11px] text-zinc-400">Audio note & summary sent to WhatsApp</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                Enter your WhatsApp number so Obey can send you your audio voice note and complete executive transcript right after the call!
+              </p>
+
+              <div className="space-y-2.5">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block mb-1">
+                    WhatsApp Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    autoFocus
+                    value={modalPhone}
+                    onChange={(e) => setModalPhone(e.target.value)}
+                    placeholder="e.g. 08120934828 or +234..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block mb-1">
+                    Your Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modalName}
+                    onChange={(e) => setModalName(e.target.value)}
+                    placeholder="e.g. Fadesewa"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputPhone(modalPhone);
+                    setInputName(modalName);
+                    startCall(modalPhone, modalName);
+                  }}
+                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+                >
+                  <PhoneCall size={14} />
+                  <span>Connect & Send Recording</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    startCall("", modalName || inputName || "Friend");
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs transition-all"
+                >
+                  Continue without WhatsApp Delivery
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

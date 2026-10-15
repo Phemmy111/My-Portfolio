@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
-import { dbAddGuestMessage, dbAddChatMessage } from "@/lib/db";
-import { getVapiProvidersPool } from "@/lib/settings";
+import { dbAddGuestMessage, dbAddChatMessage, dbGetRecentActiveGuestNumber } from "@/lib/db";
+import { getVapiProvidersPool, getSetting } from "@/lib/settings";
 
 export const maxDuration = 60;
 
@@ -137,6 +137,22 @@ YOUR VIBE & PERSONALITY:
       }
     }
 
+    // Recent WhatsApp guest fallback: Match active guest user from recent WhatsApp interaction
+    if (recipients.size === 1) {
+      try {
+        const recentGuestNumber = await dbGetRecentActiveGuestNumber(30);
+        if (recentGuestNumber) {
+          const matched = normalizePhone(recentGuestNumber);
+          if (matched && matched !== FEMI_PERSONAL_NUMBER) {
+            recipients.add(matched);
+            console.log(`[Vapi Webhook] Matched WebRTC caller to recent WhatsApp guest: ${matched}`);
+          }
+        }
+      } catch (dbErr) {
+        console.warn("[Vapi Webhook] Error fetching recent guest number:", dbErr);
+      }
+    }
+
     const mins = Math.floor(durationSeconds / 60);
     const secs = Math.floor(durationSeconds % 60);
 
@@ -152,7 +168,11 @@ YOUR VIBE & PERSONALITY:
       try {
         const callId = body.call?.id || report.call?.id || report.id || body.id;
         const vapiPool = await getVapiProvidersPool();
-        const primaryKey = vapiPool[0]?.apiKey;
+        const primaryKey =
+          vapiPool[0]?.apiKey ||
+          (await getSetting("VAPI_API_KEY")) ||
+          process.env.VAPI_API_KEY ||
+          "3826a0b2-1ed2-4669-ad82-ebd437fdcdcd";
 
         let finalAudioPayload: string | null = null;
 
@@ -166,7 +186,7 @@ YOUR VIBE & PERSONALITY:
             if (vapiAudioRes.ok) {
               const buffer = Buffer.from(await vapiAudioRes.arrayBuffer());
               if (buffer.length > 200) {
-                finalAudioPayload = buffer.toString("base64");
+                finalAudioPayload = `data:audio/mp3;base64,${buffer.toString("base64")}`;
               }
             }
           } catch (vapiErr) {
@@ -174,7 +194,7 @@ YOUR VIBE & PERSONALITY:
           }
         }
 
-        // Fallback to recordingUrl if direct download succeeded
+        // Fallback to recordingUrl if direct download succeeded or mono-recording wasn't returned
         if (!finalAudioPayload && recordingUrl) {
           finalAudioPayload = recordingUrl;
         }
@@ -184,7 +204,13 @@ YOUR VIBE & PERSONALITY:
           try {
             await sendWhatsAppMessage(callReportText, recipient);
             if (finalAudioPayload) {
-              await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
+              const audioRes = await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
+              if (!audioRes.success && recordingUrl && finalAudioPayload !== recordingUrl) {
+                console.warn(`[Vapi Webhook] Base64 audio failed for ${recipient}, falling back to recordingUrl:`, audioRes.error);
+                await sendWhatsAppAudio(recordingUrl, recipient, `🎙️ Call Recording: ${targetLabel}`);
+              }
+            } else if (recordingUrl) {
+              await sendWhatsAppAudio(recordingUrl, recipient, `🎙️ Call Recording: ${targetLabel}`);
             }
             await dbAddGuestMessage({
               id: `call-report-${Date.now()}-${recipient}`,

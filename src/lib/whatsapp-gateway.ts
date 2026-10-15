@@ -165,6 +165,11 @@ export async function sendWhatsAppAudio(
       cleaned = "2348120934828";
     }
 
+    let formattedAudio = audioUrl;
+    if (audioUrl && !audioUrl.startsWith("http://") && !audioUrl.startsWith("https://") && !audioUrl.startsWith("data:")) {
+      formattedAudio = `data:audio/mp3;base64,${audioUrl}`;
+    }
+
     // 1. Try sending as native WhatsApp Voice Note
     const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
       method: "POST",
@@ -174,7 +179,7 @@ export async function sendWhatsAppAudio(
       },
       body: JSON.stringify({
         number: cleaned,
-        audio: audioUrl,
+        audio: formattedAudio,
       }),
     });
 
@@ -191,7 +196,7 @@ export async function sendWhatsAppAudio(
       },
       body: JSON.stringify({
         number: cleaned,
-        media: audioUrl,
+        media: formattedAudio,
         mediatype: "audio",
         mimetype: "audio/mp3",
         caption: caption || "🎙️ Call Audio Recording",
