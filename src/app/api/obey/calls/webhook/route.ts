@@ -63,28 +63,36 @@ export async function POST(req: NextRequest) {
         await sendWhatsAppMessage(callReportText, userPhone);
 
         // 2. Send playable audio file / voice note
-        if (recordingUrl) {
-          let finalAudioPayload = recordingUrl;
+        const callId = body.call?.id || report.call?.id || report.id || body.id;
+        const vapiPool = await getVapiProvidersPool();
+        const primaryKey = vapiPool[0]?.apiKey;
+
+        let finalAudioPayload: string | null = null;
+
+        // Try authenticated Vapi mono-recording endpoint first (bypasses access-controlled R2 buckets)
+        if (callId && primaryKey) {
           try {
-            // Check if recordingUrl is access-controlled (returns 401/403 without auth)
-            const checkRes = await fetch(recordingUrl, { method: "HEAD" });
-            if (checkRes.status === 401 || checkRes.status === 403) {
-              const vapiPool = await getVapiProvidersPool();
-              const primaryKey = vapiPool[0]?.apiKey;
-              if (primaryKey) {
-                const authRes = await fetch(recordingUrl, {
-                  headers: { Authorization: `Bearer ${primaryKey}` },
-                });
-                if (authRes.ok) {
-                  const buffer = Buffer.from(await authRes.arrayBuffer());
-                  finalAudioPayload = `data:audio/mp3;base64,${buffer.toString("base64")}`;
-                }
+            const vapiAudioRes = await fetch(`https://api.vapi.ai/call/${callId}/mono-recording`, {
+              headers: { Authorization: `Bearer ${primaryKey}` },
+              redirect: "follow",
+            });
+            if (vapiAudioRes.ok) {
+              const buffer = Buffer.from(await vapiAudioRes.arrayBuffer());
+              if (buffer.length > 200) {
+                finalAudioPayload = buffer.toString("base64");
               }
             }
-          } catch (audioErr) {
-            console.warn("[Vapi Webhook] Audio access-check error:", audioErr);
+          } catch (vapiErr) {
+            console.warn("[Vapi Webhook] mono-recording fetch error:", vapiErr);
           }
+        }
 
+        // Fallback to recordingUrl if direct download succeeded
+        if (!finalAudioPayload && recordingUrl) {
+          finalAudioPayload = recordingUrl;
+        }
+
+        if (finalAudioPayload) {
           await sendWhatsAppAudio(finalAudioPayload, userPhone, `🎙️ Call Recording: ${targetLabel}`);
         }
 
