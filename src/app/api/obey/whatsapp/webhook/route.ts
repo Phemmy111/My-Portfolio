@@ -90,6 +90,45 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
+  // 1. Record incoming message in Neon DB
+  const recordedUserText = userText && userText !== "[Image Received]" && userText !== "[Unclear Voice Note]"
+    ? (visionMedia?.base64
+        ? `[Attached Image] ${userText}`
+        : docMedia?.base64
+        ? `[Attached Document: ${documentFileName || "Document"}] ${userText}`
+        : userText)
+    : (visionMedia?.base64
+        ? "[Attached Image]"
+        : docMedia?.base64
+        ? `[Attached Document: ${documentFileName || "Document"}]`
+        : userText);
+
+  try {
+    await dbAddGuestMessage({
+      id: `guest-msg-${Date.now()}`,
+      phone_number: replyTo,
+      sender_name: pushName || "User",
+      role: "user",
+      content: recordedUserText,
+    });
+    if (isFemi) {
+      await dbAddChatMessage({
+        id: `wa-user-${Date.now()}`,
+        role: "user",
+        content: recordedUserText,
+      });
+    }
+  } catch (err) {
+    console.warn("[WA] DB save error:", err);
+  }
+
+  // 2. Load conversation history
+  const pastMessages = await dbGetGuestMessages(replyTo, 15);
+  const historyText = pastMessages
+    .slice(-10)
+    .map((m) => `${m.role === "user" ? (pushName || "User") : "Obey"}: ${m.content}`)
+    .join("\n");
+
   // Handle unclear voice notes
   if (userText === "[Unclear Voice Note]") {
     await reply(
@@ -101,19 +140,18 @@ async function processMessage(params: ProcessMessageParams) {
   // Handle Multimodal Vision (Photos, Screenshots, Invoices, Receipts)
   if (visionMedia?.base64) {
     try {
-      const visionPrompt = userText && userText !== "[Image Received]"
-        ? `The user sent this image with caption/question: "${userText}". Analyze this image thoroughly, read any text or data, and assist them directly with clarity and warmth.`
-        : "Analyze this image, describe what you see, read any key text/numbers/diagrams, and provide an intelligent, helpful summary to assist the user.";
+      const visionPrompt = `${historyText ? `PRIOR CONVERSATION CONTEXT:\n${historyText}\n\n` : ""}CURRENT ACTION: The user sent this image${userText && userText !== "[Image Received]" ? ` with note/question: "${userText}"` : ""}. Analyze this image thoroughly in relation to our ongoing conversation, extract any key details or text, and assist them directly with clarity and warmth.`;
 
       const aiRes = await executeAICompletionWithMedia({
-        systemPrompt: "You are Obey, an autonomous AI executive companion equipped with computer vision. Analyze user screenshots, photos, documents, receipts, code, and diagrams with high precision, human warmth, and actionable clarity.",
+        systemPrompt: "You are Obey, an autonomous AI executive companion equipped with computer vision. Analyze user screenshots, photos, documents, receipts, code, and diagrams with high precision, human warmth, and actionable clarity, connecting them directly with your ongoing conversation context.",
         userPrompt: visionPrompt,
         mediaBase64: visionMedia.base64,
         mimeType: visionMedia.mimetype || "image/jpeg",
         temperature: 0.4,
       });
 
-      await reply(`👁️ *Image Analysis:*\n\n${aiRes.text}`);
+      const visionReply = `👁️ *Image Analysis:*\n\n${aiRes.text}`;
+      await reply(visionReply);
 
       try {
         await dbAddGuestMessage({
@@ -121,7 +159,7 @@ async function processMessage(params: ProcessMessageParams) {
           phone_number: replyTo,
           sender_name: "Obey",
           role: "assistant",
-          content: aiRes.text,
+          content: visionReply,
         });
       } catch {}
       return;
@@ -135,17 +173,28 @@ async function processMessage(params: ProcessMessageParams) {
   // Handle Document Attachments (PDFs, CVs, Invoices, Contracts)
   if (docMedia?.base64) {
     try {
-      const docPrompt = `The user sent this document (${documentFileName || "Attached Document"})${userText ? ` with note: "${userText}"` : ""}. Please review its contents thoroughly, extract key details or answer questions with executive clarity.`;
+      const docPrompt = `${historyText ? `PRIOR CONVERSATION CONTEXT:\n${historyText}\n\n` : ""}CURRENT ACTION: The user sent this document (${documentFileName || "Attached Document"})${userText ? ` with note/question: "${userText}"` : ""}. Review its contents thoroughly in relation to our ongoing conversation, extract key details, or answer questions with executive clarity.`;
 
       const aiRes = await executeAICompletionWithMedia({
-        systemPrompt: "You are Obey, an autonomous AI executive companion. Analyze attached documents, PDF contracts, resumes, and reports with sharp intelligence and structured clarity.",
+        systemPrompt: "You are Obey, an autonomous AI executive companion. Analyze attached documents, PDF contracts, resumes, and reports with sharp intelligence and structured clarity, connecting them directly with your ongoing conversation context.",
         userPrompt: docPrompt,
         mediaBase64: docMedia.base64,
         mimeType: docMedia.mimetype || "application/pdf",
         temperature: 0.3,
       });
 
-      await reply(`📄 *Document Review (${documentFileName || "Document"}):*\n\n${aiRes.text}`);
+      const docReply = `📄 *Document Review (${documentFileName || "Document"}):*\n\n${aiRes.text}`;
+      await reply(docReply);
+
+      try {
+        await dbAddGuestMessage({
+          id: `guest-doc-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: "Obey",
+          role: "assistant",
+          content: docReply,
+        });
+      } catch {}
       return;
     } catch (err: any) {
       console.error("[WA] Document processing error:", err);
@@ -153,27 +202,6 @@ async function processMessage(params: ProcessMessageParams) {
       return;
     }
   }
-
-
-  // 1. Record incoming message in Neon DB
-  try {
-    await dbAddGuestMessage({
-      id: `guest-msg-${Date.now()}`,
-      phone_number: replyTo,
-      sender_name: pushName || "User",
-      role: "user",
-      content: userText,
-    });
-  } catch (err) {
-    console.warn("[WA] DB save error:", err);
-  }
-
-  // 2. Load conversation history
-  const pastMessages = await dbGetGuestMessages(replyTo, 15);
-  const historyText = pastMessages
-    .slice(-10)
-    .map((m) => `${m.role === "user" ? (pushName || "User") : "Obey"}: ${m.content}`)
-    .join("\n");
 
   // 3. Proactive First-Contact Notification to Femi (in background)
   if (!isFemi && pastMessages.length <= 1) {
