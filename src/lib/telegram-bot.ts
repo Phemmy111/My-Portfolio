@@ -194,12 +194,69 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     return;
   }
 
-  // 2. Handle Text Messages from Femi
+  // 2. Handle Messages from Telegram (Text, Voice, Photos, Documents)
   const message = body.message;
-  if (!message || !message.text) return;
+  if (!message) return;
 
   const chatId = message.chat.id;
-  const userText = message.text.trim();
+  const senderName = [message.from?.first_name, message.from?.last_name].filter(Boolean).join(" ") || message.from?.username || "";
+
+  let userText = (message.text || message.caption || "").trim();
+  let mediaBase64: string | null = null;
+  let mediaMimeType = "image/jpeg";
+
+  // Check for Photo
+  if (message.photo && Array.isArray(message.photo) && message.photo.length > 0) {
+    const largest = message.photo[message.photo.length - 1];
+    try {
+      const fRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${largest.file_id}`);
+      const fJson = await fRes.json();
+      if (fJson.ok && fJson.result?.file_path) {
+        const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${fJson.result.file_path}`);
+        const buf = Buffer.from(await fileRes.arrayBuffer());
+        mediaBase64 = buf.toString("base64");
+        mediaMimeType = "image/jpeg";
+        if (!userText) userText = "Please inspect and analyze this attached image.";
+      }
+    } catch (e) {
+      console.warn("[Telegram] Photo retrieval error:", e);
+    }
+  }
+  // Check for Voice Note
+  else if (message.voice) {
+    try {
+      const fRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${message.voice.file_id}`);
+      const fJson = await fRes.json();
+      if (fJson.ok && fJson.result?.file_path) {
+        const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${fJson.result.file_path}`);
+        const buf = Buffer.from(await fileRes.arrayBuffer());
+        mediaBase64 = buf.toString("base64");
+        mediaMimeType = message.voice.mime_type || "audio/ogg";
+        if (!userText) userText = "Voice note received. Please transcribe, understand, and respond.";
+      }
+    } catch (e) {
+      console.warn("[Telegram] Voice retrieval error:", e);
+    }
+  }
+  // Check for Document / File
+  else if (message.document) {
+    try {
+      const fRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${message.document.file_id}`);
+      const fJson = await fRes.json();
+      if (fJson.ok && fJson.result?.file_path) {
+        const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${fJson.result.file_path}`);
+        const buf = Buffer.from(await fileRes.arrayBuffer());
+        mediaBase64 = buf.toString("base64");
+        mediaMimeType = message.document.mime_type || "application/pdf";
+        if (!userText) userText = `Document attached (${message.document.file_name || "file"}). Please analyze it.`;
+      }
+    } catch (e) {
+      console.warn("[Telegram] Document retrieval error:", e);
+    }
+  }
+
+  if (!userText && !mediaBase64) return;
+
   const lower = userText.toLowerCase();
 
   // Save to Neon DB so conversation syncs with portfolio dashboard
@@ -396,8 +453,11 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
   const companionRes = await processDynamicCompanionTurn({
     userIdentifier: chatId.toString(),
     userText,
+    senderName,
     channel: "telegram",
     historyText: conversationHistory,
+    mediaBase64: mediaBase64 || undefined,
+    mediaMimeType,
   });
 
   const replyText = companionRes.reply;

@@ -89,13 +89,13 @@ export async function DELETE() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history } = await req.json();
+    const { message, history, mediaBase64, mediaMimeType } = await req.json();
 
-    if (!message || typeof message !== "string") {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (!message && !mediaBase64) {
+      return NextResponse.json({ error: "Message or media attachment is required" }, { status: 400 });
     }
 
-    const trimmed = message.trim();
+    const trimmed = (message || "Please analyze and inspect the attached file.").trim();
     const lower = trimmed.toLowerCase();
 
     // Persist incoming user message to Neon cloud database for cross-device sync
@@ -535,6 +535,8 @@ ${liveWebContext ? `\nLive Web Findings (Tavily):\n${liveWebContext}\n\nPlease s
     const aiRes = await executeAICompletion({
       systemPrompt,
       userPrompt: promptWithContext,
+      mediaBase64: mediaBase64 || undefined,
+      mimeType: mediaMimeType || undefined,
       temperature: 0.75,
     });
 

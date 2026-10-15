@@ -42,8 +42,10 @@ export async function processDynamicCompanionTurn(params: {
   senderName?: string;
   channel?: "whatsapp" | "telegram" | "web";
   historyText?: string;
+  mediaBase64?: string;
+  mediaMimeType?: string;
 }): Promise<CompanionResponse> {
-  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "" } = params;
+  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType } = params;
   const lower = userText.toLowerCase().trim();
 
   // 1. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
@@ -193,10 +195,14 @@ Respond ONLY with a valid JSON object matching this schema:
     const callUrl = `https://femiadelekeportfolio.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
     return {
       reply: cleanWhatsApp(
-        `🎙️ *I'd love to speak with you live!* I'm ready to talk right now.\n\n` +
-        `Tap below to launch our instant voice call (100% free, no airtime needed):\n` +
+        `🎙️ *I'd love to speak with you live!* You have two ways to connect with me on voice right now:\n\n` +
+        `📞 *Option 1: Direct Phone Call (Hotline)*\n` +
+        `Dial my direct line: *+1 (302) 927 8209*\n` +
+        `_(Note: Standard international carrier airtime charges apply)_\n\n` +
+        `🌐 *Option 2: 100% Free Instant Voice Call (Recommended)*\n` +
+        `Tap this secure WebRTC link to talk directly using your phone mic with zero airtime charges:\n` +
         `👉 ${callUrl}\n\n` +
-        `Simply tap *"Start Voice Call with Obey"* on your screen and talk naturally. When we're done, I'll send our call recording and summary right here!`
+        `_Note: All calls are recorded for quality and to deliver your transcript and voice notes afterward. Which option works best for you?_`
       ),
     };
   }
@@ -349,6 +355,8 @@ ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : "
     const aiRes = await executeAICompletion({
       systemPrompt: companionSystemPrompt,
       userPrompt: companionUserPrompt,
+      mediaBase64,
+      mimeType: mediaMimeType,
       temperature: 0.4,
     });
 

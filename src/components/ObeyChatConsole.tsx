@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import {
   Bot,
   Send,
@@ -20,6 +21,8 @@ import {
   Maximize2,
   Minimize2,
   FileText,
+  PhoneCall,
+  Paperclip,
 } from "lucide-react";
 import { formatToWAT } from "@/lib/utils";
 
@@ -198,6 +201,28 @@ export default function ObeyChatConsole({
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [internalFullscreen, setInternalFullscreen] = useState(false);
+  const [attachment, setAttachment] = useState<{
+    name: string;
+    base64: string;
+    mimeType: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result as string;
+      const base64 = res.split(",")[1];
+      setAttachment({
+        name: file.name,
+        base64,
+        mimeType: file.type || "application/octet-stream",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
 
   const isExpanded = externalFullscreen !== undefined ? externalFullscreen : internalFullscreen;
 
@@ -290,12 +315,15 @@ export default function ObeyChatConsole({
 
   const handleSend = async (customText?: string) => {
     const textToSend = customText || input;
-    if (!textToSend.trim() || loading) return;
+    if ((!textToSend.trim() && !attachment) || loading) return;
+
+    const currentAttachment = attachment;
+    setAttachment(null);
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: textToSend.trim(),
+      content: textToSend.trim() + (currentAttachment ? `\n📎 [Attachment: ${currentAttachment.name}]` : ""),
       timestamp: formatToWAT(new Date()),
     };
 
@@ -313,8 +341,10 @@ export default function ObeyChatConsole({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: textToSend.trim(),
+          message: textToSend.trim() || (currentAttachment ? `Attached file: ${currentAttachment.name}` : ""),
           history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+          mediaBase64: currentAttachment?.base64,
+          mediaMimeType: currentAttachment?.mimeType,
         }),
       });
 
@@ -465,7 +495,18 @@ export default function ObeyChatConsole({
           </div>
         </div>
 
-        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 ml-1 sm:ml-2">
+        <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0 ml-1 sm:ml-2">
+          {/* Live Voice Call Button */}
+          <Link
+            href="/call"
+            target="_blank"
+            title="Start Live Voice Call with Obey (WebRTC)"
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition-all text-xs flex items-center gap-1.5 font-bold shrink-0"
+          >
+            <PhoneCall size={13} className="text-emerald-500 animate-pulse" />
+            <span className="hidden sm:inline">Voice Call</span>
+          </Link>
+
           {/* Fullscreen Enlarge Toggle */}
           <button
             onClick={toggleFullscreen}
@@ -709,6 +750,13 @@ export default function ObeyChatConsole({
         >
           <Zap size={12} className="text-amber-500" /> Pipeline Stats
         </button>
+        <Link
+          href="/call"
+          target="_blank"
+          className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black transition-all shrink-0 flex items-center gap-1.5"
+        >
+          <PhoneCall size={12} className="text-emerald-500" /> Live Voice Call
+        </Link>
       </div>
 
       {/* Input Bar */}
@@ -717,35 +765,68 @@ export default function ObeyChatConsole({
           e.preventDefault();
           handleSend();
         }}
-        className="p-2.5 sm:p-3 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex items-end gap-2 shrink-0"
+        className="p-2.5 sm:p-3 bg-zinc-100 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 flex flex-col gap-2 shrink-0"
       >
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder="Talk to Obey (e.g. 'Good afternoon sir', 'Scout Upwork jobs', 'What to note?')... [Shift+Enter for newline]"
-          disabled={loading}
-          rows={1}
-          className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all resize-none max-h-36 min-h-[46px] overflow-y-auto leading-relaxed"
-        />
+        {attachment && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 w-fit">
+            <Paperclip size={13} />
+            <span className="truncate max-w-[200px]">{attachment.name}</span>
+            <button
+              type="button"
+              onClick={() => setAttachment(null)}
+              className="p-0.5 rounded hover:bg-emerald-500/20 ml-1 text-zinc-400 hover:text-white"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-        <button
-          type="submit"
-          disabled={!input.trim() || loading}
-          className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0 mb-0.5"
-        >
-          <Send size={17} />
-        </button>
+        <div className="flex items-end gap-2 w-full">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf,.txt"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach Image or Document"
+            className="p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-950 dark:hover:text-white transition-all shrink-0 mb-0.5 shadow-xs"
+          >
+            <Paperclip size={18} />
+          </button>
+
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Talk to Obey (e.g. 'Good afternoon sir', 'Scout Upwork jobs', 'What to note?')... [Shift+Enter for newline]"
+            disabled={loading}
+            rows={1}
+            className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all resize-none max-h-36 min-h-[46px] overflow-y-auto leading-relaxed"
+          />
+
+          <button
+            type="submit"
+            disabled={(!input.trim() && !attachment) || loading}
+            className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0 mb-0.5"
+          >
+            <Send size={17} />
+          </button>
+        </div>
       </form>
     </div>
   );

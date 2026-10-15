@@ -34,17 +34,28 @@ export async function POST(req: NextRequest) {
       : report.customer?.number || body.call?.customer?.number || "Direct Phone";
     const durationSeconds = report.durationSeconds || body.call?.durationSeconds || 0;
 
-    // Find who ordered this call (from metadata or assistantOverrides)
-    let userPhone =
+    // Collect all recipients: Caller AND Femi Adeleke
+    const recipients = new Set<string>();
+    recipients.add(FEMI_PERSONAL_NUMBER);
+
+    // 1. If caller dialed via phone
+    const directCaller = (report.customer?.number || body.call?.customer?.number || "").replace(/\D/g, "");
+    if (directCaller && directCaller.length >= 10) {
+      recipients.add(directCaller);
+    }
+
+    // 2. If WebRTC or metadata specified a user's phone
+    const metaUserPhone = (
       report.assistantOverrides?.metadata?.userPhone ||
       report.metadata?.userPhone ||
       report.assistantOverrides?.variableValues?.userPhone ||
       report.variableValues?.userPhone ||
       body.call?.metadata?.userPhone ||
-      FEMI_PERSONAL_NUMBER;
-
-    userPhone = userPhone.replace(/\D/g, "");
-    if (!userPhone || userPhone.length < 10) userPhone = FEMI_PERSONAL_NUMBER;
+      ""
+    ).replace(/\D/g, "");
+    if (metaUserPhone && metaUserPhone.length >= 10) {
+      recipients.add(metaUserPhone);
+    }
 
     const mins = Math.floor(durationSeconds / 60);
     const secs = Math.floor(durationSeconds % 60);
@@ -59,10 +70,6 @@ export async function POST(req: NextRequest) {
 
     after(async () => {
       try {
-        // 1. Send text summary & transcript
-        await sendWhatsAppMessage(callReportText, userPhone);
-
-        // 2. Send playable audio file / voice note
         const callId = body.call?.id || report.call?.id || report.id || body.id;
         const vapiPool = await getVapiProvidersPool();
         const primaryKey = vapiPool[0]?.apiKey;
@@ -92,26 +99,31 @@ export async function POST(req: NextRequest) {
           finalAudioPayload = recordingUrl;
         }
 
-        if (finalAudioPayload) {
-          await sendWhatsAppAudio(finalAudioPayload, userPhone, `🎙️ Call Recording: ${targetLabel}`);
+        // Dispatch to all recipients (Caller + Femi)
+        for (const recipient of recipients) {
+          try {
+            await sendWhatsAppMessage(callReportText, recipient);
+            if (finalAudioPayload) {
+              await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
+            }
+            await dbAddGuestMessage({
+              id: `call-report-${Date.now()}-${recipient}`,
+              phone_number: recipient,
+              sender_name: "Obey",
+              role: "assistant",
+              content: callReportText,
+            });
+          } catch (recipErr) {
+            console.error(`[Vapi Webhook] Failed to dispatch to recipient ${recipient}:`, recipErr);
+          }
         }
 
-        // 3. Save to database memory
-        await dbAddGuestMessage({
+        // Always save to main chat for Femi
+        await dbAddChatMessage({
           id: `call-report-${Date.now()}`,
-          phone_number: userPhone,
-          sender_name: "Obey",
           role: "assistant",
           content: callReportText,
         });
-
-        if (userPhone === FEMI_PERSONAL_NUMBER) {
-          await dbAddChatMessage({
-            id: `call-report-${Date.now()}`,
-            role: "assistant",
-            content: callReportText,
-          });
-        }
       } catch (err) {
         console.error("[Vapi Webhook] Error dispatching call report:", err);
       }
