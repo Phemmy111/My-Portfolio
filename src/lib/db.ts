@@ -546,4 +546,23 @@ export async function dbUpdateUserActionStatus(id: string, status: "executed" | 
   }
 }
 
+export async function dbGetLatestExecutedUserAction(userIdentifier: string) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createPersonalAgentTables();
+    const rows = await db`
+      SELECT * FROM agent_user_actions
+      WHERE user_identifier = ${userIdentifier}
+        AND status = 'executed'
+      ORDER BY executed_at DESC NULLS LAST, created_at DESC
+      LIMIT 1
+    `;
+    return rows && rows.length > 0 ? rows[0] : null;
+  } catch (err) {
+    console.warn("dbGetLatestExecutedUserAction fallback:", err);
+    return null;
+  }
+}
+
 

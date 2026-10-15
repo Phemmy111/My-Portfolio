@@ -5,6 +5,7 @@ import {
   dbGetPendingUserAction,
   dbCreateUserPendingAction,
   dbUpdateUserActionStatus,
+  dbGetLatestExecutedUserAction,
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
@@ -155,6 +156,23 @@ export async function processDynamicCompanionTurn(params: {
     console.warn("[Companion] Pending action check error:", err);
   }
 
+  // 1.5 CHECK FOR ACTION DELIVERY STATUS INQUIRY
+  const latestAction = await dbGetLatestExecutedUserAction(userIdentifier);
+  const isDeliveryInquiry =
+    /\b(deliver(ed)?|sent|send it|text(ed)?|messag(ed)?|gone through|dispatch(ed)?)\b/i.test(lower) &&
+    /\b(have you|did you|has it|is it|did she|did he|was it|already|done that|did you do)\b/i.test(lower);
+
+  if (isDeliveryInquiry && latestAction) {
+    const elapsedMinutes = Math.round((Date.now() - new Date(latestAction.executed_at || latestAction.created_at).getTime()) / 60000);
+    const timePhrase = elapsedMinutes <= 1 ? "just now" : `${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} ago`;
+    return {
+      reply: cleanWhatsApp(
+        `Yes! I have already delivered your message to *+${latestAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
+      ),
+      actionExecuted: true,
+    };
+  }
+
   // 2. DYNAMIC INTENT & ACTION PARSER (Fast, Zero-Regex Multi-Turn AI Extractor)
   const parserSystemPrompt = `You are the intent and entity parsing engine for Obey, an autonomous personal executive companion.
 Analyze the user's latest message in context of their prior conversation history.
@@ -175,6 +193,7 @@ CRITICAL MULTI-TURN RESOLUTION RULES:
    - Extract "artifact_title" and "content" (detailed specifications).
 9. "artifact_edit": User asks to update, modify, style, change, or edit an EXISTING website or artifact (e.g., "change the main font to Times New Roman", "make the header blue", "add a contact form section", "change the pricing cards").
    - Extract "artifact_edit_instruction".
+10. "delivery_status_inquiry": If the user is asking whether a message, text, or task has been delivered, sent, or completed (e.g. "Have you delivered the message?", "Did you send it?", "Has it gone through?", "Did you text her?"), classify as "chat_companion". DO NOT create a new "whatsapp_send" action!
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -522,6 +541,9 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 9. STRICT INSTRUCTION ON VOICE CALLS:
    - NEVER tell the user 'Initiating the call to your line right now', 'Ringing your line', 'Connecting you now', or claim you are calling them on WhatsApp.
    - Obey does NOT place unprompted outbound phone calls. When the user says casual greetings or words like 'Alright', 'Hello', 'Thanks', answer their chat directly like a normal human.
+
+10. RECENT ACTIVITY & ACTION STATUS:
+${latestAction ? `   - You recently dispatched an approved message to +${latestAction.target_recipient} at ${latestAction.executed_at || latestAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 

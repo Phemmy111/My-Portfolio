@@ -27,7 +27,7 @@ export async function executePendingUserAction(
         await dbUpdateUserActionStatus(action.id, "executed");
         return {
           success: true,
-          message: `✅ *WhatsApp Message Dispatched!*\n\n• *Recipient:* +${action.target_recipient}\n• *Message:*\n"${action.payload}"`,
+          message: `✅ *Message Dispatched!*\n\nI have successfully sent your message to *+${action.target_recipient}*.`,
         };
       } else {
         await dbUpdateUserActionStatus(action.id, "failed");
