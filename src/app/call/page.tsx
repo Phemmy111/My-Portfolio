@@ -231,7 +231,9 @@ function CallInterface() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="relative w-5 h-5 rounded-full overflow-hidden border border-emerald-500/50 shrink-0">
+            <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
+          </div>
           <span className="text-xs font-black uppercase tracking-wider text-zinc-300">
             Obey WebRTC Voice Gateway
           </span>
@@ -248,7 +250,9 @@ function CallInterface() {
         {/* User Greeting & Status Indicator */}
         <div className="mb-6 space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-300">
-            <Bot size={14} className="text-emerald-400" />
+            <div className="relative w-4 h-4 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
+              <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
+            </div>
             <span>Femi Adeleke&apos;s AI Assistant</span>
           </div>
 
@@ -265,54 +269,78 @@ function CallInterface() {
           </p>
         </div>
 
-        {/* Pulsing Visualizer Orb */}
+        {/* Pulsing Visualizer Orb with Obey Logo */}
         <div className="relative my-8 flex items-center justify-center">
           {/* Outer Pulsing Rings */}
           {callStatus === "active" && (
             <>
               <div
-                className="absolute rounded-full bg-rose-500/20 blur-xl transition-all duration-100"
+                className={`absolute rounded-full blur-2xl transition-all duration-150 ${
+                  isSpeaking ? "bg-emerald-500/30" : "bg-teal-500/20"
+                }`}
                 style={{
-                  width: `${180 + volumeLevel * 140}px`,
-                  height: `${180 + volumeLevel * 140}px`,
+                  width: `${190 + volumeLevel * 140}px`,
+                  height: `${190 + volumeLevel * 140}px`,
                 }}
               />
               <div
-                className="absolute rounded-full border border-rose-500/30 transition-all duration-150 animate-ping"
+                className={`absolute rounded-full border transition-all duration-150 animate-ping ${
+                  isSpeaking ? "border-emerald-500/40" : "border-teal-500/30"
+                }`}
                 style={{
-                  width: `${140 + volumeLevel * 80}px`,
-                  height: `${140 + volumeLevel * 80}px`,
+                  width: `${150 + volumeLevel * 80}px`,
+                  height: `${150 + volumeLevel * 80}px`,
                 }}
               />
             </>
           )}
 
-          {/* Central Orb */}
+          {callStatus === "connecting" && (
+            <div className="absolute w-44 h-44 rounded-full border-2 border-dashed border-amber-500/60 animate-spin [animation-duration:10s]" />
+          )}
+
+          {/* Central Orb with Obey Logo */}
           <div
-            className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl ${
+            className={`relative w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl overflow-hidden p-1.5 ${
               callStatus === "active"
                 ? isSpeaking
-                  ? "bg-gradient-to-tr from-rose-600 via-amber-500 to-emerald-400 shadow-rose-500/50 scale-105"
-                  : "bg-gradient-to-tr from-emerald-600 via-teal-500 to-blue-500 shadow-emerald-500/50 scale-100"
+                  ? "ring-4 ring-emerald-500 shadow-emerald-500/50 scale-105"
+                  : "ring-2 ring-teal-500 shadow-teal-500/40 scale-100"
                 : callStatus === "connecting"
-                ? "bg-gradient-to-tr from-amber-600 to-rose-600 animate-pulse shadow-amber-500/30"
+                ? "ring-4 ring-amber-500/80 animate-pulse shadow-amber-500/30"
                 : callStatus === "ended"
-                ? "bg-zinc-800 border border-zinc-700"
-                : "bg-gradient-to-tr from-zinc-800 to-zinc-900 border border-zinc-700 hover:border-zinc-500"
+                ? "ring-2 ring-zinc-700 opacity-80"
+                : "ring-2 ring-zinc-700 hover:ring-emerald-500 transition-all shadow-zinc-950/80 hover:scale-105"
             }`}
           >
-            {callStatus === "active" ? (
-              <div className="flex flex-col items-center gap-1">
-                <Volume2 size={36} className="text-white animate-bounce" />
-                <span className="text-[10px] font-mono font-black uppercase tracking-wider text-white/90">
-                  {formatTimer(callDuration)}
-                </span>
-              </div>
-            ) : callStatus === "connecting" ? (
-              <RefreshCw size={36} className="text-white animate-spin" />
-            ) : (
-              <Mic size={36} className="text-zinc-400" />
-            )}
+            {/* Obey Logo Image */}
+            <div className="relative w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center">
+              <img
+                src="/obey-logo.jpg"
+                alt="Obey AI"
+                className={`w-full h-full object-cover transition-transform duration-500 ${
+                  callStatus === "active" && isSpeaking ? "scale-110" : "scale-100"
+                }`}
+              />
+
+              {/* Status Overlay Badge */}
+              {callStatus === "active" && (
+                <div className="absolute inset-x-0 bottom-0 py-1.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col items-center justify-end">
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/30 backdrop-blur-md border border-emerald-500/40">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[10px] font-mono font-black uppercase tracking-wider text-emerald-200">
+                      {formatTimer(callDuration)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {callStatus === "connecting" && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center">
+                  <RefreshCw size={32} className="text-amber-400 animate-spin" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
