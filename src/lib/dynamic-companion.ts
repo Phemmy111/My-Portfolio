@@ -102,16 +102,28 @@ CRITICAL MULTI-TURN RESOLUTION RULES:
    - If the user explicitly named a role, field, or skill (e.g. "Find graphic design jobs", "Search Python remote jobs"), set specific_role_provided: true, and set search_query to that role.
    - If the user only said broad requests like "Search job for me online", "Find me a job", "Look for jobs" WITHOUT specifying their field or title, set specific_role_provided: false.
 5. "web_search": search live internet for information, news, facts, current events, or people.
+6. "image_generate": User asks to create, draw, paint, render, generate, or visualize a NEW image, picture, photo, artwork, graphic, logo, character, car, building, or scene.
+   - Extract a descriptive "image_prompt".
+7. "image_edit": User asks to adjust, modify, change, edit, recolor, or restyle an EXISTING/PREVIOUS image (e.g., "change the car color to blue", "now make it rain", "turn it to night time", "make the car white", "change background to a neon city", "adjust it to cyberpunk").
+   - Extract "image_edit_instruction".
+8. "website_artifact": User asks to create, code, build, or design a website, landing page, web page, HTML component, interactive UI, dashboard, form, calculator, or game.
+   - Extract "artifact_title" and "content" (detailed specifications).
+9. "artifact_edit": User asks to update, modify, style, change, or edit an EXISTING website or artifact (e.g., "change the main font to Times New Roman", "make the header blue", "add a contact form section", "change the pricing cards").
+   - Extract "artifact_edit_instruction".
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "intent": "whatsapp_send" | "email_send" | "phone_call" | "job_search" | "web_search" | "writing_task" | "chat_companion",
+  "intent": "whatsapp_send" | "email_send" | "phone_call" | "job_search" | "web_search" | "image_generate" | "image_edit" | "website_artifact" | "artifact_edit" | "chat_companion",
   "recipient": "phone number (e.g. 234...) or email address, or null",
   "subject": "email subject or null",
-  "content": "the message body, email body, or call objective, or null",
+  "content": "the message body, email body, call objective, or specific prompt/instruction, or null",
   "is_complete_action": true | false,
   "specific_role_provided": true | false,
-  "search_query": "search query for web or specific job title, or null"
+  "search_query": "search query for web or specific job title, or null",
+  "image_prompt": "descriptive image generation prompt or null",
+  "image_edit_instruction": "what to change in the previous image, or null",
+  "artifact_title": "title of the website/component to create or null",
+  "artifact_edit_instruction": "what to change in the previous website/artifact, or null"
 }`;
 
   const parserUserPrompt = `CONVERSATION CONTEXT:\n${historyText || "No prior messages."}\n\nLATEST USER MESSAGE:\n"${userText}"\n\nJSON output:`;
@@ -308,27 +320,42 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 7. HANDLE AI IMAGE GENERATION (With Continuity & Revision Memory)
+  // 7. HANDLE AI IMAGE GENERATION & EDITING (With Full Seed Continuity & Revision Memory)
   const userImageMemory = await getUserImageMemory(userIdentifier);
-  const isImageRequest =
-    (/\b(generate|create|draw|paint|sketch|make|render|design)\b/i.test(lower) &&
-     /\b(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration|wallpaper|avatar|portrait|painting|drawing|render|artwork|car|house|room|city|cyberpunk|anime|scenery|landscape|building|character)\b/i.test(lower) &&
-     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api)\b/i.test(lower)) ||
-    isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
+  const isImageGenIntent = parsed.intent === "image_generate";
+  const isImageEditIntent = parsed.intent === "image_edit";
 
-  if (isImageRequest) {
-    let promptToUse = userText;
-    if (userImageMemory && isImageRevisionRequest(userText, true)) {
-      promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, userText);
+  const isFallbackImageRequest =
+    (/\b(generate|create|draw|paint|sketch|make|render|design)\b/i.test(lower) &&
+     /\b(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration|wallpaper|avatar|portrait|painting|drawing|render|artwork)\b/i.test(lower) &&
+     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api)\b/i.test(lower));
+
+  const isFallbackImageEdit = isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
+
+  if (isImageGenIntent || isImageEditIntent || isFallbackImageRequest || isFallbackImageEdit) {
+    const isEdit = isImageEditIntent || isFallbackImageEdit;
+
+    let promptToUse = parsed.image_prompt || userText;
+    let seedToUse: number | undefined = undefined;
+
+    if (isEdit && userImageMemory?.last_image_prompt) {
+      const editInstruction = parsed.image_edit_instruction || userText;
+      promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, editInstruction);
+      seedToUse = userImageMemory.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
+    } else {
+      seedToUse = Math.floor(Math.random() * 1000000);
     }
 
-    const imgRes = await generateAIImage(promptToUse);
+    const imgRes = await generateAIImage(promptToUse, { seed: seedToUse });
     if (imgRes.success) {
-      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl);
+      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
 
       if (channel === "whatsapp") {
-        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Artwork:* "${imgRes.revisedPrompt}"`);
-        // Clean dispatch: No redundant second text message with raw URL link needed!
+        const caption = isEdit
+          ? `🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`
+          : `🎨 *Artwork:*\n"${imgRes.revisedPrompt}"`;
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, caption);
+        // Clean dispatch: direct photo delivery with no duplicate raw URL message
         return {
           reply: "",
           imageUrl: imgRes.imageUrl,
@@ -336,7 +363,7 @@ Respond ONLY with a valid JSON object matching this schema:
       }
 
       return {
-        reply: cleanWhatsApp(`🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`),
+        reply: cleanWhatsApp(`🎨 *${isEdit ? "Updated Artwork" : "Generated Artwork"}:*\n"${imgRes.revisedPrompt}"`),
         imageUrl: imgRes.imageUrl,
       };
     }
@@ -344,10 +371,20 @@ Respond ONLY with a valid JSON object matching this schema:
 
   // 8. LOAD LATEST USER ARTIFACT FOR CONTINUITY & EDITING
   const latestArtifact = await getLatestUserArtifact(userIdentifier);
-  const isArtifactEdit =
+  const isArtifactGenIntent = parsed.intent === "website_artifact";
+  const isArtifactEditIntent = parsed.intent === "artifact_edit";
+
+  const isFallbackArtifactGen =
+    /\b(build|create|code|develop|make|generate|design)\b/i.test(lower) &&
+    /\b(website|webpage|landing page|web page|html page|portfolio page|calculator|dashboard|contact form|login page|checkout page)\b/i.test(lower);
+
+  const isFallbackArtifactEdit =
     Boolean(latestArtifact) &&
     /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
     /\b(font|color|colour|background|button|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
+
+  const isArtifactRequest = isArtifactGenIntent || isArtifactEditIntent || isFallbackArtifactGen || isFallbackArtifactEdit;
+  const isArtifactEdit = (isArtifactEditIntent || isFallbackArtifactEdit) && Boolean(latestArtifact);
 
   // 9. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
@@ -405,21 +442,39 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
-  const companionUserPrompt = isArtifactEdit && latestArtifact
-    ? `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
+  let companionUserPrompt: string;
+  if (isArtifactEdit && latestArtifact) {
+    const editInstruction = parsed.artifact_edit_instruction || userText;
+    companionUserPrompt = `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
 Current Code:
 \`\`\`html
 ${latestArtifact.content}
 \`\`\`
-User requested change: "${userText}"
-Rewrite the complete updated code inside:
+User requested change: "${editInstruction}"
+
+Rewrite the complete updated runnable HTML code inside:
 <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
-...complete updated code with "${userText}" applied...
+...complete updated code with "${editInstruction}" applied...
 </artifact>
-Brief confirmation message:`
-    : historyText
+Brief confirmation message:`;
+  } else if (isArtifactRequest) {
+    const title = parsed.artifact_title || "Interactive Web Page";
+    const specs = parsed.content || userText;
+    companionUserPrompt = `WEBSITE / ARTIFACT CREATION REQUEST:
+Title: "${title}"
+Specifications: "${specs}"
+
+Create a complete, modern, high-converting, fully responsive HTML landing page with Tailwind CSS (via CDN) and beautiful styling and interactions.
+Enclose the complete runnable code inside:
+<artifact identifier="web-${Date.now()}" type="html" title="${title}">
+...complete runnable HTML code...
+</artifact>
+Brief confirmation message:`;
+  } else {
+    companionUserPrompt = historyText
       ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
       : `User: "${userText}"\n\nObey (concise, direct answer):`;
+  }
 
   try {
     const aiRes = await executeAICompletion({
@@ -427,7 +482,8 @@ Brief confirmation message:`
       userPrompt: companionUserPrompt,
       mediaBase64,
       mimeType: mediaMimeType,
-      temperature: 0.4,
+      temperature: 0.3,
+      maxTokens: 8192,
     });
 
     const rawReply = aiRes.text;
@@ -465,12 +521,14 @@ Brief confirmation message:`
 
       // Strip raw code from text reply so chat bubbles remain clean
       let cleanReply = stripArtifactBlocks(rawReply).trim();
-      if (!cleanReply || cleanReply.length < 10) {
-        cleanReply = `I've prepared the ${firstArtifactTitle || "interactive artifact"} for you!`;
+      if (!cleanReply || cleanReply.length < 10 || cleanReply.includes("```") || cleanReply.includes("<!DOCTYPE") || cleanReply.includes("<html")) {
+        cleanReply = isArtifactEdit
+          ? `✅ I've updated the *${firstArtifactTitle || "website"}* with your requested changes!`
+          : `🚀 *${firstArtifactTitle || "Your Website"}* is ready!`;
       }
 
       cleanReply += `\n\n🌐 *Interactive Live Preview:*\nhttps://femiadelekeportfolio.vercel.app/artifact/${firstArtifactId}`;
-      cleanReply += `\n\n📁 _(The full runnable HTML file has been attached directly to your chat!)_`;
+      cleanReply += `\n\n📁 *HTML File:* Attached directly for instant download.`;
 
       return {
         reply: cleanWhatsApp(cleanReply),

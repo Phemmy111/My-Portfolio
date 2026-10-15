@@ -151,6 +151,7 @@ export async function getLatestUserArtifact(userIdentifier: string): Promise<Art
 /**
  * Extracts artifact blocks from AI model responses formatted as:
  * <artifact identifier="..." type="..." title="...">content</artifact>
+ * Supports ANY attribute order and auto-heals unclosed tags.
  */
 export function extractArtifactBlocks(text: string): Array<{
   identifier: string;
@@ -159,15 +160,27 @@ export function extractArtifactBlocks(text: string): Array<{
   content: string;
 }> {
   const artifacts: Array<{ identifier: string; type: string; title: string; content: string }> = [];
-  const regex = /<artifact\s+identifier="([^"]+)"\s+type="([^"]+)"\s+title="([^"]+)">([\s\S]*?)<\/artifact>/gi;
+  const regex = /<artifact\b([^>]*)>([\s\S]*?)(?:<\/artifact>|$)/gi;
   
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
+    const attrString = match[1] || "";
+    const content = match[2]?.trim() || "";
+    if (!content) continue;
+
+    const idMatch = attrString.match(/identifier=["']([^"']+)["']/i);
+    const typeMatch = attrString.match(/type=["']([^"']+)["']/i);
+    const titleMatch = attrString.match(/title=["']([^"']+)["']/i);
+
+    const identifier = idMatch ? idMatch[1] : `art-${Date.now()}`;
+    const type = typeMatch ? typeMatch[1] : "html";
+    const title = titleMatch ? titleMatch[1] : "Interactive Artifact";
+
     artifacts.push({
-      identifier: match[1],
-      type: match[2],
-      title: match[3],
-      content: match[4].trim(),
+      identifier,
+      type,
+      title,
+      content,
     });
   }
 
@@ -177,10 +190,11 @@ export function extractArtifactBlocks(text: string): Array<{
 /**
  * Strips raw artifact blocks from the chat reply so users are never spammed
  * with hundreds of lines of raw HTML/code in their messaging bubbles.
+ * Handles any attribute order and unclosed tags.
  */
 export function stripArtifactBlocks(text: string): string {
   if (!text) return "";
   return text
-    .replace(/<artifact\s+identifier="[^"]*"\s+type="[^"]*"\s+title="[^"]*">[\s\S]*?<\/artifact>/gi, "")
+    .replace(/<artifact\b[^>]*>[\s\S]*?(?:<\/artifact>|$)/gi, "")
     .trim();
 }

@@ -29,7 +29,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     mediaBase64,
     mimeType,
     temperature = 0.7,
-    maxTokens = 2048,
+    maxTokens = 8192,
   } = options;
 
   const errors: string[] = [];

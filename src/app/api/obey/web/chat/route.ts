@@ -69,16 +69,22 @@ export async function POST(req: NextRequest) {
       isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
 
     if (isImageRequest) {
+      const isEdit = Boolean(userImageMemory?.last_image_prompt && isImageRevisionRequest(userText, true));
       let promptToUse = userText;
-      if (userImageMemory && isImageRevisionRequest(userText, true)) {
+      let seedToUse: number | undefined = undefined;
+
+      if (isEdit && userImageMemory) {
         promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, userText);
+        seedToUse = userImageMemory.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
+      } else {
+        seedToUse = Math.floor(Math.random() * 1000000);
       }
 
-      const imgRes = await generateAIImage(promptToUse);
+      const imgRes = await generateAIImage(promptToUse, { seed: seedToUse });
       if (imgRes.success) {
-        await saveUserImageMemory(contactId, imgRes.revisedPrompt, imgRes.imageUrl);
+        await saveUserImageMemory(contactId, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
 
-        const imageReply = `Here is the artwork I created for you!\n\n**Prompt:** "${imgRes.revisedPrompt}"\n\n![${imgRes.revisedPrompt}](${imgRes.imageUrl})\n\n[Open High-Resolution Artwork](${imgRes.imageUrl})`;
+        const imageReply = `Here is the ${isEdit ? "updated artwork" : "artwork"} I created for you!\n\n**Prompt:** "${imgRes.revisedPrompt}"\n\n![${imgRes.revisedPrompt}](${imgRes.imageUrl})\n\n[Open High-Resolution Artwork](${imgRes.imageUrl})`;
 
         await dbAddGuestMessage({
           id: `web-asst-${Date.now()}`,
@@ -154,6 +160,7 @@ Brief confirmation message:`
       systemPrompt,
       userPrompt,
       temperature: 0.7,
+      maxTokens: 8192,
       mediaBase64,
       mimeType: mediaMimeType,
     });
