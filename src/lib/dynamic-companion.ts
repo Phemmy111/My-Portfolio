@@ -131,115 +131,142 @@ export async function processDynamicCompanionTurn(params: {
 }): Promise<CompanionResponse> {
   const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType } = params;
   const lower = userText.toLowerCase().trim();
+  const isFemi = userIdentifier === "2348120934828";
+  const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
 
-  // 1. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
-  try {
-    const pendingAction = await dbGetPendingUserAction(userIdentifier);
-    if (pendingAction) {
-      const isAffirmative = /^(yes|send|approve|confirm|proceed|ok|1|do it|go ahead|dispatch|sure)\b/i.test(lower);
-      const isNegative = /^(no|cancel|reject|stop|2|don't|dont|discard)\b/i.test(lower);
+  // 1. FETCH MULTI-TURN MEMORY CONTEXT IN PARALLEL
+  const [
+    pendingAction,
+    latestExecutedAction,
+    userImageMemory,
+    latestArtifact,
+  ] = await Promise.all([
+    dbGetPendingUserAction(userIdentifier),
+    dbGetLatestExecutedUserAction(userIdentifier),
+    getUserImageMemory(userIdentifier),
+    getLatestUserArtifact(userIdentifier),
+  ]);
 
-      if (isAffirmative) {
-        const execRes = await executePendingUserAction(pendingAction as any);
-        return {
-          reply: cleanWhatsApp(execRes.message),
-          actionExecuted: true,
-        };
-      } else if (isNegative) {
-        await dbUpdateUserActionStatus(pendingAction.id, "rejected");
-        return {
-          reply: "❌ *Action Cancelled.* I've safely discarded the drafted operation.",
-        };
-      }
+  // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
+  if (pendingAction) {
+    const isAffirmative = /^(yes|send|approve|confirm|proceed|ok|1|do it|go ahead|dispatch|sure)\b/i.test(lower);
+    const isNegative = /^(no|cancel|reject|stop|2|don't|dont|discard)\b/i.test(lower);
+
+    if (isAffirmative) {
+      const execRes = await executePendingUserAction(pendingAction as any);
+      return {
+        reply: cleanWhatsApp(execRes.message),
+        actionExecuted: true,
+      };
+    } else if (isNegative) {
+      await dbUpdateUserActionStatus(pendingAction.id, "rejected");
+      return {
+        reply: "❌ *Action Cancelled.* I've safely discarded the drafted operation.",
+      };
     }
-  } catch (err) {
-    console.warn("[Companion] Pending action check error:", err);
   }
 
-  // 1.5 CHECK FOR ACTION DELIVERY STATUS INQUIRY
-  const latestAction = await dbGetLatestExecutedUserAction(userIdentifier);
-  const isDeliveryInquiry =
-    /\b(deliver(ed)?|sent|send it|text(ed)?|messag(ed)?|gone through|dispatch(ed)?)\b/i.test(lower) &&
-    /\b(have you|did you|has it|is it|did she|did he|was it|already|done that|did you do)\b/i.test(lower);
+  // 3. OBEY AUTONOMOUS AI REASONING & DECISION ENGINE
+  // Analyzes semantics, multi-turn dialogue, and context to select the exact right tool with ZERO hardcoded keywords.
+  const decisionSystemPrompt = `You are Obey, the autonomous AI executive companion for Femi Adeleke.
+You possess human-grade reasoning and autonomously decide which action or tool to invoke based on full conversation context and user intent.
+Current Local Time (WAT): ${watTime} (${watDate})
+Channel: ${channel}
+Speaker: ${isFemi ? "Femi Adeleke (Your Boss & Creator)" : (senderName || "User")}
 
-  if (isDeliveryInquiry && latestAction) {
-    const elapsedMinutes = Math.round((Date.now() - new Date(latestAction.executed_at || latestAction.created_at).getTime()) / 60000);
-    const timePhrase = elapsedMinutes <= 1 ? "just now" : `${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} ago`;
-    return {
-      reply: cleanWhatsApp(
-        `Yes! I have already delivered your message to *+${latestAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
-      ),
-      actionExecuted: true,
-    };
-  }
+USER MEMORY STATE:
+- Active Image Memory: ${userImageMemory?.last_image_prompt ? `Previous artwork: "${userImageMemory.last_image_prompt}" (Seed: ${userImageMemory.last_image_seed})` : "None"}
+- Active Website Artifact: ${latestArtifact?.title ? `Previous artifact: "${latestArtifact.title}" (${latestArtifact.type})` : "None"}
+- Last Dispatched Action: ${latestExecutedAction ? `Dispatched WhatsApp message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}` : "None"}
 
-  // 2. DYNAMIC INTENT & ACTION PARSER (Fast, Zero-Regex Multi-Turn AI Extractor)
-  const parserSystemPrompt = `You are the intent and entity parsing engine for Obey, an autonomous personal executive companion.
-Analyze the user's latest message in context of their prior conversation history.
+AVAILABLE TOOLS & ACTIONS:
+1. "check_action_status": Use when the user asks whether their message, email, or request was sent, delivered, or performed (e.g., "Have you delivered the message to the person?", "Did you send it?", "Has it gone through?", "Did you text her?").
+2. "draft_whatsapp_message": Use when the user asks you to message, text, or relay words to any phone number or person.
+   - Look back across prior turns to recover recipient phone and message content if shared across multiple messages.
+   - Parameters: "recipient_phone" (digits only, e.g. 234...), "message_content" (the core message or request).
+3. "generate_new_image": Use when the user wants to generate, draw, paint, or visualize a brand new image or scene from scratch.
+   - Parameters: "image_prompt" (rich descriptive prompt).
+4. "modify_existing_image": Use when the user wants to adjust, modify, recolor, or change elements of their PREVIOUS artwork in context (e.g. changing color, weather, lighting, day/night).
+   - Parameters: "image_modification" (specific edits to apply).
+5. "create_website_artifact": Use when the user asks you to design, build, code, or create a new website, landing page, HTML UI, calculator, form, or dashboard.
+   - Parameters: "website_title" (clear title), "website_specs" (features, styling, layout).
+6. "modify_website_artifact": Use when the user asks to change, update, restyle, or edit their PREVIOUS website/artifact in context (e.g. font, colors, buttons, adding a section).
+   - Parameters: "website_changes" (what to adjust in the existing code).
+7. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
+   - Parameters: "search_query".
+8. "direct_voice_call": Use ONLY when the user explicitly asks to speak with you or call you on voice (e.g. "call me", "can we speak on voice call", "let's talk on call").
+9. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
-CRITICAL MULTI-TURN RESOLUTION RULES:
-1. If Obey previously asked the user for a recipient (e.g. "Who should I send this to?" or "Please share their phone number"), and the user's latest message provides a phone number or name, you MUST look back at the earlier message to recover the message content they wanted to send, and output a COMPLETE "whatsapp_send" action (is_complete_action: true).
-2. If Obey previously asked "What message would you like me to send to [phone/number]?", and the user's latest message provides the text (e.g. "Say I have something important to discuss with him tomorrow" or "Tell him to call me"), you MUST capture the phone number from context and this text as the message content, and output a COMPLETE "whatsapp_send" action (is_complete_action: true).
-3. When extracting "content", strip conversational wrappers like "Say...", "Tell him that...", "Tell her..." and keep the actual message statement.
-4. "job_search": detect if the user wants to search for jobs, gigs, or vacancies.
-   - If the user explicitly named a role, field, or skill (e.g. "Find graphic design jobs", "Search Python remote jobs"), set specific_role_provided: true, and set search_query to that role.
-   - If the user only said broad requests like "Search job for me online", "Find me a job", "Look for jobs" WITHOUT specifying their field or title, set specific_role_provided: false.
-5. "web_search": search live internet for information, news, facts, current events, or people.
-6. "image_generate": User asks to create, draw, paint, render, generate, or visualize a NEW image, picture, photo, artwork, graphic, logo, character, car, building, or scene.
-   - Extract a descriptive "image_prompt".
-7. "image_edit": User asks to adjust, modify, change, edit, recolor, or restyle an EXISTING/PREVIOUS image (e.g., "change the car color to blue", "now make it rain", "turn it to night time", "make the car white", "change background to a neon city", "adjust it to cyberpunk").
-   - Extract "image_edit_instruction".
-8. "website_artifact": User asks to create, code, build, or design a website, landing page, web page, HTML component, interactive UI, dashboard, form, calculator, or game.
-   - Extract "artifact_title" and "content" (detailed specifications).
-9. "artifact_edit": User asks to update, modify, style, change, or edit an EXISTING website or artifact (e.g., "change the main font to Times New Roman", "make the header blue", "add a contact form section", "change the pricing cards").
-   - Extract "artifact_edit_instruction".
-10. "delivery_status_inquiry": If the user is asking whether a message, text, or task has been delivered, sent, or completed (e.g. "Have you delivered the message?", "Did you send it?", "Has it gone through?", "Did you text her?"), classify as "chat_companion". DO NOT create a new "whatsapp_send" action!
+REASONING GUIDELINES:
+- Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
+- NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, or HTML, it is ALWAYS a website artifact!
+- If the user asks whether a message was delivered, ALWAYS choose "check_action_status".
+- If the user wants to text someone but hasn't provided the phone number yet, choose "none" and ask warmly for their phone number in "conversational_response".
+- For general questions (like business advice, study questions, facts), choose "none" and provide a sharp, concise answer directly in "conversational_response".
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "intent": "whatsapp_send" | "email_send" | "phone_call" | "job_search" | "web_search" | "image_generate" | "image_edit" | "website_artifact" | "artifact_edit" | "chat_companion",
-  "recipient": "phone number (e.g. 234...) or email address, or null",
-  "subject": "email subject or null",
-  "content": "the message body, email body, call objective, or specific prompt/instruction, or null",
-  "is_complete_action": true | false,
-  "specific_role_provided": true | false,
-  "search_query": "search query for web or specific job title, or null",
-  "image_prompt": "descriptive image generation prompt or null",
-  "image_edit_instruction": "what to change in the previous image, or null",
-  "artifact_title": "title of the website/component to create or null",
-  "artifact_edit_instruction": "what to change in the previous website/artifact, or null"
+  "thought": "1-sentence executive reasoning analyzing what the user is asking and which tool applies",
+  "action": "check_action_status" | "draft_whatsapp_message" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "search_live_web" | "direct_voice_call" | "none",
+  "action_params": {
+    "recipient_phone": "phone number or null",
+    "message_content": "message or null",
+    "image_prompt": "prompt or null",
+    "image_modification": "edits or null",
+    "website_title": "title or null",
+    "website_specs": "specs or null",
+    "website_changes": "changes or null",
+    "search_query": "query or null"
+  },
+  "conversational_response": "Concise, warm, direct response if action is none or clarifying"
 }`;
 
-  const parserUserPrompt = `CONVERSATION CONTEXT:\n${historyText || "No prior messages."}\n\nLATEST USER MESSAGE:\n"${userText}"\n\nJSON output:`;
+  const decisionUserPrompt = `CONVERSATION CONTEXT:\n${historyText || "No prior messages."}\n\nLATEST USER MESSAGE:\n"${userText}"\n\nJSON output:`;
 
-  let parsed: any = { intent: "chat_companion" };
+  let decision: any = { action: "none" };
   try {
     const parseRes = await executeAICompletion({
-      systemPrompt: parserSystemPrompt,
-      userPrompt: parserUserPrompt,
+      systemPrompt: decisionSystemPrompt,
+      userPrompt: decisionUserPrompt,
       temperature: 0.1,
     });
 
     const jsonMatch = parseRes.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      parsed = JSON.parse(jsonMatch[0]);
+      decision = JSON.parse(jsonMatch[0]);
     }
   } catch (e) {
-    console.warn("[Companion] Intent parse failed, defaulting to conversational handling:", e);
+    console.warn("[Companion] Autonomous decision parse fallback:", e);
   }
 
-  // Clean parsed recipient phone number
-  let targetPhone = parsed.recipient ? parsed.recipient.replace(/\D/g, "") : null;
-  if (targetPhone && targetPhone.startsWith("0")) {
-    targetPhone = "234" + targetPhone.slice(1);
+  // 4. EXECUTE AUTONOMOUS DECISION
+
+  // Tool: Check Delivery Status
+  if (decision.action === "check_action_status") {
+    if (latestExecutedAction) {
+      const elapsedMinutes = Math.round((Date.now() - new Date(latestExecutedAction.executed_at || latestExecutedAction.created_at).getTime()) / 60000);
+      const timePhrase = elapsedMinutes <= 1 ? "just now" : `${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} ago`;
+      return {
+        reply: cleanWhatsApp(
+          `Yes! I have already delivered your message to *+${latestExecutedAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
+        ),
+        actionExecuted: true,
+      };
+    } else {
+      return {
+        reply: cleanWhatsApp("I haven't dispatched any messages from your account yet. Let me know who you'd like me to message!"),
+      };
+    }
   }
 
-  // 3. HANDLE ACTION: WHATSAPP SEND
-  if (parsed.intent === "whatsapp_send") {
-    if (parsed.is_complete_action && targetPhone && parsed.content) {
-      const isFemi = userIdentifier === "2348120934828";
+  // Tool: Draft WhatsApp Message
+  if (decision.action === "draft_whatsapp_message") {
+    let targetPhone = decision.action_params?.recipient_phone ? decision.action_params.recipient_phone.replace(/\D/g, "") : null;
+    if (targetPhone && targetPhone.startsWith("0")) targetPhone = "234" + targetPhone.slice(1);
+
+    if (targetPhone && decision.action_params?.message_content) {
       const formattedMessage = await formatOutboundDelegatedWhatsAppMessage({
-        rawContent: parsed.content.trim(),
+        rawContent: decision.action_params.message_content.trim(),
         userInstruction: userText,
         senderName,
         isFemi,
@@ -261,60 +288,136 @@ Respond ONLY with a valid JSON object matching this schema:
         ),
         actionStaged: true,
       };
-    } else if (targetPhone && !parsed.content) {
+    } else if (targetPhone && !decision.action_params?.message_content) {
+      return { reply: cleanWhatsApp(`Got the number (+${targetPhone})! What message would you like me to send them?`) };
+    } else {
+      return { reply: cleanWhatsApp(`Who should I send this to? Please share their WhatsApp phone number.`) };
+    }
+  }
+
+  // Tool: Generate New Image
+  if (decision.action === "generate_new_image") {
+    const prompt = decision.action_params?.image_prompt || userText;
+    const seed = Math.floor(Math.random() * 1000000);
+    const imgRes = await generateAIImage(prompt, { seed });
+    if (imgRes.success) {
+      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
+      if (channel === "whatsapp") {
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Artwork:*\n"${imgRes.revisedPrompt}"`);
+        return { reply: "", imageUrl: imgRes.imageUrl };
+      }
       return {
-        reply: cleanWhatsApp(
-          `Got the phone number (+${targetPhone})! What message would you like me to send them?`
-        ),
-      };
-    } else if (!targetPhone && parsed.content) {
-      return {
-        reply: cleanWhatsApp(
-          `I have your message ready: "${parsed.content.trim()}"\n\nWho should I send this to? Please share their WhatsApp phone number.`
-        ),
+        reply: cleanWhatsApp(`🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`),
+        imageUrl: imgRes.imageUrl,
       };
     }
   }
 
-  // 4. HANDLE ACTION: EMAIL SEND
-  if (parsed.intent === "email_send") {
-    const targetEmail = parsed.recipient && parsed.recipient.includes("@") ? parsed.recipient : null;
-    if (parsed.is_complete_action && targetEmail && parsed.content) {
-      await dbCreateUserPendingAction({
-        userIdentifier,
-        actionType: "email_send",
-        targetRecipient: targetEmail,
-        subject: parsed.subject || "Message from Obey Personal Agent",
-        payload: parsed.content.trim(),
+  // Tool: Modify Existing Image (With Seed Continuity)
+  if (decision.action === "modify_existing_image") {
+    const editInstruction = decision.action_params?.image_modification || userText;
+    const basePrompt = userImageMemory?.last_image_prompt || userText;
+    const revisedPrompt = await synthesizeImageRevisionPrompt(basePrompt, editInstruction);
+    const seed = userImageMemory?.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
+    const imgRes = await generateAIImage(revisedPrompt, { seed });
+    if (imgRes.success) {
+      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
+      if (channel === "whatsapp") {
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`);
+        return { reply: "", imageUrl: imgRes.imageUrl };
+      }
+      return {
+        reply: cleanWhatsApp(`🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`),
+        imageUrl: imgRes.imageUrl,
+      };
+    }
+  }
+
+  // Tool: Create or Modify Website Artifact
+  if (decision.action === "create_website_artifact" || decision.action === "modify_website_artifact") {
+    const isEdit = decision.action === "modify_website_artifact" && Boolean(latestArtifact);
+    let artifactPrompt: string;
+
+    if (isEdit && latestArtifact) {
+      const changes = decision.action_params?.website_changes || userText;
+      artifactPrompt = `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
+Current Code:
+\`\`\`html
+${latestArtifact.content}
+\`\`\`
+Requested Changes: "${changes}"
+
+Rewrite the complete updated runnable HTML code inside:
+<artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+...complete updated runnable code with "${changes}" applied...
+</artifact>
+Brief confirmation message:`;
+    } else {
+      const title = decision.action_params?.website_title || "Interactive Web Page";
+      const specs = decision.action_params?.website_specs || userText;
+      artifactPrompt = `WEBSITE / ARTIFACT CREATION REQUEST:
+Title: "${title}"
+Specifications: "${specs}"
+
+Create a complete, modern, high-converting, fully responsive HTML landing page with Tailwind CSS (via CDN) and beautiful styling and interactions.
+Enclose the complete runnable code inside:
+<artifact identifier="web-${Date.now()}" type="html" title="${title}">
+...complete runnable HTML code...
+</artifact>
+Brief confirmation message:`;
+    }
+
+    try {
+      const aiRes = await executeAICompletion({
+        systemPrompt: "You are Obey, an autonomous AI executive engineer. Build modern, responsive, high-converting HTML landing pages using Tailwind CSS. Return complete runnable code inside <artifact> tags.",
+        userPrompt: artifactPrompt,
+        temperature: 0.3,
+        maxTokens: 8192,
       });
 
-      return {
-        reply: cleanWhatsApp(
-          `📧 *Email Drafted — Ready for Your Approval:*\n\n` +
-          `• *To:* ${targetEmail}\n` +
-          `• *Subject:* ${parsed.subject || "Message from Obey Personal Agent"}\n` +
-          `• *Body:*\n"${parsed.content.trim()}"\n\n` +
-          `👉 Reply *YES* (or *1*) to send via Gmail, or *NO* to cancel.`
-        ),
-        actionStaged: true,
-      };
-    } else if (!targetEmail) {
-      return {
-        reply: cleanWhatsApp(
-          `I'm on it! What is the recipient's email address?`
-        ),
-      };
+      const artifacts = extractArtifactBlocks(aiRes.text);
+      if (artifacts.length > 0) {
+        const art = artifacts[0];
+        const saved = await saveArtifact({
+          identifier: art.identifier,
+          title: art.title,
+          type: art.type,
+          content: art.content,
+          user_identifier: userIdentifier,
+          description: `Generated by Obey for ${senderName || "user"}`,
+        });
+
+        if (channel === "whatsapp") {
+          const docFileName = `${art.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.html`;
+          await sendWhatsAppDocument(art.content, docFileName, userIdentifier, `📄 *${art.title}* (HTML File)`);
+        }
+
+        const link = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+        let cleanReply = stripArtifactBlocks(aiRes.text).trim();
+        if (!cleanReply || cleanReply.length < 10 || cleanReply.includes("```") || cleanReply.includes("<!DOCTYPE") || cleanReply.includes("<html")) {
+          cleanReply = isEdit
+            ? `✅ I've updated the *${art.title}* with your requested changes!`
+            : `🚀 *${art.title}* is ready!`;
+        }
+
+        cleanReply += `\n\n🌐 *Interactive Live Preview:*\n${link}`;
+        cleanReply += `\n\n📁 *HTML File:* Attached directly for instant download.`;
+
+        return {
+          reply: cleanWhatsApp(cleanReply),
+          artifactId: saved.id,
+          artifactTitle: art.title,
+          artifactContent: art.content,
+        };
+      }
+    } catch (err) {
+      console.error("[Companion] Artifact generation error:", err);
     }
   }
 
-  // 5. HANDLE ACTION: AI PHONE CALL / LIVE WEBRTC VOICE CALL
-  const cleanUserPhone = userIdentifier.replace(/\D/g, "");
-  const isDirectCallRequest =
-    /\b(call me|voice call|phone call|call my line|ring my line|can i call you on voice|give me a call)\b/i.test(lower) &&
-    !/\b(project|website|code|artifact|feature|tomorrow|later|idea|email|message|chat|build|fix)\b/i.test(lower) &&
-    (!targetPhone || targetPhone === cleanUserPhone);
-
-  if (isDirectCallRequest) {
+  // Tool: Direct Voice Call WebRTC link
+  if (decision.action === "direct_voice_call") {
+    const cleanUserPhone = userIdentifier.replace(/\D/g, "");
     const callUrl = `https://femiadelekeportfolio.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
     return {
       reply: cleanWhatsApp(
@@ -330,78 +433,11 @@ Respond ONLY with a valid JSON object matching this schema:
     };
   }
 
-  if (parsed.intent === "phone_call") {
-    if (parsed.is_complete_action && targetPhone) {
-      const objective = parsed.content || "Status check and inquiry on behalf of the user";
-      await dbCreateUserPendingAction({
-        userIdentifier,
-        actionType: "phone_call",
-        targetRecipient: targetPhone,
-        payload: objective,
-      });
-
-      return {
-        reply: cleanWhatsApp(
-          `📞 *AI Voice Call Prepared — Ready for Your Approval:*\n\n` +
-          `• *Target Number:* +${targetPhone}\n` +
-          `• *Call Objective:* ${objective}\n\n` +
-          `👉 Reply *YES* (or *1*) to initiate the AI call now, or *NO* to cancel.`
-        ),
-        actionStaged: true,
-      };
-    } else if (!targetPhone) {
-      return {
-        reply: cleanWhatsApp(
-          `Who should I call for you? Please provide their phone number and what you'd like me to say or ask.`
-        ),
-      };
-    }
-  }
-
-  // 6. HANDLE RESEARCH: ONLINE JOB SEARCH (Human, Clarifying & Tailored)
-  if (parsed.intent === "job_search" || lower.includes("search job") || lower.includes("find job") || lower.includes("scout gig")) {
-    const specificRole = parsed.search_query || "";
-    const isGenericSearch = !parsed.specific_role_provided && !specificRole && !/(developer|designer|writer|manager|engineer|accountant|assistant|analyst|marketing|sales|support|tutor|intern)/i.test(lower);
-
-    // If the user did NOT specify their field or what kind of job they want, ask them like a real human!
-    if (isGenericSearch) {
-      return {
-        reply: cleanWhatsApp(
-          `I'd be glad to scout the live job market for you! 💼\n\n` +
-          `To find the exact opportunities matching your background, tell me a bit about what you're looking for:\n` +
-          `• What is your profession or primary skillset? (e.g. Software Engineering, Graphic Design, Virtual Assistant, Content Writing, Customer Support, Sales, etc.)\n` +
-          `• Are you targeting *remote* roles, or jobs in a specific city/country?\n\n` +
-          `Tell me your preferred role, and I will scout active openings for you right away!`
-        ),
-      };
-    }
-
-    // If specific role or skills were provided, perform live web search for REAL jobs
-    const targetRole = specificRole || userText.replace(/search|find|online|jobs?|for me|gigs?|please/gi, "").trim();
-    try {
-      const query = `remote ${targetRole} job openings 2026 apply`;
-      const searchRes = await searchTavily(query, { maxResults: 3 });
-
-      if (searchRes.success && searchRes.results.length > 0) {
-        let msg = `🎯 *Here are active ${targetRole} opportunities I scouted for you:*\n\n`;
-        searchRes.results.forEach((r, i) => {
-          msg += `*${i + 1}. ${r.title}*\n`;
-          msg += `• *Link:* ${r.url}\n`;
-          msg += `• *Details:* ${r.content.slice(0, 180)}...\n\n`;
-        });
-        msg += `_Would you like me to tailor a resume summary, draft an application pitch, or refine the search? Just let me know!_`;
-        return { reply: cleanWhatsApp(msg) };
-      }
-    } catch (e) {
-      console.warn("[Companion] Live job search fallback:", e);
-    }
-  }
-
-  // 7. HANDLE RESEARCH: LIVE WEB SEARCH (TAVILY)
+  // Tool: Search Live Web (Tavily)
   let liveSearchFindings = "";
-  if (parsed.intent === "web_search" || parsed.search_query) {
+  if (decision.action === "search_live_web") {
     try {
-      const query = parsed.search_query || userText;
+      const query = decision.action_params?.search_query || userText;
       const tavilyRes = await searchTavily(query, { maxResults: 3 });
       if (tavilyRes.success && tavilyRes.results.length > 0) {
         liveSearchFindings = tavilyRes.results
@@ -413,80 +449,14 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 7. ARTIFACT & WEBSITE INTENT RESOLUTION (Takes precedence over image revision fallback)
-  const latestArtifact = await getLatestUserArtifact(userIdentifier);
-  const isArtifactGenIntent = parsed.intent === "website_artifact";
-  const isArtifactEditIntent = parsed.intent === "artifact_edit";
-
-  const isFallbackArtifactGen =
-    !parsed.intent.startsWith("image_") &&
-    /\b(build|create|code|develop|make|generate|design)\b/i.test(lower) &&
-    /\b(website|webpage|landing page|web page|html page|portfolio page|calculator|dashboard|contact form|login page|checkout page)\b/i.test(lower);
-
-  const isFallbackArtifactEdit =
-    !parsed.intent.startsWith("image_") &&
-    Boolean(latestArtifact) &&
-    /\b(change|make|turn|update|replace|switch|add|remove|set|modify|style)\b/i.test(lower) &&
-    /\b(font|color|colour|background|button|buttons|header|footer|title|text|section|card|slider|theme|style|layout|css|nav|hero|pricing)\b/i.test(lower);
-
-  const isArtifactRequest = isArtifactGenIntent || isArtifactEditIntent || isFallbackArtifactGen || isFallbackArtifactEdit;
-  const isArtifactEdit = (isArtifactEditIntent || isFallbackArtifactEdit) && Boolean(latestArtifact);
-
-  // 8. HANDLE AI IMAGE GENERATION & EDITING (Only executed if NOT an artifact request)
-  const userImageMemory = await getUserImageMemory(userIdentifier);
-  const isImageGenIntent = parsed.intent === "image_generate";
-  const isImageEditIntent = parsed.intent === "image_edit";
-
-  const isFallbackImageRequest =
-    !isArtifactRequest &&
-    (/\b(generate|create|draw|paint|sketch|make|render|design)\b/i.test(lower) &&
-     /\b(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration|wallpaper|avatar|portrait|painting|drawing|render|artwork)\b/i.test(lower) &&
-     !/\b(code|website|landing page|web page|app|html|calculator|component|table|form|backend|api|font|button)\b/i.test(lower));
-
-  const isFallbackImageEdit =
-    !isArtifactRequest &&
-    isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
-
-  if (!isArtifactRequest && (isImageGenIntent || isImageEditIntent || isFallbackImageRequest || isFallbackImageEdit)) {
-    const isEdit = isImageEditIntent || isFallbackImageEdit;
-
-    let promptToUse = parsed.image_prompt || userText;
-    let seedToUse: number | undefined = undefined;
-
-    if (isEdit && userImageMemory?.last_image_prompt) {
-      const editInstruction = parsed.image_edit_instruction || userText;
-      promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, editInstruction);
-      seedToUse = userImageMemory.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
-    } else {
-      seedToUse = Math.floor(Math.random() * 1000000);
-    }
-
-    const imgRes = await generateAIImage(promptToUse, { seed: seedToUse });
-    if (imgRes.success) {
-      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
-
-      if (channel === "whatsapp") {
-        const caption = isEdit
-          ? `🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`
-          : `🎨 *Artwork:*\n"${imgRes.revisedPrompt}"`;
-        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, caption);
-        // Clean dispatch: direct photo delivery with no duplicate raw URL message
-        return {
-          reply: "",
-          imageUrl: imgRes.imageUrl,
-        };
-      }
-
-      return {
-        reply: cleanWhatsApp(`🎨 *${isEdit ? "Updated Artwork" : "Generated Artwork"}:*\n"${imgRes.revisedPrompt}"`),
-        imageUrl: imgRes.imageUrl,
-      };
-    }
+  // If the autonomous reasoner already provided a direct conversational response and no live search is needed:
+  if (decision.action === "none" && decision.conversational_response && decision.conversational_response.trim().length > 5 && !liveSearchFindings) {
+    return {
+      reply: cleanWhatsApp(decision.conversational_response),
+    };
   }
 
-  // 9. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
-  const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
-  const isFemi = userIdentifier === "2348120934828";
+  // 5. COMPANION & CONVERSATIONAL SYNTHESIS (Concise, 100% Human, No Filler)
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
   const hasHistory = Boolean(historyText && historyText.trim().length > 10);
 
@@ -526,60 +496,23 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      * *EduMate & UniVibe:* Educational AI WhatsApp bot and University of Ibadan campus community app.
    - Core Skills: Next.js (App Router), React, TypeScript, Tailwind CSS, Neon Cloud DB, Supabase, n8n automations, Flutter, AI Agent architectures, Paystack integrations.
 
-7. INTERACTIVE ARTIFACTS & WEB CREATION:
-   - When the user asks you to build, code, design, or edit a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the complete code inside:
-     <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
-     ...complete runnable code...
-     </artifact>
-   - Obey automatically extracts this code and hosts it as an interactive live webpage.
-
-8. FORMATTING:
+7. FORMATTING:
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
 
-9. STRICT INSTRUCTION ON VOICE CALLS:
+8. STRICT INSTRUCTION ON VOICE CALLS:
    - NEVER tell the user 'Initiating the call to your line right now', 'Ringing your line', 'Connecting you now', or claim you are calling them on WhatsApp.
    - Obey does NOT place unprompted outbound phone calls. When the user says casual greetings or words like 'Alright', 'Hello', 'Thanks', answer their chat directly like a normal human.
 
-10. RECENT ACTIVITY & ACTION STATUS:
-${latestAction ? `   - You recently dispatched an approved message to +${latestAction.target_recipient} at ${latestAction.executed_at || latestAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
+9. RECENT ACTIVITY & ACTION STATUS:
+${latestExecutedAction ? `   - You recently dispatched an approved message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
 
 ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
-  let companionUserPrompt: string;
-  if (isArtifactEdit && latestArtifact) {
-    const editInstruction = parsed.artifact_edit_instruction || userText;
-    companionUserPrompt = `EDIT REQUEST FOR PREVIOUS ARTIFACT: "${latestArtifact.title}"
-Current Code:
-\`\`\`html
-${latestArtifact.content}
-\`\`\`
-User requested change: "${editInstruction}"
-
-Rewrite the complete updated runnable HTML code inside:
-<artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
-...complete updated code with "${editInstruction}" applied...
-</artifact>
-Brief confirmation message:`;
-  } else if (isArtifactRequest) {
-    const title = parsed.artifact_title || "Interactive Web Page";
-    const specs = parsed.content || userText;
-    companionUserPrompt = `WEBSITE / ARTIFACT CREATION REQUEST:
-Title: "${title}"
-Specifications: "${specs}"
-
-Create a complete, modern, high-converting, fully responsive HTML landing page with Tailwind CSS (via CDN) and beautiful styling and interactions.
-Enclose the complete runnable code inside:
-<artifact identifier="web-${Date.now()}" type="html" title="${title}">
-...complete runnable HTML code...
-</artifact>
-Brief confirmation message:`;
-  } else {
-    companionUserPrompt = historyText
-      ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
-      : `User: "${userText}"\n\nObey (concise, direct answer):`;
-  }
+  const companionUserPrompt = historyText
+    ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
+    : `User: "${userText}"\n\nObey (concise, direct answer):`;
 
   try {
     const aiRes = await executeAICompletion({
@@ -588,63 +521,10 @@ Brief confirmation message:`;
       mediaBase64,
       mimeType: mediaMimeType,
       temperature: 0.3,
-      maxTokens: 8192,
     });
 
-    const rawReply = aiRes.text;
-    const artifacts = extractArtifactBlocks(rawReply);
-    let firstArtifactId: string | undefined;
-    let firstArtifactTitle: string | undefined;
-    let firstArtifactContent: string | undefined;
-
-    if (artifacts.length > 0) {
-      for (const art of artifacts) {
-        const saved = await saveArtifact({
-          identifier: art.identifier,
-          title: art.title,
-          type: art.type,
-          content: art.content,
-          user_identifier: userIdentifier,
-          description: `Generated by Obey for ${senderName || "user"}`,
-        });
-        if (!firstArtifactId) {
-          firstArtifactId = saved.id;
-          firstArtifactTitle = art.title;
-          firstArtifactContent = art.content;
-        }
-
-        if (channel === "whatsapp") {
-          const docFileName = `${art.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.html`;
-          await sendWhatsAppDocument(
-            art.content,
-            docFileName,
-            userIdentifier,
-            `📄 *${art.title}* (HTML File)`
-          );
-        }
-      }
-
-      // Strip raw code from text reply so chat bubbles remain clean
-      let cleanReply = stripArtifactBlocks(rawReply).trim();
-      if (!cleanReply || cleanReply.length < 10 || cleanReply.includes("```") || cleanReply.includes("<!DOCTYPE") || cleanReply.includes("<html")) {
-        cleanReply = isArtifactEdit
-          ? `✅ I've updated the *${firstArtifactTitle || "website"}* with your requested changes!`
-          : `🚀 *${firstArtifactTitle || "Your Website"}* is ready!`;
-      }
-
-      cleanReply += `\n\n🌐 *Interactive Live Preview:*\nhttps://femiadelekeportfolio.vercel.app/artifact/${firstArtifactId}`;
-      cleanReply += `\n\n📁 *HTML File:* Attached directly for instant download.`;
-
-      return {
-        reply: cleanWhatsApp(cleanReply),
-        artifactId: firstArtifactId,
-        artifactTitle: firstArtifactTitle,
-        artifactContent: firstArtifactContent,
-      };
-    }
-
     return {
-      reply: cleanWhatsApp(rawReply),
+      reply: cleanWhatsApp(aiRes.text),
     };
   } catch (err: any) {
     console.error("[Companion] AI error:", err);
