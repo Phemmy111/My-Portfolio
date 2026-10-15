@@ -123,6 +123,48 @@ export async function sendTelegramPhoto(
 }
 
 /**
+ * Sends a downloadable document (e.g. HTML file) directly to Telegram.
+ */
+export async function sendTelegramDocument(
+  fileContent: string,
+  fileName: string,
+  options?: { chatId?: string; caption?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const token = await getSetting("TELEGRAM_BOT_TOKEN");
+    const targetChatId = options?.chatId || (await getSetting("TELEGRAM_ADMIN_CHAT_ID"));
+
+    if (!token || !targetChatId) {
+      return { success: false, error: "Telegram Bot Token or Chat ID not configured" };
+    }
+
+    const form = new FormData();
+    form.append("chat_id", targetChatId);
+    const blob = new Blob([fileContent], { type: "text/html" });
+    form.append("document", blob, fileName.endsWith(".html") ? fileName : `${fileName}.html`);
+    if (options?.caption) {
+      form.append("caption", options.caption.slice(0, 1024));
+    }
+    form.append("parse_mode", "Markdown");
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: "POST",
+      body: form,
+    });
+
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      return { success: true };
+    }
+    return { success: false, error: data.description || "Failed to send document" };
+  } catch (err: any) {
+    console.error("[Telegram] sendTelegramDocument error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+
+/**
  * Handles incoming Telegram webhooks (when Femi texts Obey on his phone).
  */
 export async function handleTelegramWebhook(body: any): Promise<void> {
@@ -535,5 +577,12 @@ export async function handleTelegramWebhook(body: any): Promise<void> {
     await sendTelegramPhoto(companionRes.imageUrl, replyText, { chatId, inlineKeyboard: keyboard });
   } else {
     await sendTelegramMessage(replyText, { chatId, inlineKeyboard: keyboard });
+    if (companionRes.artifactContent && companionRes.artifactTitle) {
+      const docName = `${companionRes.artifactTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.html`;
+      await sendTelegramDocument(companionRes.artifactContent, docName, {
+        chatId: chatId.toString(),
+        caption: `📄 Attached: ${companionRes.artifactTitle}`,
+      });
+    }
   }
 }

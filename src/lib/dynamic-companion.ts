@@ -8,9 +8,20 @@ import {
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
-import { generateAIImage } from "./image-generator";
-import { saveArtifact, extractArtifactBlocks } from "./artifact-engine";
-import { sendWhatsAppImage } from "./whatsapp-gateway";
+import {
+  generateAIImage,
+  getUserImageMemory,
+  saveUserImageMemory,
+  isImageRevisionRequest,
+  synthesizeImageRevisionPrompt,
+} from "./image-generator";
+import {
+  saveArtifact,
+  extractArtifactBlocks,
+  stripArtifactBlocks,
+  getLatestUserArtifact,
+} from "./artifact-engine";
+import { sendWhatsAppImage, sendWhatsAppDocument } from "./whatsapp-gateway";
 
 export interface CompanionResponse {
   reply: string;
@@ -18,6 +29,8 @@ export interface CompanionResponse {
   actionExecuted?: boolean;
   imageUrl?: string;
   artifactId?: string;
+  artifactTitle?: string;
+  artifactContent?: string;
 }
 
 /**
@@ -295,29 +308,42 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   }
 
-  // 7. HANDLE AI IMAGE GENERATION
+  // 7. HANDLE AI IMAGE GENERATION (With Continuity & Revision Memory)
+  const userImageMemory = await getUserImageMemory(userIdentifier);
   const isImageRequest =
-    /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower);
+    /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower) ||
+    isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
 
   if (isImageRequest) {
-    const imgRes = await generateAIImage(userText);
+    let promptToUse = userText;
+    if (userImageMemory && isImageRevisionRequest(userText, true)) {
+      promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, userText);
+    }
+
+    const imgRes = await generateAIImage(promptToUse);
     if (imgRes.success) {
+      await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl);
+
       if (channel === "whatsapp") {
-        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`);
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Artwork:* "${imgRes.revisedPrompt}"`);
+        // Clean dispatch: No redundant second text message with raw URL link needed!
+        return {
+          reply: "",
+          imageUrl: imgRes.imageUrl,
+        };
       }
+
       return {
-        reply: cleanWhatsApp(
-          `🎨 *Generated Artwork:*\n\n` +
-          `• *Prompt:* "${imgRes.revisedPrompt}"\n\n` +
-          `🖼️ *High-Resolution Image:*\n${imgRes.imageUrl}\n\n` +
-          `_(Sent directly to your chat as an image!)_`
-        ),
+        reply: cleanWhatsApp(`🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`),
         imageUrl: imgRes.imageUrl,
       };
     }
   }
 
-  // 8. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
+  // 8. LOAD LATEST USER ARTIFACT FOR CONTINUITY & EDITING
+  const latestArtifact = await getLatestUserArtifact(userIdentifier);
+
+  // 9. COMPANION & CONVERSATION SYNTHESIS (100% Human, Ultra-Concise, No Filler)
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
   const isFemi = userIdentifier === "2348120934828";
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
@@ -338,18 +364,21 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      ? "- This is an ONGOING conversation. DO NOT GREET. NEVER start your message with 'Good morning/afternoon/evening', 'Hello', or 'Hi [Name]'. Jump straight into answering the user's question directly."
      : "- This is the FIRST message of the day. A brief warm greeting is fine, but keep it minimal."}
 
-3. NEVER POLICE SLEEP OR NAG ABOUT TIME:
+3. NEVER CONFUSE SOFTWARE REQUESTS WITH CALLS:
+   - NEVER say "initiating the voice call to your line right now" or mention phone calls when asked to build software, landing pages, designs, or code! Only mention calls if the user explicitly asks to speak or call.
+
+4. NEVER POLICE SLEEP OR NAG ABOUT TIME:
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
 
-4. ELIMINATE REPETITIVE FILLER & PREAMBLE:
+5. ELIMINATE REPETITIVE FILLER & PREAMBLE:
    - NEVER use canned filler phrases like 'Let's slice right through this!', 'Let's get straight to the point!', 'Let's finish this strong!', or 'Ready to call it a night?'. Just provide the answer with natural, effortless human confidence.
 
-5. WHO YOU ARE TALKING TO:
+6. WHO YOU ARE TALKING TO:
    ${isFemi
      ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
      : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "a user"}. You are THEIR dedicated personal companion. Address them warmly as a trusted friend. NEVER call a stranger "Boss" or "Sir".`}
 
-6. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
+7. CREATOR & MASTERMIND (EXACT PROJECTS & CAPABILITIES):
    - You were architected and engineered by Femi Adeleke, a premier Software Engineer, AI Automation Architect, and Educator based in Ibadan, Nigeria (https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111 | Email: femiadeleke2020@gmail.com | WhatsApp: +234 812 093 4828).
    - If the user asks about websites, mobile apps, software development, or who built you, speak of Femi's actual verified platforms:
      * *OKIKI Electronics Store:* High-performance e-commerce store with catalog filtering and cart management.
@@ -359,17 +388,29 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      * *EduMate & UniVibe:* Educational AI WhatsApp bot and University of Ibadan campus community app.
    - Core Skills: Next.js (App Router), React, TypeScript, Tailwind CSS, Neon Cloud DB, Supabase, n8n automations, Flutter, AI Agent architectures, Paystack integrations.
 
-7. CALLING OPTIONS:
+8. CALLING OPTIONS:
    - If they ask to speak or call Femi or Obey, provide Option 1: Direct Line +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at https://femiadelekeportfolio.vercel.app/call.
 
-8. INTERACTIVE ARTIFACTS:
+9. INTERACTIVE ARTIFACTS & CONTINUITY:
    - When the user asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
      <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
      ...complete runnable code...
      </artifact>
-     Obey will automatically turn it into an interactive live web preview!
+   ${latestArtifact ? `
+   RECENT ARTIFACT GENERATED FOR THIS USER:
+   Artifact Identifier: "${latestArtifact.identifier || latestArtifact.id}"
+   Title: "${latestArtifact.title}"
+   Current Code:
+   \`\`\`html
+   ${latestArtifact.content.slice(0, 3000)}
+   \`\`\`
+   CONTINUITY INSTRUCTION: If the user asks to edit, revise, change font, color, layout, or content of this artifact (e.g. "change the main font to Times New Roman", "change the car color to blue", "add a button"), rewrite the complete updated code inside:
+   <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+   ...updated complete runnable code...
+   </artifact>
+   ` : ""}
 
-9. FORMATTING:
+10. FORMATTING:
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
    - Nigeria Time: ${watTime} (${watDate}).
@@ -389,26 +430,58 @@ ${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : "
       temperature: 0.4,
     });
 
-    let finalReply = aiRes.text;
-    const artifacts = extractArtifactBlocks(finalReply);
+    const rawReply = aiRes.text;
+    const artifacts = extractArtifactBlocks(rawReply);
     let firstArtifactId: string | undefined;
+    let firstArtifactTitle: string | undefined;
+    let firstArtifactContent: string | undefined;
 
     if (artifacts.length > 0) {
       for (const art of artifacts) {
         const saved = await saveArtifact({
+          identifier: art.identifier,
           title: art.title,
           type: art.type,
           content: art.content,
+          user_identifier: userIdentifier,
           description: `Generated by Obey for ${senderName || "user"}`,
         });
-        if (!firstArtifactId) firstArtifactId = saved.id;
-        finalReply += `\n\n🌐 *Interactive Live Preview:* https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+        if (!firstArtifactId) {
+          firstArtifactId = saved.id;
+          firstArtifactTitle = art.title;
+          firstArtifactContent = art.content;
+        }
+
+        if (channel === "whatsapp") {
+          const docFileName = `${art.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.html`;
+          await sendWhatsAppDocument(
+            art.content,
+            docFileName,
+            userIdentifier,
+            `📄 *${art.title}* (HTML File)`
+          );
+        }
       }
+
+      // Strip raw code from text reply so chat bubbles remain clean
+      let cleanReply = stripArtifactBlocks(rawReply).trim();
+      if (!cleanReply || cleanReply.length < 10) {
+        cleanReply = `I've prepared the ${firstArtifactTitle || "interactive artifact"} for you!`;
+      }
+
+      cleanReply += `\n\n🌐 *Interactive Live Preview:*\nhttps://femiadelekeportfolio.vercel.app/artifact/${firstArtifactId}`;
+      cleanReply += `\n\n📁 _(The full runnable HTML file has been attached directly to your chat!)_`;
+
+      return {
+        reply: cleanWhatsApp(cleanReply),
+        artifactId: firstArtifactId,
+        artifactTitle: firstArtifactTitle,
+        artifactContent: firstArtifactContent,
+      };
     }
 
     return {
-      reply: cleanWhatsApp(finalReply),
-      artifactId: firstArtifactId,
+      reply: cleanWhatsApp(rawReply),
     };
   } catch (err: any) {
     console.error("[Companion] AI error:", err);

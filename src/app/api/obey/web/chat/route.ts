@@ -5,8 +5,19 @@ import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { formatToWAT } from "@/lib/utils";
 import { getObeyBrainContext } from "@/lib/settings";
-import { generateAIImage } from "@/lib/image-generator";
-import { saveArtifact, extractArtifactBlocks } from "@/lib/artifact-engine";
+import {
+  generateAIImage,
+  getUserImageMemory,
+  saveUserImageMemory,
+  isImageRevisionRequest,
+  synthesizeImageRevisionPrompt,
+} from "@/lib/image-generator";
+import {
+  saveArtifact,
+  extractArtifactBlocks,
+  stripArtifactBlocks,
+  getLatestUserArtifact,
+} from "@/lib/artifact-engine";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -50,15 +61,24 @@ export async function POST(req: NextRequest) {
       intent: "Website Live Chat",
     });
 
-    // 3. Check for AI Image Generation Request
+    // 3. Check for AI Image Generation Request (With Continuity & Revision)
     const lower = userText.toLowerCase();
+    const userImageMemory = await getUserImageMemory(contactId);
     const isImageRequest =
-      /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower);
+      /\b(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration)|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup)|draw (me |a )?|design a (logo|picture|banner|flyer|mockup)|make (an? )?(image|picture))\b/i.test(lower) ||
+      isImageRevisionRequest(userText, Boolean(userImageMemory?.last_image_prompt));
 
     if (isImageRequest) {
-      const imgRes = await generateAIImage(userText);
+      let promptToUse = userText;
+      if (userImageMemory && isImageRevisionRequest(userText, true)) {
+        promptToUse = await synthesizeImageRevisionPrompt(userImageMemory.last_image_prompt, userText);
+      }
+
+      const imgRes = await generateAIImage(promptToUse);
       if (imgRes.success) {
-        const imageReply = `Here is the artwork I generated for you!\n\n**Prompt:** "${imgRes.revisedPrompt}"\n\n![${imgRes.revisedPrompt}](${imgRes.imageUrl})\n\n[Open High-Resolution Artwork](${imgRes.imageUrl})`;
+        await saveUserImageMemory(contactId, imgRes.revisedPrompt, imgRes.imageUrl);
+
+        const imageReply = `Here is the artwork I created for you!\n\n**Prompt:** "${imgRes.revisedPrompt}"\n\n![${imgRes.revisedPrompt}](${imgRes.imageUrl})\n\n[Open High-Resolution Artwork](${imgRes.imageUrl})`;
 
         await dbAddGuestMessage({
           id: `web-asst-${Date.now()}`,
@@ -81,10 +101,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Load previous dialogue for this web session & Obey Brain
-    const [pastMessages, brain] = await Promise.all([
+    // 4. Load previous dialogue for this web session, Obey Brain & Latest Artifact
+    const [pastMessages, brain, latestArtifact] = await Promise.all([
       dbGetGuestMessages(contactId, 12),
       getObeyBrainContext(),
+      getLatestUserArtifact(contactId),
     ]);
 
     const historyText = pastMessages
@@ -103,11 +124,24 @@ CRITICAL BEHAVIOR RULES:
 5. CALLING OPTIONS: If they ask to speak or call Femi or Obey, provide Option 1: Direct Hotline +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at /call.
 6. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email or WhatsApp number so Femi and you can follow up with a proposal or schedule a brief discovery call.
 7. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.
-8. INTERACTIVE ARTIFACTS: When the visitor asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
+8. NEVER CONFUSE SOFTWARE REQUESTS WITH CALLS: Never say "initiating the voice call to your line right now" or mention phone calls when asked to build software, landing pages, designs, or code!
+9. INTERACTIVE ARTIFACTS & CONTINUITY: When the visitor asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
    <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
    ...complete runnable code...
    </artifact>
-   Obey will automatically turn it into an interactive live web preview for them!${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
+   ${latestArtifact ? `
+   RECENT ARTIFACT GENERATED FOR THIS VISITOR:
+   Identifier: "${latestArtifact.identifier || latestArtifact.id}"
+   Title: "${latestArtifact.title}"
+   Current Code:
+   \`\`\`html
+   ${latestArtifact.content.slice(0, 3000)}
+   \`\`\`
+   CONTINUITY INSTRUCTION: If the visitor asks to edit, revise, change font, color, layout, or content (e.g. "change font to Times New Roman", "change the car color to blue", "add a button"), rewrite the complete updated code inside:
+   <artifact identifier="${latestArtifact.identifier || latestArtifact.id}" type="${latestArtifact.type}" title="${latestArtifact.title}">
+   ...updated complete runnable code...
+   </artifact>
+   ` : ""}${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const userPrompt = historyText
       ? `Previous conversation on website with ${displayName}:\n${historyText}\n\nTheir new message: "${userText}"${mediaBase64 ? ` (User also attached file: ${mediaFileName})` : ""}\n\nObey (warm, human, helpful):`
@@ -121,23 +155,39 @@ CRITICAL BEHAVIOR RULES:
       mimeType: mediaMimeType,
     });
 
-    let replyText = aiRes.text;
+    const rawReply = aiRes.text;
 
     // Process artifacts
-    const artifacts = extractArtifactBlocks(replyText);
-    let firstArtifactId: string | undefined;
+    const artifacts = extractArtifactBlocks(rawReply);
+    let replyText = rawReply;
 
     if (artifacts.length > 0) {
+      let firstArtifactId: string | undefined;
+      let firstArtifactTitle: string | undefined;
+
       for (const art of artifacts) {
         const saved = await saveArtifact({
+          identifier: art.identifier,
           title: art.title,
           type: art.type,
           content: art.content,
+          user_identifier: contactId,
           description: `Generated by Obey for web visitor (${displayName})`,
         });
-        if (!firstArtifactId) firstArtifactId = saved.id;
-        replyText += `\n\n🌐 **Interactive Live Preview:** [View Interactive Artifact](https://femiadelekeportfolio.vercel.app/artifact/${saved.id})`;
+        if (!firstArtifactId) {
+          firstArtifactId = saved.id;
+          firstArtifactTitle = art.title;
+        }
       }
+
+      // Strip raw code so chat window remains clean
+      let cleanReply = stripArtifactBlocks(rawReply).trim();
+      if (!cleanReply || cleanReply.length < 10) {
+        cleanReply = `I've prepared the ${firstArtifactTitle || "interactive artifact"} for you!`;
+      }
+
+      cleanReply += `\n\n🌐 **Interactive Live Preview:** [Open Live Interactive Artifact](https://femiadelekeportfolio.vercel.app/artifact/${firstArtifactId})`;
+      replyText = cleanReply;
     }
 
     // 5. Save assistant reply to DB

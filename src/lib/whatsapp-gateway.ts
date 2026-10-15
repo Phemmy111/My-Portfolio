@@ -258,5 +258,62 @@ export async function sendWhatsAppImage(
   }
 }
 
+/**
+ * Dispatches an HTML file, code artifact, or document via Evolution API to WhatsApp as a native file attachment
+ */
+export async function sendWhatsAppDocument(
+  fileContent: string,
+  fileName: string,
+  recipient: string,
+  caption?: string,
+  mimetype: string = "text/html"
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    let cleaned = (recipient || "2348120934828")
+      .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
+      .replace(/\D/g, "");
+    if (!cleaned || cleaned.length > 13 || cleaned.length < 10) {
+      cleaned = "2348120934828";
+    }
+
+    const base64Data = Buffer.from(fileContent, "utf-8").toString("base64");
+    const mediaUri = `data:${mimetype};base64,${base64Data}`;
+
+    const res = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: cleaned,
+        media: mediaUri,
+        mediatype: "document",
+        mimetype: mimetype,
+        fileName: fileName.endsWith(".html") ? fileName : `${fileName}.html`,
+        caption: caption || `📄 ${fileName}`,
+      }),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
+    const err = await res.text();
+    console.warn("[WhatsApp] sendWhatsAppDocument warning:", err);
+    return { success: false, error: err };
+  } catch (err: any) {
+    console.error("[WhatsApp] sendWhatsAppDocument error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+
 
 
