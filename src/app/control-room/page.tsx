@@ -128,6 +128,8 @@ function ControlRoomContent() {
   const [waQrCode, setWaQrCode] = useState<string | null>(null);
   const [waPairingCode, setWaPairingCode] = useState<string | null>(null);
   const [waLoading, setWaLoading] = useState<boolean>(false);
+  const [waConnectedNumber, setWaConnectedNumber] = useState<string>("");
+  const [waProfileName, setWaProfileName] = useState<string>("");
 
   // UI states
   const [loading, setLoading] = useState(true);
@@ -397,6 +399,8 @@ function ControlRoomContent() {
         setWaState(data.status);
         if (data.qrcode) setWaQrCode(data.qrcode);
         if (data.pairingCode) setWaPairingCode(data.pairingCode);
+        if (data.connectedNumber) setWaConnectedNumber(data.connectedNumber);
+        if (data.profileName) setWaProfileName(data.profileName);
       }
     } catch (e) {
       console.warn("WhatsApp status check error:", e);
@@ -1119,7 +1123,18 @@ function ControlRoomContent() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-2">
+                    <div className="bg-slate-900/80 border border-emerald-500/30 rounded-xl p-3">
+                      <span className="text-[11px] text-emerald-400 block font-semibold">Connected Business Number</span>
+                      <span className="text-xs font-mono font-bold text-white">
+                        {waConnectedNumber ? `+${waConnectedNumber}` : "Detecting..."}
+                      </span>
+                      {waProfileName && (
+                        <span className="text-[10px] text-slate-400 block truncate mt-0.5" title={waProfileName}>
+                          {waProfileName}
+                        </span>
+                      )}
+                    </div>
                     <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
                       <span className="text-[11px] text-slate-400 block">Owner Phone</span>
                       <span className="text-xs font-mono font-bold text-slate-200">+{currentWs.owner_phone}</span>
@@ -1132,7 +1147,7 @@ function ControlRoomContent() {
 
                   <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
                     <a
-                      href={`https://wa.me/${currentWs.owner_phone}`}
+                      href={`https://wa.me/${waConnectedNumber || currentWs.owner_phone}`}
                       target="_blank"
                       rel="noreferrer"
                       className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-500/20"

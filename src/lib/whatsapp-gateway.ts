@@ -426,6 +426,8 @@ export async function sendWhatsAppStatusPost(params: {
   mediaUrl?: string;
   mediaType?: "image" | "video";
   instanceName?: string;
+  backgroundColor?: string;
+  font?: number;
 }): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     const evoUrl =
@@ -434,58 +436,39 @@ export async function sendWhatsAppStatusPost(params: {
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
-    // 1. Try Evolution API v2 sendStatus endpoint
-    try {
-      const statusRes = await fetch(`${evoUrl}/message/sendStatus/${instance}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: evoKey,
-        },
-        body: JSON.stringify(
-          params.mediaUrl
-            ? {
-                type: params.mediaType || "image",
-                content: params.mediaUrl,
-                caption: cleanWhatsAppFormatting(params.text),
-                allContacts: true,
-              }
-            : {
-                type: "text",
-                content: cleanWhatsAppFormatting(params.text),
-                allContacts: true,
-              }
-        ),
-      });
+    // Build proper Evolution API v2 sendStatus payload
+    const payload = params.mediaUrl
+      ? {
+          type: params.mediaType || "image",
+          content: params.mediaUrl,
+          caption: cleanWhatsAppFormatting(params.text),
+          allContacts: true,
+        }
+      : {
+          type: "text",
+          content: cleanWhatsAppFormatting(params.text),
+          backgroundColor: params.backgroundColor || "#075E54",
+          font: params.font || 1,
+          allContacts: true,
+        };
 
-      if (statusRes.ok) {
-        const data = await statusRes.json();
-        return { success: true, messageId: data?.key?.id || data?.id };
-      }
-    } catch (e) {
-      console.warn("[WhatsApp Status] sendStatus endpoint failed, trying fallback:", e);
-    }
-
-    // 2. Fallback: send text to status@broadcast
-    const fallbackRes = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+    const statusRes = await fetch(`${evoUrl}/message/sendStatus/${instance}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey: evoKey,
       },
-      body: JSON.stringify({
-        number: "status@broadcast",
-        text: cleanWhatsAppFormatting(params.text),
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (fallbackRes.ok) {
-      const data = await fallbackRes.json();
+    if (statusRes.ok) {
+      const data = await statusRes.json();
       return { success: true, messageId: data?.key?.id || data?.id };
     }
 
-    const err = await fallbackRes.text();
-    return { success: false, error: err };
+    const err = await statusRes.text();
+    console.error("[WhatsApp Status] sendStatus error:", statusRes.status, err);
+    return { success: false, error: `Evolution status error (${statusRes.status}): ${err}` };
   } catch (err: any) {
     console.error("[WhatsApp Status] sendWhatsAppStatusPost error:", err);
     return { success: false, error: err.message };

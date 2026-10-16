@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  sql,
   dbGetWorkspaceBySlug,
   dbUpdateWorkspaceWhatsAppStatus,
 } from "@/lib/db";
@@ -27,12 +28,37 @@ export async function GET(
     const stateData = await getEvolutionConnectionState(instanceName);
     const currentState = stateData?.instance?.state || "close";
 
+    let connectedNumber = "";
+    let profileName = "";
+    let profilePicUrl = "";
+
+    if (sql) {
+      try {
+        const [instRow] = await sql`
+          SELECT "ownerJid", "profileName", "profilePicUrl"
+          FROM evolution."Instance"
+          WHERE LOWER(name) = ${instanceName.toLowerCase()} OR id = ${instanceName}
+          LIMIT 1
+        `;
+        if (instRow?.ownerJid) {
+          connectedNumber = instRow.ownerJid.replace(/@s\.whatsapp\.net|@lid/g, "").replace(/\D/g, "");
+          profileName = instRow.profileName || "";
+          profilePicUrl = instRow.profilePicUrl || "";
+        }
+      } catch (err) {
+        console.warn("Could not query evolution instance owner:", err);
+      }
+    }
+
     // 2. If connected, update DB and return status
     if (currentState === "open") {
       await dbUpdateWorkspaceWhatsAppStatus(ws.id, instanceName, "connected");
       return NextResponse.json({
         status: "connected",
         instanceName,
+        connectedNumber,
+        profileName,
+        profilePicUrl,
         state: currentState,
       });
     }
@@ -43,6 +69,9 @@ export async function GET(
     return NextResponse.json({
       status: currentState === "open" ? "connected" : "disconnected",
       instanceName,
+      connectedNumber,
+      profileName,
+      profilePicUrl,
       state: currentState,
       qrcode: qrData?.base64 || qrData?.qrcode?.base64 || null,
       pairingCode: qrData?.pairingCode || null,
