@@ -25,6 +25,17 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+const COUNTRY_CODES = [
+  { code: "234", flag: "🇳🇬", label: "NIG (+234)" },
+  { code: "233", flag: "🇬🇭", label: "GHA (+233)" },
+  { code: "254", flag: "🇰🇪", label: "KEN (+254)" },
+  { code: "27", flag: "🇿🇦", label: "ZAF (+27)" },
+  { code: "44", flag: "🇬🇧", label: "GBR (+44)" },
+  { code: "1", flag: "🇺🇸", label: "USA (+1)" },
+  { code: "1", flag: "🇨🇦", label: "CAN (+1)" },
+  { code: "971", flag: "🇦🇪", label: "ARE (+971)" },
+];
+
 export default function Home() {
   const router = useRouter();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
@@ -46,12 +57,15 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
+  // Country Code & Local Phone
+  const [countryCode, setCountryCode] = useState("234");
+  const [localPhone, setLocalPhone] = useState("");
+
   // Onboarding Form State - Defaults to 7-Day Free Trial
   const [form, setForm] = useState({
     name: "",
     slug: "",
     owner_name: "",
-    owner_phone: "",
     owner_email: "",
     category: "Retail & E-commerce",
     plan: "trial",
@@ -66,11 +80,10 @@ export default function Home() {
         ...prev,
         owner_name: prev.owner_name || user.fullName || user.firstName || "",
         owner_email: prev.owner_email || user.primaryEmailAddress?.emailAddress || "",
-        owner_phone:
-          prev.owner_phone ||
-          user.primaryPhoneNumber?.phoneNumber?.replace(/[^0-9]/g, "") ||
-          "",
       }));
+      if (user.primaryPhoneNumber?.phoneNumber) {
+        setLocalPhone(user.primaryPhoneNumber.phoneNumber.replace(/[^0-9]/g, "").slice(-10));
+      }
     }
   }, [user]);
 
@@ -88,6 +101,12 @@ export default function Home() {
     setErrorMsg("");
 
     try {
+      const cleanNumber = localPhone.replace(/^0+/, "").replace(/[^0-9]/g, "");
+      if (!cleanNumber || cleanNumber.length < 7) {
+        throw new Error("Please enter a valid WhatsApp local number (e.g. 9074027451)");
+      }
+      const fullPhone = `${countryCode}${cleanNumber}`;
+
       const res = await fetch("/api/obey/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +114,7 @@ export default function Home() {
           name: form.name.trim(),
           slug: form.slug.trim(),
           owner_name: form.owner_name.trim(),
-          owner_phone: form.owner_phone.trim(),
+          owner_phone: fullPhone,
           owner_email: form.owner_email.trim() || undefined,
           owner_clerk_id: user?.id || undefined,
           plan: form.plan,
@@ -432,6 +451,7 @@ export default function Home() {
                 Ideal for solo founders and boutique businesses starting with automated customer replies.
               </p>
               <ul className="text-xs text-zinc-800 space-y-2 pt-2 border-t border-zinc-200 font-medium">
+                <li className="flex items-center gap-2">✓ 1 Single Business Workspace</li>
                 <li className="flex items-center gap-2">✓ Up to 250 auto-saved contacts</li>
                 <li className="flex items-center gap-2">✓ 10 Keyword Auto-responders</li>
                 <li className="flex items-center gap-2">✓ 15 hours/mo WebRTC Voice Hotline</li>
@@ -462,6 +482,7 @@ export default function Home() {
                 For established businesses that want full WhatsApp automation, unlimited contacts, and voice calling.
               </p>
               <ul className="text-xs text-zinc-900 space-y-2 pt-2 border-t border-emerald-200 font-medium">
+                <li className="flex items-center gap-2">✓ 1 Dedicated Business Workspace</li>
                 <li className="flex items-center gap-2">✓ <strong>Unlimited</strong> auto-saved customer leads</li>
                 <li className="flex items-center gap-2">✓ 50 Keyword Auto-responders</li>
                 <li className="flex items-center gap-2">✓ 50 hours/mo WebRTC Voice Hotline</li>
@@ -491,6 +512,7 @@ export default function Home() {
                 High-volume organizations, schools, or agencies needing unlimited minutes and multi-agent systems.
               </p>
               <ul className="text-xs text-zinc-800 space-y-2 pt-2 border-t border-zinc-200 font-medium">
+                <li className="flex items-center gap-2">✓ <strong>Multi-Business:</strong> Add & manage up to 2 distinct brand workspaces</li>
                 <li className="flex items-center gap-2">✓ Full Multi-tenant WhatsApp Bot</li>
                 <li className="flex items-center gap-2">✓ <strong>Unlimited</strong> Voice Hotline minutes</li>
                 <li className="flex items-center gap-2">✓ Autonomous Web App & Document Generator</li>
@@ -582,14 +604,32 @@ export default function Home() {
                 <label className="font-bold text-zinc-800 block mb-1">
                   Owner WhatsApp Phone *
                 </label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="2348012345678"
-                  value={form.owner_phone}
-                  onChange={(e) => setForm({ ...form, owner_phone: e.target.value })}
-                  className="w-full bg-white border border-zinc-300 rounded-xl p-3 text-zinc-900 font-mono placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-xs"
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="bg-white border border-zinc-300 rounded-xl p-3 text-zinc-900 font-bold text-xs outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-xs cursor-pointer shrink-0"
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.label} value={c.code} className="bg-white text-zinc-900 font-bold">
+                        {c.flag} {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="9074027451"
+                    value={localPhone}
+                    onChange={(e) =>
+                      setLocalPhone(e.target.value.replace(/^0+/, "").replace(/[^0-9]/g, ""))
+                    }
+                    className="w-full bg-white border border-zinc-300 rounded-xl p-3 text-zinc-900 font-mono text-xs placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                  WhatsApp format: +{countryCode}{localPhone || "9074027451"}
+                </p>
               </div>
             </div>
 

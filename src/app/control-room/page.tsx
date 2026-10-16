@@ -33,6 +33,17 @@ import {
   Send,
 } from "lucide-react";
 
+const COUNTRY_CODES = [
+  { code: "234", flag: "🇳🇬", label: "NIG (+234)" },
+  { code: "233", flag: "🇬🇭", label: "GHA (+233)" },
+  { code: "254", flag: "🇰🇪", label: "KEN (+254)" },
+  { code: "27", flag: "🇿🇦", label: "ZAF (+27)" },
+  { code: "44", flag: "🇬🇧", label: "GBR (+44)" },
+  { code: "1", flag: "🇺🇸", label: "USA (+1)" },
+  { code: "1", flag: "🇨🇦", label: "CAN (+1)" },
+  { code: "971", flag: "🇦🇪", label: "ARE (+971)" },
+];
+
 interface Workspace {
   id: string;
   name: string;
@@ -125,16 +136,37 @@ function ControlRoomContent() {
 
   // Modal states
   const [showNewWsModal, setShowNewWsModal] = useState(false);
+  const [modalCountryCode, setModalCountryCode] = useState("234");
+  const [modalLocalPhone, setModalLocalPhone] = useState("");
   const [newWsForm, setNewWsForm] = useState({
     name: "",
     slug: "",
     owner_name: "",
-    owner_phone: "",
     owner_email: "",
     plan: "trial",
   });
   const [createWsLoading, setCreateWsLoading] = useState(false);
   const [createWsError, setCreateWsError] = useState("");
+
+  const handleAddBusinessClick = () => {
+    const isEnterprise =
+      currentWs?.plan === "enterprise" || currentWs?.plan === "lifetime";
+    if (!isEnterprise) {
+      alert(
+        "🔒 Multi-Business Management is an exclusive feature of the Enterprise / Founder Plan.\n\nPlease upgrade to the Enterprise Plan to add and manage a second business."
+      );
+      return;
+    }
+
+    if (workspaces.length >= 2) {
+      alert(
+        "⚠️ You have reached the maximum limit of 2 business workspaces included in your Enterprise / Founder Plan."
+      );
+      return;
+    }
+
+    setShowNewWsModal(true);
+  };
 
   useEffect(() => {
     if (user) {
@@ -142,11 +174,10 @@ function ControlRoomContent() {
         ...prev,
         owner_name: prev.owner_name || user.fullName || user.firstName || "",
         owner_email: prev.owner_email || user.primaryEmailAddress?.emailAddress || "",
-        owner_phone:
-          prev.owner_phone ||
-          user.primaryPhoneNumber?.phoneNumber?.replace(/[^0-9]/g, "") ||
-          "",
       }));
+      if (user.primaryPhoneNumber?.phoneNumber) {
+        setModalLocalPhone(user.primaryPhoneNumber.phoneNumber.replace(/[^0-9]/g, "").slice(-10));
+      }
     }
   }, [user]);
 
@@ -318,11 +349,18 @@ function ControlRoomContent() {
     setCreateWsLoading(true);
     setCreateWsError("");
     try {
+      const cleanPhone = modalLocalPhone.replace(/^0+/, "").replace(/[^0-9]/g, "");
+      if (!cleanPhone || cleanPhone.length < 7) {
+        throw new Error("Please enter a valid WhatsApp local phone number (e.g. 9074027451)");
+      }
+      const fullPhone = `${modalCountryCode}${cleanPhone}`;
+
       const res = await fetch("/api/obey/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newWsForm,
+          owner_phone: fullPhone,
           owner_clerk_id: user?.id || undefined,
         }),
       });
@@ -335,10 +373,10 @@ function ControlRoomContent() {
         name: "",
         slug: "",
         owner_name: user?.fullName || user?.firstName || "",
-        owner_phone: user?.primaryPhoneNumber?.phoneNumber?.replace(/[^0-9]/g, "") || "",
         owner_email: user?.primaryEmailAddress?.emailAddress || "",
         plan: "trial",
       });
+      setModalLocalPhone("");
       await fetchWorkspaces();
       if (data.workspace) {
         handleSelectWorkspace(data.workspace.slug);
@@ -552,11 +590,16 @@ function ControlRoomContent() {
           )}
 
           <button
-            onClick={() => setShowNewWsModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/10"
+            onClick={handleAddBusinessClick}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/10 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Business</span>
+            {currentWs?.plan !== "enterprise" && currentWs?.plan !== "lifetime" && (
+              <span className="text-[10px] bg-slate-950/20 text-slate-950 font-bold px-1.5 py-0.2 rounded uppercase">
+                Enterprise
+              </span>
+            )}
           </button>
 
           {hotlineUrl && (
@@ -1735,18 +1778,32 @@ function ControlRoomContent() {
 
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">
-                  Owner WhatsApp Phone Number
+                  Owner WhatsApp Phone Number *
                 </label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="e.g. 2348120934828"
-                  value={newWsForm.owner_phone}
-                  onChange={(e) =>
-                    setNewWsForm({ ...newWsForm, owner_phone: e.target.value })
-                  }
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={modalCountryCode}
+                    onChange={(e) => setModalCountryCode(e.target.value)}
+                    className="bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.label} value={c.code} className="bg-slate-900 text-white">
+                        {c.flag} {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="e.g. 9074027451"
+                    value={modalLocalPhone}
+                    onChange={(e) => setModalLocalPhone(e.target.value.replace(/^0+/, "").replace(/[^0-9]/g, ""))}
+                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                  Full WhatsApp format: +{modalCountryCode}{modalLocalPhone || "9074027451"}
+                </p>
               </div>
 
               <div>

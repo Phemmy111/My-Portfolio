@@ -77,6 +77,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Enterprise / Founder plan restriction: non-enterprise users cannot add more than 1 business, enterprise users max 2
+    if (userId) {
+      const existingUserWorkspaces = await dbGetWorkspacesByOwnerClerkId(userId);
+      if (existingUserWorkspaces.length >= 1) {
+        const hasEnterprise = existingUserWorkspaces.some(
+          (w) => w.plan === "enterprise" || w.plan === "lifetime"
+        );
+        if (!hasEnterprise) {
+          return NextResponse.json(
+            {
+              error:
+                "Adding an additional business is exclusive to the Enterprise / Founder Plan. Please upgrade your current workspace to Enterprise to manage a second business.",
+            },
+            { status: 403 }
+          );
+        }
+        if (existingUserWorkspaces.length >= 2) {
+          return NextResponse.json(
+            {
+              error:
+                "Your Enterprise / Founder Plan allows a maximum of 2 business workspaces. Limit reached.",
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     const created = await dbCreateWorkspace({
       name,
       slug: cleanSlug,

@@ -73,3 +73,29 @@ body {
 .section-pad {
   padding: 5rem 0;
 }
+
+/* Hide all Clerk branding, footers, development badges, and watermarks */
+.cl-userButtonPopoverFooter,
+.cl-footerAction,
+.cl-internal-b3fm6y,
+.cl-internal-1dauvpw,
+[class*="cl-userButtonPopoverFooter"],
+[class*="cl-internal"],
+[data-localization-key*="footer"],
+[data-localization-key*="development"],
+a[href*="clerk.com"],
+a[href*="clerk.dev"],
+.cl-dev-badge,
+.cl-badge,
+div:has(> a[href*="clerk.com"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+

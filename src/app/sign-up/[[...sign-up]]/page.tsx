@@ -6,6 +6,9 @@ export default function SignUpPage() {
       <div className="w-full max-w-md flex flex-col items-center">
         <SignUp
           appearance={{
+            layout: {
+              logoPlacement: "none",
+            },
             elements: {
               card: "bg-white dark:bg-[#0a0a0a] border border-zinc-300 dark:border-zinc-800 shadow-2xl rounded-3xl",
               headerTitle: "text-zinc-950 dark:text-white font-black",
@@ -14,6 +17,7 @@ export default function SignUpPage() {
               formButtonPrimary: "bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-md shadow-emerald-600/20",
               formFieldInput: "bg-zinc-50 dark:bg-[#121212] border-zinc-300 dark:border-zinc-800 text-zinc-950 dark:text-white rounded-xl",
               footerActionLink: "text-emerald-600 dark:text-emerald-400 font-bold hover:underline",
+              footer: "hidden",
             },
           }}
         />
