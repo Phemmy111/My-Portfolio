@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useUser, UserButton } from "@clerk/nextjs";
 import {
@@ -145,8 +146,15 @@ export default function Home() {
       {/* Top Navigation */}
       <header className="border-b border-zinc-300/80 bg-white/90 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto shadow-xs">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-md shadow-emerald-600/20">
-            <Bot className="w-5 h-5 text-white font-bold" />
+          <div className="w-9 h-9 rounded-xl overflow-hidden shadow-md shadow-emerald-600/20 border border-emerald-500/20 shrink-0">
+            <Image
+              src="/obey-logo.jpg"
+              alt="Obey Logo"
+              width={36}
+              height={36}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
           <div>
             <span className="font-extrabold text-base tracking-tight text-zinc-950 flex items-center gap-1.5">

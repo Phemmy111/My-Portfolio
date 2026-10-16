@@ -507,7 +507,7 @@ export default function AdminDashboardPage() {
                 : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Bot size={15} className={activeTab === "obey" ? "text-white" : "text-emerald-500"} />
+            <img src="/obey-logo.jpg" alt="Obey" className="w-4 h-4 rounded-full object-cover shrink-0" />
             <span>Agent Obey</span>
             {agentTasks.some((t) => t.status === "pending_approval") && (
               <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-400 text-black">
@@ -978,8 +978,8 @@ export default function AdminDashboardPage() {
           <div className="space-y-8">
             {/* Agent Obey Executive Header Card */}
             <div className="p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-zinc-900/40 to-black relative overflow-hidden shadow-xl">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none hidden sm:block">
-                <Bot size={180} className="text-emerald-400" />
+              <div className="absolute top-0 right-0 p-8 opacity-15 pointer-events-none hidden sm:block">
+                <img src="/obey-logo.jpg" alt="Obey Logo" className="w-36 h-36 rounded-3xl object-cover" />
               </div>
 
               <div className="relative z-10 space-y-3 sm:space-y-4">
@@ -1106,7 +1106,7 @@ export default function AdminDashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
-                    <Bot size={20} className="text-emerald-500" />
+                    <img src="/obey-logo.jpg" alt="Obey" className="w-5 h-5 rounded-md object-cover" />
                     Interactive Chat with Obey
                   </h3>
                   <p className="text-xs text-zinc-500 font-medium">

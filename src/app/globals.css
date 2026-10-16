@@ -74,28 +74,38 @@ body {
   padding: 5rem 0;
 }
 
-/* Hide all Clerk branding, footers, development badges, and watermarks */
-.cl-userButtonPopoverFooter,
-.cl-footerAction,
-.cl-internal-b3fm6y,
-.cl-internal-1dauvpw,
-[class*="cl-userButtonPopoverFooter"],
-[class*="cl-internal"],
-[data-localization-key*="footer"],
-[data-localization-key*="development"],
-a[href*="clerk.com"],
-a[href*="clerk.dev"],
+/* Clerk Development Mode Badge & Watermark Suppressors */
 .cl-dev-badge,
 .cl-badge,
+[data-localization-key*="development"],
+div[data-clerk-dev-mode="true"],
+.cl-developmentBadge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.cl-footerAction__securedBy,
+.cl-userButtonPopoverFooter,
+[class*="cl-userButtonPopoverFooter"],
+[data-localization-key*="footer__securedBy"],
+a[href*="clerk.com"],
+a[href*="clerk.dev"],
+p:has(> a[href*="clerk.com"]),
 div:has(> a[href*="clerk.com"]) {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
-  height: 0 !important;
-  max-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
   pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
+
 

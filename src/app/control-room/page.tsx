@@ -3,11 +3,13 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { UserButton, useUser } from "@clerk/nextjs";
 import {
   Building2,
   Users,
   PhoneCall,
+  Code2,
   Zap,
   Settings,
   Plus,
@@ -550,8 +552,15 @@ function ControlRoomContent() {
       {/* Top Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-30 px-4 md:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Bot className="w-6 h-6 text-slate-950 font-bold" />
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/20 shrink-0">
+            <Image
+              src="/obey-logo.jpg"
+              alt="Obey Logo"
+              width={40}
+              height={40}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -1513,7 +1522,7 @@ function ControlRoomContent() {
             {/* Embed Snippet */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Bot className="w-4 h-4 text-emerald-400" />
+                <Code2 className="w-4 h-4 text-emerald-400" />
                 Website Embed Code
               </h3>
               <p className="text-xs text-slate-400">
