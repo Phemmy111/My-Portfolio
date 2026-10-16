@@ -39,10 +39,12 @@ async function main() {
     voicemailMessage: "Hey! You reached Obey, built by Femi Adeleke. Please leave your message or hit Femi up directly on WhatsApp at +234 812 093 4828.",
     endCallMessage: "It was awesome chatting with you! I'm sending your call recording and summary to your WhatsApp right away. Catch you soon!",
     endCallPhrases: [],
+    maxDurationSeconds: 1800,
+    silenceTimeoutSeconds: 60,
     voice: {
       provider: "cartesia",
-      voiceId: "a0e99841-438c-4a64-b679-ae501e7d6091",
-      model: "sonic-english"
+      voiceId: "41468051-3a85-4b68-92ad-64add250d369",
+      model: "sonic-multilingual"
     },
     transcriber: {
       provider: "deepgram",

@@ -174,10 +174,15 @@ YOUR VIBE & PERSONALITY:
           process.env.VAPI_API_KEY ||
           "3826a0b2-1ed2-4669-ad82-ebd437fdcdcd";
 
-        let finalAudioPayload: string | null = null;
+        // Construct high-availability streaming proxy URL so WhatsApp downloads directly without 413 Payload Too Large
+        const proxyAudioUrl = callId
+          ? `https://femiadelekeportfolio.vercel.app/api/obey/calls/recording/${callId}`
+          : null;
 
-        // Try authenticated Vapi mono-recording endpoint first (bypasses access-controlled R2 buckets)
-        if (callId && primaryKey) {
+        let finalAudioPayload: string | null = proxyAudioUrl;
+
+        // Try authenticated Vapi mono-recording endpoint as fallback for small buffers (< 4MB)
+        if (callId && primaryKey && !finalAudioPayload) {
           try {
             const vapiAudioRes = await fetch(`https://api.vapi.ai/call/${callId}/mono-recording`, {
               headers: { Authorization: `Bearer ${primaryKey}` },
@@ -185,7 +190,7 @@ YOUR VIBE & PERSONALITY:
             });
             if (vapiAudioRes.ok) {
               const buffer = Buffer.from(await vapiAudioRes.arrayBuffer());
-              if (buffer.length > 200) {
+              if (buffer.length > 200 && buffer.length < 4 * 1024 * 1024) {
                 finalAudioPayload = `data:audio/mp3;base64,${buffer.toString("base64")}`;
               }
             }
@@ -203,14 +208,14 @@ YOUR VIBE & PERSONALITY:
         for (const recipient of recipients) {
           try {
             await sendWhatsAppMessage(callReportText, recipient);
-            if (finalAudioPayload) {
-              const audioRes = await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
-              if (!audioRes.success && recordingUrl && finalAudioPayload !== recordingUrl) {
-                console.warn(`[Vapi Webhook] Base64 audio failed for ${recipient}, falling back to recordingUrl:`, audioRes.error);
-                await sendWhatsAppAudio(recordingUrl, recipient, `🎙️ Call Recording: ${targetLabel}`);
+            if (proxyAudioUrl) {
+              const audioRes = await sendWhatsAppAudio(proxyAudioUrl, recipient, `🎙️ Call Recording: ${targetLabel}`);
+              if (!audioRes.success && finalAudioPayload && finalAudioPayload !== proxyAudioUrl) {
+                console.warn(`[Vapi Webhook] Proxy audio failed for ${recipient}, falling back:`, audioRes.error);
+                await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
               }
-            } else if (recordingUrl) {
-              await sendWhatsAppAudio(recordingUrl, recipient, `🎙️ Call Recording: ${targetLabel}`);
+            } else if (finalAudioPayload) {
+              await sendWhatsAppAudio(finalAudioPayload, recipient, `🎙️ Call Recording: ${targetLabel}`);
             }
             await dbAddGuestMessage({
               id: `call-report-${Date.now()}-${recipient}`,
