@@ -625,6 +625,7 @@ export interface Workspace {
   auto_view_status?: boolean;
   auto_comment_status?: boolean;
   comment_tone?: string;
+  comment_rate_limit?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -787,10 +788,11 @@ export async function createWorkspaceTables() {
       ON CONFLICT (id) DO NOTHING
     `;
 
-    // Ensure status auto-view, auto-comment, and tone columns exist in workspaces
+    // Ensure status auto-view, auto-comment, tone, and rate limit columns exist in workspaces
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_view_status BOOLEAN DEFAULT TRUE`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_comment_status BOOLEAN DEFAULT FALSE`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_tone TEXT DEFAULT 'friendly'`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_rate_limit TEXT DEFAULT 'plan_based'`;
 
     // Ensure workspace_status_comments table exists for tracking viewed/replied WhatsApp statuses
     await db`
@@ -839,6 +841,16 @@ export async function dbHasRecentStatusComment(posterPhone: string, hours: numbe
   const db = getSql();
   if (!db) return false;
   try {
+    if (hours <= 0) {
+      // For unlimited: 2-minute safety debounce per contact so rapid multi-story dumps don't get flooded
+      const rows = await db`
+        SELECT id FROM workspace_status_comments
+        WHERE poster_phone = ${posterPhone}
+          AND created_at > NOW() - INTERVAL '2 minutes'
+        LIMIT 1
+      `;
+      return Boolean(rows && rows.length > 0);
+    }
     const rows = await db`
       SELECT id FROM workspace_status_comments
       WHERE poster_phone = ${posterPhone}
@@ -848,6 +860,21 @@ export async function dbHasRecentStatusComment(posterPhone: string, hours: numbe
     return Boolean(rows && rows.length > 0);
   } catch {
     return false;
+  }
+}
+
+export async function dbGetStatusCommentsTodayCount(workspaceIdOrInstance: string): Promise<number> {
+  const db = getSql();
+  if (!db) return 0;
+  try {
+    const rows = await db`
+      SELECT COUNT(*)::int as count FROM workspace_status_comments
+      WHERE (workspace_id = ${workspaceIdOrInstance} OR instance_name = ${workspaceIdOrInstance})
+        AND created_at > NOW() - INTERVAL '24 hours'
+    `;
+    return rows?.[0]?.count || 0;
+  } catch {
+    return 0;
   }
 }
 

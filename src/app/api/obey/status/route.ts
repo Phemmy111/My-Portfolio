@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     let auto_view_status = true;
     let auto_comment_status = false;
     let comment_tone = "friendly";
+    let comment_rate_limit = "unlimited";
     let auto_status_enabled = false;
     let auto_status_interval = 24;
 
@@ -44,13 +45,17 @@ export async function GET(req: NextRequest) {
       auto_view_status = ws.auto_view_status !== false;
       auto_comment_status = Boolean(ws.auto_comment_status);
       comment_tone = ws.comment_tone || "friendly";
+      const plan = (ws.plan || "starter").toLowerCase();
+      comment_rate_limit = ws.comment_rate_limit || (plan === "enterprise" || plan === "founder" || plan === "lifetime" ? "unlimited" : plan === "pro" ? "8h" : "24h");
       auto_status_enabled = Boolean(ws.auto_status_enabled);
       auto_status_interval = ws.auto_status_interval || 24;
     } else {
       const v = await getSetting("AUTO_VIEW_STATUS_ENABLED");
       const c = await getSetting("AUTO_COMMENT_STATUS_ENABLED");
+      const r = await getSetting("STATUS_COMMENT_RATE_LIMIT");
       auto_view_status = v !== "false";
       auto_comment_status = c === "true";
+      comment_rate_limit = r || "unlimited";
     }
 
     if (!targetWorkspaceId) {
@@ -59,6 +64,7 @@ export async function GET(req: NextRequest) {
         auto_view_status,
         auto_comment_status,
         comment_tone,
+        comment_rate_limit,
         auto_status_enabled,
         auto_status_interval,
       });
@@ -76,6 +82,7 @@ export async function GET(req: NextRequest) {
       auto_view_status,
       auto_comment_status,
       comment_tone,
+      comment_rate_limit,
       auto_status_enabled,
       auto_status_interval,
     });
@@ -100,6 +107,7 @@ export async function POST(req: NextRequest) {
       auto_view_status,
       auto_comment_status,
       comment_tone,
+      comment_rate_limit,
     } = body;
 
     if (!sql) {
@@ -118,6 +126,9 @@ export async function POST(req: NextRequest) {
       }
       if (comment_tone) {
         await setSetting("COMMENT_TONE", String(comment_tone));
+      }
+      if (comment_rate_limit !== undefined) {
+        await setSetting("STATUS_COMMENT_RATE_LIMIT", String(comment_rate_limit));
       }
     }
 
@@ -140,6 +151,7 @@ export async function POST(req: NextRequest) {
             auto_view_status = COALESCE(${auto_view_status}, auto_view_status),
             auto_comment_status = COALESCE(${auto_comment_status}, auto_comment_status),
             comment_tone = COALESCE(${comment_tone}, comment_tone),
+            comment_rate_limit = COALESCE(${comment_rate_limit}, comment_rate_limit),
             updated_at = NOW()
         WHERE id = ${ws.id}
       `;

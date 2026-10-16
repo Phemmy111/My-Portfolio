@@ -20,6 +20,7 @@ import {
   dbGetWorkspaceSettings,
   dbRecordStatusComment,
   dbHasRecentStatusComment,
+  dbGetStatusCommentsTodayCount,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import {
@@ -1017,8 +1018,54 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
             return;
           }
 
-          // Rate limit: 1 comment per poster every 12 hours
-          const alreadyCommented = await dbHasRecentStatusComment(posterPhone, 12);
+          // Rate limit calculation: plan-based for businesses, user-chosen (unlimited or interval) for Main Obey
+          let rateLimitHours = 12;
+          let dailyLimit = 10000;
+
+          if (currentWs) {
+            const plan = (currentWs.plan || "starter").toLowerCase();
+            if (plan === "starter" || plan === "trial") {
+              rateLimitHours = 24; // 1 comment per contact every 24 hours
+              dailyLimit = 10;     // Max 10 status comments per day
+            } else if (plan === "pro") {
+              rateLimitHours = 8;  // 1 comment per contact every 8 hours
+              dailyLimit = 35;     // Max 35 status comments per day
+            } else if (plan === "enterprise" || plan === "founder" || plan === "lifetime") {
+              const customLimit = currentWs.comment_rate_limit || "unlimited";
+              if (customLimit === "unlimited") rateLimitHours = 0;
+              else if (customLimit === "1h") rateLimitHours = 1;
+              else if (customLimit === "4h") rateLimitHours = 4;
+              else if (customLimit === "8h") rateLimitHours = 8;
+              else rateLimitHours = 0;
+              dailyLimit = 10000; // Unlimited daily cap
+            }
+          } else {
+            // Main Obey (Femi Adeleke): user can select unlimited or custom hours
+            const mainRateSetting = await getSetting("STATUS_COMMENT_RATE_LIMIT");
+            if (mainRateSetting === "unlimited" || !mainRateSetting) {
+              rateLimitHours = 0; // Unlimited!
+            } else if (mainRateSetting === "1h") {
+              rateLimitHours = 1;
+            } else if (mainRateSetting === "4h") {
+              rateLimitHours = 4;
+            } else if (mainRateSetting === "12h") {
+              rateLimitHours = 12;
+            } else if (mainRateSetting === "24h") {
+              rateLimitHours = 24;
+            }
+          }
+
+          // Check daily quota for workspaces
+          if (currentWs && dailyLimit < 1000) {
+            const todayCount = await dbGetStatusCommentsTodayCount(currentWs.id);
+            if (todayCount >= dailyLimit) {
+              console.log(`[WA Status] Daily status comment cap reached for ${currentWs.name} (${todayCount}/${dailyLimit})`);
+              return;
+            }
+          }
+
+          // Rate limit cooldown per contact
+          const alreadyCommented = await dbHasRecentStatusComment(posterPhone, rateLimitHours);
           if (!alreadyCommented) {
             const statusText = (
               msgObj.message?.conversation ||

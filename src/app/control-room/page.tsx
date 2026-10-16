@@ -260,6 +260,7 @@ function ControlRoomContent() {
   const [autoViewStatus, setAutoViewStatus] = useState(true);
   const [autoCommentStatus, setAutoCommentStatus] = useState(false);
   const [commentTone, setCommentTone] = useState("friendly");
+  const [commentRateLimit, setCommentRateLimit] = useState("unlimited");
 
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
 
@@ -421,6 +422,7 @@ function ControlRoomContent() {
         setAutoViewStatus(data.workspace.auto_view_status !== false);
         setAutoCommentStatus(Boolean(data.workspace.auto_comment_status));
         setCommentTone(data.workspace.comment_tone || "friendly");
+        setCommentRateLimit(data.workspace.comment_rate_limit || (data.workspace.slug === "femi" ? "unlimited" : "plan_based"));
         if (data.workspace.whatsapp_status) {
           setWaState(data.workspace.whatsapp_status);
         }
@@ -727,6 +729,30 @@ function ControlRoomContent() {
       setTimeout(() => setStatusSuccessMsg(""), 3000);
     } catch (e) {
       console.warn("Update comment tone error:", e);
+    }
+  };
+
+  const handleSetCommentRateLimit = async (newLimit: string) => {
+    if (!currentWs) return;
+    setCommentRateLimit(newLimit);
+    try {
+      await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          comment_rate_limit: newLimit,
+        }),
+      });
+      setStatusSuccessMsg(
+        newLimit === "unlimited"
+          ? "🚀 Rate Limit: Unlimited! Obey will comment on all contact status stories."
+          : `⏱️ Rate Limit set to: ${newLimit} cooldown per contact.`
+      );
+      setTimeout(() => setStatusSuccessMsg(""), 3500);
+    } catch (e) {
+      console.warn("Update comment rate limit error:", e);
     }
   };
 
@@ -1646,6 +1672,8 @@ function ControlRoomContent() {
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Disconnect</span>
                     </button>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-6">
                   {/* Dedicated Business Number Best-Practice Banner */}
@@ -2679,6 +2707,137 @@ function ControlRoomContent() {
                               </button>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Rate Limiting Controls */}
+                      {autoCommentStatus && (
+                        <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                          {currentWs.slug === "femi" || currentWs.id === "femi" ? (
+                            /* Main Obey - Custom / Unlimited Rate Limiting */
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[11px] font-bold text-white flex items-center gap-1.5">
+                                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                  Rate Limiting (Main Obey Mode):
+                                </label>
+                                <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                  {commentRateLimit === "unlimited" ? "🚀 Unlimited Active" : `Every ${commentRateLimit}`}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-tight">
+                                Pick how frequently Obey reacts to contacts&apos; status stories. Choose <strong>Unlimited</strong> to comment on all statuses (with a 2-min anti-spam safety debounce).
+                              </p>
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+                                {[
+                                  { id: "unlimited", label: "🚀 Unlimited" },
+                                  { id: "1h", label: "⏱️ Every 1h" },
+                                  { id: "4h", label: "⏱️ Every 4h" },
+                                  { id: "12h", label: "⏱️ Every 12h" },
+                                  { id: "24h", label: "⏱️ Every 24h" },
+                                ].map((r) => (
+                                  <button
+                                    key={r.id}
+                                    type="button"
+                                    onClick={() => handleSetCommentRateLimit(r.id)}
+                                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${
+                                      commentRateLimit === r.id
+                                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/20"
+                                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                    }`}
+                                  >
+                                    {r.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : currentWs.plan === "enterprise" || currentWs.plan === "founder" || currentWs.plan === "lifetime" ? (
+                            /* Enterprise Business Plan - Priority / Custom rate */
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                                  Enterprise Rate Control:
+                                </label>
+                                <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                  👑 Enterprise Unlocked
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
+                                {[
+                                  { id: "unlimited", label: "🚀 Unlimited" },
+                                  { id: "1h", label: "⏱️ Every 1h" },
+                                  { id: "4h", label: "⏱️ Every 4h" },
+                                  { id: "8h", label: "⏱️ Every 8h" },
+                                ].map((r) => (
+                                  <button
+                                    key={r.id}
+                                    type="button"
+                                    onClick={() => handleSetCommentRateLimit(r.id)}
+                                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${
+                                      commentRateLimit === r.id
+                                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                    }`}
+                                  >
+                                    {r.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : currentWs.plan === "pro" ? (
+                            /* Pro Plan - 8h cooldown badge */
+                            <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                                  Pro Plan Rate Limit
+                                </span>
+                                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                                  1 Comment / 8 hrs (Max 35/day)
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-tight">
+                                Your Pro plan allows high-frequency status engagement with a smart 8-hour cooldown per contact.
+                              </p>
+                              <div className="pt-1 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400">Want 100% Unlimited status commenting?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCheckoutPlan("enterprise")}
+                                  className="text-amber-400 hover:text-amber-300 font-bold underline"
+                                >
+                                  Upgrade to Enterprise &rarr;
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Starter Plan - 24h cooldown badge */
+                            <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                                  Starter Plan Rate Limit
+                                </span>
+                                <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                  1 Comment / 24 hrs (Max 10/day)
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-tight">
+                                Starter workspaces are limited to 1 comment per contact every 24 hours to protect your WhatsApp number from spam flags.
+                              </p>
+                              <div className="pt-1 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400">Need faster engagement or unlimited comments?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCheckoutPlan("pro")}
+                                  className="text-emerald-400 hover:text-emerald-300 font-bold underline"
+                                >
+                                  Upgrade to Pro &rarr;
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
