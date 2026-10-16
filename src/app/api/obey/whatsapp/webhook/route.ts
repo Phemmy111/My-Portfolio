@@ -944,6 +944,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     status: "active",
+    version: "v4-isolated",
     service: "Obey WhatsApp Webhook Gateway",
     endpoint: "/api/obey/whatsapp/webhook",
     linkedNumber: "2349161488564",
