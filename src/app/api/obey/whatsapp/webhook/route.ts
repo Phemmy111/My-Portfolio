@@ -278,7 +278,7 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Resolve Workspace by Evolution instance name or connected bot phone
-  let currentWs = null;
+  let currentWs: any = null;
   if (instanceName && instanceName !== "obey" && instanceName !== "default") {
     currentWs = await dbGetWorkspaceByInstanceName(instanceName);
   }
