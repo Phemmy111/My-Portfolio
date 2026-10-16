@@ -618,6 +618,8 @@ export interface Workspace {
   owner_email?: string | null;
   plan?: string;
   subscription_status?: string;
+  whatsapp_instance_name?: string | null;
+  whatsapp_status?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -835,6 +837,45 @@ export async function dbGetWorkspaceByOwnerPhone(phone: string): Promise<Workspa
   } catch (err) {
     console.error("dbGetWorkspaceByOwnerPhone error:", err);
     return null;
+  }
+}
+
+export async function dbGetWorkspaceByInstanceName(instanceName: string): Promise<Workspace | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT * FROM workspaces 
+      WHERE LOWER(whatsapp_instance_name) = ${instanceName.toLowerCase().trim()} 
+      LIMIT 1
+    `;
+    return (rows && rows.length > 0 ? rows[0] : null) as Workspace | null;
+  } catch (err) {
+    console.error("dbGetWorkspaceByInstanceName error:", err);
+    return null;
+  }
+}
+
+export async function dbUpdateWorkspaceWhatsAppStatus(
+  workspaceId: string,
+  instanceName: string,
+  status: "connected" | "connecting" | "disconnected"
+): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await db`
+      UPDATE workspaces 
+      SET whatsapp_instance_name = ${instanceName},
+          whatsapp_status = ${status},
+          updated_at = NOW()
+      WHERE id = ${workspaceId}
+    `;
+    return true;
+  } catch (err) {
+    console.error("dbUpdateWorkspaceWhatsAppStatus error:", err);
+    return false;
   }
 }
 

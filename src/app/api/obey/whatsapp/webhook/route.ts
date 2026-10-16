@@ -14,6 +14,8 @@ import {
   dbGetWorkspaceRules,
   dbUpsertWorkspaceLead,
   dbGetWorkspaceBySlug,
+  dbGetWorkspaceByInstanceName,
+  dbGetWorkspaceSettings,
 } from "@/lib/db";
 import { sendWhatsAppMessage, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
@@ -58,6 +60,7 @@ interface ProcessMessageParams {
   visionMedia?: { base64: string; mimetype: string } | null;
   docMedia?: { base64: string; mimetype: string } | null;
   documentFileName?: string;
+  instanceName?: string;
 }
 
 async function processMessage(params: ProcessMessageParams) {
@@ -69,6 +72,7 @@ async function processMessage(params: ProcessMessageParams) {
     visionMedia = null,
     docMedia = null,
     documentFileName,
+    instanceName = "obey",
   } = params;
 
   const lower = userText.toLowerCase();
@@ -77,13 +81,29 @@ async function processMessage(params: ProcessMessageParams) {
     replyTo = FEMI_PERSONAL_NUMBER;
   }
 
+  // Resolve Workspace by Evolution instance name
+  let currentWs = null;
+  if (instanceName && instanceName !== "obey" && instanceName !== "default") {
+    currentWs = await dbGetWorkspaceByInstanceName(instanceName);
+  }
+  if (!currentWs) {
+    currentWs = await dbGetWorkspaceBySlug("femi-adeleke");
+  }
+  const wsId = currentWs ? currentWs.id : "ws_femi_default";
+  const isDefaultFemi = !currentWs || currentWs.slug === "femi-adeleke";
+
+  const ownerClean = (currentWs?.owner_phone || FEMI_PERSONAL_NUMBER).replace(/\D/g, "");
+  const isOwner = isDefaultFemi
+    ? replyTo === FEMI_PERSONAL_NUMBER
+    : replyTo.endsWith(ownerClean.slice(-10));
+
   const isFemi = replyTo === FEMI_PERSONAL_NUMBER;
 
   // Helper: send reply via WhatsApp + save to DB
   async function reply(text: string) {
     const formatted = cleanWhatsAppFormatting(text);
-    await sendWhatsAppMessage(formatted, replyTo);
-    if (isFemi) {
+    await sendWhatsAppMessage(formatted, replyTo, instanceName);
+    if (isOwner && isDefaultFemi) {
       try {
         await dbAddChatMessage({
           id: `wa-asst-${Date.now()}`,
@@ -214,27 +234,31 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
     }
   }
 
-  // 3. Proactive First-Contact Notification to Femi & Welcome to New User
-  if (!isFemi && pastMessages.length <= 1) {
+  // 3. Proactive First-Contact Notification to Owner & Welcome to New User
+  if (!isOwner && pastMessages.length <= 1) {
     try {
       const timeWAT = formatToWAT(new Date());
+      const notifyPhone = isDefaultFemi ? FEMI_PERSONAL_NUMBER : (currentWs?.owner_phone || FEMI_PERSONAL_NUMBER);
       const firstContactAlert =
-        `👋 *New Contact Initiated Chat, Boss!*\n\n` +
+        `👋 *New Lead Initiated Chat with ${currentWs?.name || "Obey"}!*\n\n` +
         `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
         `• *Time:* ${timeWAT} (WAT)\n` +
         `• *First Message:* "${userText}"\n\n` +
-        `_Obey is actively assisting them live as their personal agent companion._`;
-      await sendWhatsAppMessage(firstContactAlert, FEMI_PERSONAL_NUMBER);
+        `_Obey Business AI is actively assisting them live._`;
+      await sendWhatsAppMessage(firstContactAlert, notifyPhone, instanceName);
     } catch (e) {
       console.warn("[WA] First contact alert error:", e);
     }
 
-    // Welcome new users with concise superpower showcase if it's their first interaction or a greeting
+    // Welcome new users with concise showcase
     const isFirstGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|who are you|what can you do|start|help)\b/i.test(lower.trim()) || pastMessages.length === 0;
     if (isFirstGreeting) {
       const welcomeName = pushName ? `, ${pushName}` : "";
-      const welcomeText =
-        `👋 *Hello${welcomeName}! I am Obey.*
+      let welcomeText = "";
+
+      if (isDefaultFemi) {
+        welcomeText =
+          `👋 *Hello${welcomeName}! I am Obey.*
 
 I am an autonomous AI executive companion built by *Femi Adeleke*. I am here to assist, entertain, and make life easier for you across WhatsApp, Web, and Voice!
 
@@ -248,13 +272,25 @@ I am an autonomous AI executive companion built by *Femi Adeleke*. I am here to 
 📲 *Smart Delegation:* Ask me to message someone, and I'll format and dispatch it for you.
 
 How can I assist you today?`;
+      } else {
+        const wsSettings = await dbGetWorkspaceSettings(wsId);
+        if (wsSettings?.whatsapp_welcome) {
+          welcomeText = wsSettings.whatsapp_welcome.replace(/\{name\}/g, pushName || "there");
+        } else {
+          welcomeText = `👋 *Hello${welcomeName}! Welcome to ${currentWs?.name || "our business"}.*
+
+I am your 24/7 AI business assistant powered by Obey. I can answer questions about our catalog, pricing, services, and take your orders or bookings anytime!
+
+How can I help you today?`;
+        }
+      }
 
       await reply(welcomeText);
       try {
         await dbAddGuestMessage({
           id: `guest-welcome-${Date.now()}`,
           phone_number: replyTo,
-          sender_name: "Obey",
+          sender_name: currentWs?.name || "Obey",
           role: "assistant",
           content: welcomeText,
         });
@@ -310,7 +346,7 @@ How can I assist you today?`;
   }
 
   // 5. Special Femi Admin Commands
-  if (isFemi) {
+  if (isOwner && isDefaultFemi) {
     if (lower.includes("morning brief") || lower.includes("morning report") || lower === "briefing") {
       try {
         await dispatchMorningBriefing();
@@ -351,10 +387,8 @@ How can I assist you today?`;
   }
 
   // 5.5 MULTI-TENANT KEYWORD TRIGGER & LEAD CAPTURE (Wasbot AI Supercharged)
-  if (!isFemi && userText && !visionMedia?.base64 && !docMedia?.base64) {
+  if (!isOwner && userText && !visionMedia?.base64 && !docMedia?.base64) {
     try {
-      const defaultWs = await dbGetWorkspaceBySlug("femi-adeleke");
-      const wsId = defaultWs ? defaultWs.id : "ws_femi_default";
       const rules = await dbGetWorkspaceRules(wsId);
       const cleanUserText = userText.toLowerCase();
 
@@ -365,14 +399,14 @@ How can I assist you today?`;
         );
 
         if (matched) {
-          console.log(`[WA] Triggered Keyword Rule: "${rule.trigger_keywords.join(", ")}" -> ${rule.action}`);
+          console.log(`[WA] Triggered Keyword Rule (${currentWs?.name}): "${rule.trigger_keywords.join(", ")}" -> ${rule.action}`);
           await reply(rule.response_text);
 
           // Save assistant reply to guest DB
           await dbAddGuestMessage({
             id: `guest-asst-${Date.now()}`,
             phone_number: replyTo,
-            sender_name: "Obey",
+            sender_name: currentWs?.name || "Obey",
             role: "assistant",
             content: rule.response_text,
           });
@@ -417,7 +451,7 @@ How can I assist you today?`;
     await dbAddGuestMessage({
       id: `guest-asst-${Date.now()}`,
       phone_number: replyTo,
-      sender_name: "Obey",
+      sender_name: currentWs?.name || "Obey",
       role: "assistant",
       content: finalReply,
     });
@@ -431,10 +465,8 @@ How can I assist you today?`;
     });
 
     // Auto-save lead in Workspace CRM
-    if (!isFemi) {
+    if (!isOwner) {
       try {
-        const defaultWs = await dbGetWorkspaceBySlug("femi-adeleke");
-        const wsId = defaultWs ? defaultWs.id : "ws_femi_default";
         await dbUpsertWorkspaceLead({
           workspace_id: wsId,
           phone: replyTo,
@@ -504,6 +536,7 @@ export async function POST(req: NextRequest) {
 
   console.log("[WA Webhook] Raw event:", JSON.stringify(body).slice(0, 300));
 
+  const instanceName = body?.instance || body?.data?.instance || "obey";
   const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
   if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
 
@@ -553,7 +586,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  console.log(`[WA Webhook] Incoming from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : '[Doc]')}"`);
+  console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : '[Doc]')}"`);
 
   after(async () => {
     try {
@@ -598,6 +631,7 @@ export async function POST(req: NextRequest) {
         visionMedia,
         docMedia,
         documentFileName: msgObj.message?.documentMessage?.fileName,
+        instanceName,
       });
     } catch (err) {
       console.error("[WA] processMessage background task error:", err);

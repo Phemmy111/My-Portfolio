@@ -20,7 +20,8 @@ function cleanWhatsAppFormatting(text: string): string {
 
 export async function sendWhatsAppMessage(
   text: string,
-  recipient?: string
+  recipient?: string,
+  customInstance?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoUrl =
@@ -28,7 +29,7 @@ export async function sendWhatsAppMessage(
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName =
-      process.env.EVOLUTION_INSTANCE_NAME || "obey";
+      customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     // Femi's personal WhatsApp number — fallback when no recipient supplied or when recipient is an internal LID
     let cleaned = (recipient || "2348120934828")
@@ -330,6 +331,88 @@ export async function sendWhatsAppDocument(
   } catch (err: any) {
     console.error("[WhatsApp] sendWhatsAppDocument error:", err);
     return { success: false, error: err.message };
+  }
+}
+
+// ==============================================================
+// EVOLUTION API MULTI-DEVICE INSTANCE MANAGEMENT
+// ==============================================================
+
+export async function createEvolutionInstance(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/instance/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoKey },
+      body: JSON.stringify({
+        instanceName,
+        qrcode: true,
+        integration: "WHATSAPP-BAILEYS",
+      }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.error("[Evolution] createEvolutionInstance error:", err);
+    return { error: err.message };
+  }
+}
+
+export async function getEvolutionInstanceQR(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
+      headers: { apikey: evoKey },
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.error("[Evolution] getEvolutionInstanceQR error:", err);
+    return { error: err.message };
+  }
+}
+
+export async function getEvolutionConnectionState(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {
+      headers: { apikey: evoKey },
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.error("[Evolution] getEvolutionConnectionState error:", err);
+    return { error: err.message };
+  }
+}
+
+export async function setEvolutionInstanceWebhook(instanceName: string, webhookUrl: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/webhook/set/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoKey },
+      body: JSON.stringify({
+        enabled: true,
+        url: webhookUrl,
+        webhookByEvents: false,
+        webhookBase64: true,
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+      }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.error("[Evolution] setEvolutionInstanceWebhook error:", err);
+    return { error: err.message };
   }
 }
 

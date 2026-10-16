@@ -41,6 +41,8 @@ interface Workspace {
   owner_email?: string | null;
   plan?: string;
   subscription_status?: string;
+  whatsapp_instance_name?: string | null;
+  whatsapp_status?: string | null;
 }
 
 interface WorkspaceSettings {
@@ -102,12 +104,18 @@ function ControlRoomContent() {
   const [leads, setLeads] = useState<WorkspaceLead[]>([]);
   const [callLogs, setCallLogs] = useState<WorkspaceCallLog[]>([]);
 
+  // WhatsApp connection states
+  const [waState, setWaState] = useState<string>("disconnected");
+  const [waQrCode, setWaQrCode] = useState<string | null>(null);
+  const [waPairingCode, setWaPairingCode] = useState<string | null>(null);
+  const [waLoading, setWaLoading] = useState<boolean>(false);
+
   // UI states
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "brain" | "rules" | "leads" | "hotline"
+    "overview" | "whatsapp" | "brain" | "rules" | "leads" | "hotline"
   >("overview");
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -196,6 +204,9 @@ function ControlRoomContent() {
         setRules(data.rules || []);
         setLeads(data.leads || []);
         setCallLogs(data.callLogs || []);
+        if (data.workspace.whatsapp_status) {
+          setWaState(data.workspace.whatsapp_status);
+        }
       }
     } catch (err) {
       console.error("Failed to load workspace details:", err);
@@ -203,6 +214,54 @@ function ControlRoomContent() {
       setLoading(false);
     }
   }
+
+  const checkWhatsAppStatus = async () => {
+    if (!currentWs) return;
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/whatsapp`);
+      const data = await res.json();
+      if (data.status) {
+        setWaState(data.status);
+        if (data.qrcode) setWaQrCode(data.qrcode);
+        if (data.pairingCode) setWaPairingCode(data.pairingCode);
+      }
+    } catch (e) {
+      console.warn("WhatsApp status check error:", e);
+    }
+  };
+
+  const handleInitWhatsApp = async () => {
+    if (!currentWs) return;
+    setWaLoading(true);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/whatsapp`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.qrcode) setWaQrCode(data.qrcode);
+      if (data.pairingCode) setWaPairingCode(data.pairingCode);
+      setWaState("connecting");
+    } catch (e) {
+      console.error("Init WhatsApp error:", e);
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let interval: any = null;
+    if (activeTab === "whatsapp" && currentWs) {
+      checkWhatsAppStatus();
+      if (waState !== "connected") {
+        interval = setInterval(() => {
+          checkWhatsAppStatus();
+        }, 5000);
+      }
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeTab, currentWs?.slug, waState]);
 
   const handleSelectWorkspace = (slug: string) => {
     router.replace(`/control-room?biz=${slug}`);
@@ -535,6 +594,12 @@ function ControlRoomContent() {
         <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar">
           {[
             { id: "overview", label: "Overview & Metrics", icon: TrendingUp },
+            {
+              id: "whatsapp",
+              label: "WhatsApp Connect",
+              icon: MessageSquare,
+              badge: waState === "connected" ? "Live" : "Scan QR",
+            },
             { id: "brain", label: "AI Brain & Catalog", icon: Sparkles },
             { id: "rules", label: "Keyword Triggers", icon: Zap, badge: rules.length },
             { id: "leads", label: "Leads CRM", icon: Users, badge: leads.length },
@@ -737,6 +802,208 @@ function ControlRoomContent() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB: WHATSAPP CONNECT */}
+        {/* ============================================================== */}
+        {activeTab === "whatsapp" && currentWs && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-emerald-400" />
+                    Connect Your Business WhatsApp Number
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Link your active WhatsApp number via QR code so Obey can auto-reply, take orders, and capture leads 24/7.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                      waState === "connected"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                        : "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        waState === "connected"
+                          ? "bg-emerald-400 animate-pulse"
+                          : "bg-amber-400"
+                      }`}
+                    />
+                    {waState === "connected" ? "Connected & Active" : "Not Linked / Scan QR"}
+                  </span>
+
+                  <button
+                    onClick={handleInitWhatsApp}
+                    disabled={waLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${waLoading ? "animate-spin" : ""}`} />
+                    <span>{waLoading ? "Generating..." : "Generate New QR"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Display */}
+              {waState === "connected" ? (
+                <div className="p-8 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center space-y-4 max-w-xl mx-auto">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-white">
+                      WhatsApp Instance Linked Successfully!
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      Your business instance <span className="font-mono text-emerald-400 font-semibold">{currentWs.whatsapp_instance_name || `obey-${currentWs.slug}`}</span> is active and listening on our Render cloud gateway.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                      <span className="text-[11px] text-slate-400 block">Owner Phone</span>
+                      <span className="text-xs font-mono font-bold text-slate-200">+{currentWs.owner_phone}</span>
+                    </div>
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                      <span className="text-[11px] text-slate-400 block">24/7 AI Auto-Reply</span>
+                      <span className="text-xs font-semibold text-emerald-400">Enabled (Autonomous)</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                    <a
+                      href={`https://wa.me/${currentWs.owner_phone}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-500/20"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      <span>Send Test WhatsApp Message</span>
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                  {/* Step-by-step instructions */}
+                  <div className="lg:col-span-7 space-y-4">
+                    <h3 className="font-bold text-white text-sm sm:text-base">
+                      How to link your WhatsApp in 30 seconds:
+                    </h3>
+
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                          1
+                        </span>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-200">
+                            Open WhatsApp on your phone
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Works on WhatsApp Messenger, WhatsApp Business, iOS, and Android.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                          2
+                        </span>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-200">
+                            Navigate to Linked Devices
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Tap <strong>Menu (⋮)</strong> on Android or <strong>Settings</strong> on iPhone, then select <strong>Linked Devices</strong>.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                          3
+                        </span>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-200">
+                            Tap &quot;Link a Device&quot; and scan the QR code
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Point your camera at the QR code on the right. Once scanned, your instance links automatically!
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <span>Cloud-Powered by Evolution API</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Instance Name: <span className="font-mono text-slate-300">{currentWs.whatsapp_instance_name || `obey-${currentWs.slug}`}</span>. You don&apos;t need to keep your laptop or browser open — our cloud server keeps it running 24/7.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* QR Code Container */}
+                  <div className="lg:col-span-5 flex flex-col items-center justify-center p-6 bg-slate-850 border border-slate-800 rounded-2xl space-y-4 text-center">
+                    {waQrCode ? (
+                      <div className="p-3 bg-white rounded-2xl shadow-2xl inline-block">
+                        <img
+                          src={waQrCode.startsWith("data:") ? waQrCode : `data:image/png;base64,${waQrCode}`}
+                          alt="WhatsApp Link QR Code"
+                          className="w-56 h-56 object-contain rounded-lg"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-56 h-56 rounded-2xl border-2 border-dashed border-slate-700 flex flex-col items-center justify-center p-4 space-y-3 text-slate-400">
+                        <MessageSquare className="w-12 h-12 text-slate-600" />
+                        <p className="text-xs">
+                          {waLoading ? "Initializing instance..." : "No active QR code. Click button below to generate."}
+                        </p>
+                      </div>
+                    )}
+
+                    {waPairingCode && (
+                      <div className="p-2.5 bg-slate-900 border border-slate-700 rounded-xl w-full">
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Or Link with 8-Digit Code</span>
+                        <span className="text-base font-mono font-extrabold text-amber-400 tracking-widest">{waPairingCode}</span>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleInitWhatsApp}
+                      disabled={waLoading}
+                      className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {waLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Generating QR Code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          <span>{waQrCode ? "Refresh QR Code" : "Generate WhatsApp QR Code"}</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                      <span>Checking connection status every 5 seconds...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

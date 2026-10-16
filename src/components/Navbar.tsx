@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 import { PERSONAL } from "@/lib/data";
 
 const NAV_LINKS = [
-  { label: "About", href: "#about" },
-  { label: "Services", href: "#services" },
-  { label: "Projects", href: "#projects" },
-  { label: "Obey AI", href: "/business" },
-  { label: "Music", href: "#music" },
-  { label: "Contact", href: "#contact" },
+  { label: "About", href: "/portfolio#about" },
+  { label: "Services", href: "/portfolio#services" },
+  { label: "Projects", href: "/portfolio#projects" },
+  { label: "Obey Business", href: "/" },
+  { label: "Music", href: "/portfolio#music" },
+  { label: "Contact", href: "/portfolio#contact" },
 ];
 
 export default function Navbar() {
@@ -60,7 +60,7 @@ export default function Navbar() {
     >
       <nav className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo with Executive Headshot */}
-        <a href="#" className="font-bold text-xl tracking-tight flex items-center gap-3 group">
+        <a href="/portfolio" className="font-bold text-xl tracking-tight flex items-center gap-3 group">
           <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 group-hover:border-black dark:group-hover:border-white transition-all duration-200 shadow-xs shrink-0">
             <Image
               src="/femi-headshot.webp"
