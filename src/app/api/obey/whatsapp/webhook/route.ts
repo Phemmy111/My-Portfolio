@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {
+  sql,
   dbAddChatMessage,
   dbGetChatMessages,
   dbAddLead,
@@ -13,11 +14,12 @@ import {
   dbUpdateUserActionStatus,
   dbGetWorkspaceRules,
   dbUpsertWorkspaceLead,
+  dbGetWorkspaceLeads,
   dbGetWorkspaceBySlug,
   dbGetWorkspaceByInstanceName,
   dbGetWorkspaceSettings,
 } from "@/lib/db";
-import { sendWhatsAppMessage, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
+import { sendWhatsAppMessage, sendWhatsAppStatusPost, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -61,6 +63,187 @@ interface ProcessMessageParams {
   docMedia?: { base64: string; mimetype: string } | null;
   documentFileName?: string;
   instanceName?: string;
+}
+
+/**
+ * Handles incoming WhatsApp messages for Obey Business instances (e.g. AutoLearn Spot).
+ * - Only responds to the business OWNER as their private AI business manager.
+ * - Allows posting status updates on command ("Post status: ...").
+ * - Does NOT auto-reply to others, keeping the number 100% normal for regular chat.
+ */
+async function handleObeyBusinessOwnerTurn(params: {
+  currentWs: any;
+  userText: string;
+  replyTo: string;
+  pushName?: string;
+  historyText: string;
+  instanceName: string;
+  reply: (text: string) => Promise<void>;
+}) {
+  const { currentWs, userText, replyTo, pushName, historyText, instanceName, reply } = params;
+  const lower = userText.toLowerCase().trim();
+
+  // 1. WhatsApp Status Automation Commands: "post status: ...", "status: ...", "put on status: ..."
+  if (lower.startsWith("post status:") || lower.startsWith("status:") || lower.startsWith("put on status:")) {
+    const statusText = userText.replace(/^(post status:|status:|put on status:)/i, "").trim();
+    if (!statusText) {
+      await reply("Boss, please specify what you want me to post to your WhatsApp Status! E.g. `Post status: Flash sale today! 20% off all orders.`");
+      return;
+    }
+
+    const res = await sendWhatsAppStatusPost({
+      text: statusText,
+      instanceName,
+    });
+
+    if (res.success) {
+      await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${statusText}"`);
+      try {
+        if (sql) {
+          await sql`
+            INSERT INTO workspace_statuses (id, workspace_id, content, status, posted_at)
+            VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${statusText}, 'posted', NOW())
+          `;
+        }
+      } catch {}
+    } else {
+      await reply(`⚠️ Could not post status: ${res.error || "Evolution broadcast error"}. Please make sure your WhatsApp session is connected in your Control Room.`);
+    }
+    return;
+  }
+
+  // 2. Draft / Generate Status Command
+  if (lower.includes("draft status") || lower.includes("generate status") || lower.includes("suggest status")) {
+    const aiDraft = await executeAICompletion({
+      systemPrompt: `You are Obey Business AI for "${currentWs.name}". Draft a punchy, high-converting WhatsApp status post with emojis to promote their products/services. Output only the suggested status text.`,
+      userPrompt: `Business context: ${currentWs.bio_context || ""}. Catalog: ${JSON.stringify(currentWs.catalog_items || [])}. Write a status update ready to publish.`,
+    });
+
+    await reply(`✨ *Suggested WhatsApp Status for ${currentWs.name}:*\n\n${aiDraft.text}\n\n👉 *To post this now*, simply reply:\n\`Post status: ${aiDraft.text.slice(0, 80)}...\``);
+    return;
+  }
+
+  // 3. Leads Query Command
+  if (lower === "leads" || lower.includes("show leads") || lower.includes("recent leads") || lower.includes("who messaged")) {
+    const wsLeads = await dbGetWorkspaceLeads(currentWs.id);
+    if (!wsLeads || wsLeads.length === 0) {
+      await reply(`📊 *Leads Update for ${currentWs.name}:*\n\nNo customer leads logged yet. When clients ask about products or pricing, I will automatically record them here for you!`);
+    } else {
+      const leadList = wsLeads.slice(0, 5).map((l, i) => `${i + 1}. *${l.name || "Customer"}* (+${l.phone})\n   • Note: ${l.intent_summary || l.last_message || "Inquiry"}`).join("\n\n");
+      await reply(`📊 *Latest ${Math.min(5, wsLeads.length)} Leads for ${currentWs.name}:*\n\n${leadList}\n\n💡 You can also manage all leads in your Control Room.`);
+    }
+    return;
+  }
+
+  // 4. Conversational Obey Business Assistant
+  const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
+  const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
+  const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
+
+  const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
+You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
+
+Business Knowledge:
+${businessBio}
+
+Product & Service Catalog:
+${JSON.stringify(catalog)}
+
+Your role and personality:
+- You are their dedicated business manager for "${currentWs.name}".
+- Address them respectfully and warmly as "Boss".
+- Help them run and grow "${currentWs.name}" — draft WhatsApp status posts, brainstorm promos, check leads, answer catalog questions.
+- If they want to post a status, tell them they can simply type: "Post status: [their text]" and you will publish it immediately to their WhatsApp status stories.
+- CRITICAL: You represent ONLY "${currentWs.name}". NEVER mention Femi Adeleke, software engineering portfolios, or Upwork proposals.`;
+
+  const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
+
+  const aiRes = await executeAICompletion({
+    systemPrompt,
+    userPrompt,
+    temperature: 0.7,
+  });
+
+  await reply(aiRes.text);
+}
+
+/**
+ * Handles incoming customer/lead messages for an Obey Business instance (e.g. AutoLearn Spot).
+ * - Acts as the dedicated 24/7 AI Sales & Customer Support Assistant for the business.
+ * - Knowledgeable about the business bio, catalog, pricing, and services.
+ * - Captures customer inquiries automatically in workspace_leads.
+ * - NEVER mentions Femi Adeleke, software developer portfolios, or Upwork.
+ */
+async function handleObeyBusinessCustomerTurn(params: {
+  currentWs: any;
+  userText: string;
+  replyTo: string;
+  pushName?: string;
+  historyText: string;
+  instanceName: string;
+  reply: (text: string) => Promise<void>;
+}) {
+  const { currentWs, userText, replyTo, pushName, historyText, reply } = params;
+
+  const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
+  const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
+  const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
+
+  const customerName = pushName ? pushName.trim() : "Valued Customer";
+
+  const systemPrompt = `You are Obey Business AI, the professional 24/7 customer service and sales assistant for "${currentWs.name}".
+You are chatting directly with a prospective customer or client (${customerName}).
+
+About "${currentWs.name}":
+${businessBio}
+
+Product & Service Catalog:
+${JSON.stringify(catalog, null, 2)}
+
+Your Core Guidelines:
+1. Always be welcoming, polite, professional, and helpful.
+2. Answer customer questions accurately using the catalog, pricing, and details above.
+3. If an item or price is not in the catalog, let them know politely and offer to connect them with ${currentWs.owner_name || "the business management"}.
+4. Encourage them to place an order, enroll, book a consultation, or ask for more details.
+5. Keep your responses concise, well-formatted, and easy to read on WhatsApp with bullets and emojis.
+6. ABSOLUTE RULE: You represent "${currentWs.name}" ONLY. NEVER mention Femi Adeleke, software engineering portfolios, Upwork proposals, or tech resumes.`;
+
+  const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}${customerName} says: "${userText}"`;
+
+  const aiRes = await executeAICompletion({
+    systemPrompt,
+    userPrompt,
+    temperature: 0.6,
+  });
+
+  const replyText = aiRes.text;
+  await reply(replyText);
+
+  // Save assistant reply to guest DB
+  try {
+    await dbAddGuestMessage({
+      id: `guest-asst-${Date.now()}`,
+      phone_number: replyTo,
+      sender_name: currentWs.name,
+      role: "assistant",
+      content: replyText,
+    });
+  } catch {}
+
+  // Auto-capture or update customer lead in workspace_leads
+  try {
+    await dbUpsertWorkspaceLead({
+      workspace_id: currentWs.id,
+      phone: replyTo,
+      name: pushName || "WhatsApp Customer",
+      source: "whatsapp",
+      status: "lead",
+      intent_summary: userText.slice(0, 150),
+      last_message: userText,
+    });
+  } catch (leadErr) {
+    console.warn("[WA] Customer lead capture error:", leadErr);
+  }
 }
 
 async function processMessage(params: ProcessMessageParams) {
@@ -430,6 +613,33 @@ How can I help you today?`;
     }
   }
 
+  // 5.8 OBEY BUSINESS WORKSPACE ROUTER (Strict Tenant Isolation)
+  if (!isDefaultFemi && currentWs) {
+    if (isOwner) {
+      await handleObeyBusinessOwnerTurn({
+        currentWs,
+        userText,
+        replyTo,
+        pushName,
+        historyText,
+        instanceName,
+        reply,
+      });
+      return;
+    } else {
+      await handleObeyBusinessCustomerTurn({
+        currentWs,
+        userText,
+        replyTo,
+        pushName,
+        historyText,
+        instanceName,
+        reply,
+      });
+      return;
+    }
+  }
+
   // 6. DYNAMIC COMPANION ENGINE (Zero-Regex Universal Task & Companion Processing)
   try {
     const companionRes = await processDynamicCompanionTurn({
@@ -555,11 +765,19 @@ export async function POST(req: NextRequest) {
 
   let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
 
-  // In WhatsApp multi-device, messages to linked accounts arrive with @lid (e.g. 164213964194040@lid).
-  // If incoming JID is an internal WhatsApp LID, or not a valid E.164 phone length,
-  // route directly to Femi's verified personal WhatsApp number (2348120934828):
-  if (senderJid.endsWith("@lid") || !senderNumber || senderNumber.length > 13 || senderNumber.length < 10) {
-    senderNumber = FEMI_PERSONAL_NUMBER;
+  // In WhatsApp multi-device, messages to linked accounts can arrive with @lid.
+  // For Main Obey (instance 'obey'), route unrecognized LIDs to Femi's verified number.
+  if (instanceName === "obey" || instanceName === "default") {
+    if (senderJid.endsWith("@lid") || !senderNumber || senderNumber.length > 13 || senderNumber.length < 10) {
+      senderNumber = FEMI_PERSONAL_NUMBER;
+    }
+  } else {
+    // For business workspaces, check alternate participant fields first
+    const alt = msgObj.key?.remoteJidAlt || msgObj.key?.participantPn || msgObj.key?.participant || "";
+    const cleanAlt = alt.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+    if (cleanAlt && cleanAlt.length >= 10 && cleanAlt.length <= 13) {
+      senderNumber = cleanAlt;
+    }
   }
 
   let userText = (

@@ -416,6 +416,81 @@ export async function setEvolutionInstanceWebhook(instanceName: string, webhookU
   }
 }
 
+/**
+ * Automates publishing a status update to WhatsApp Status (Stories / status@broadcast)
+ */
+export async function sendWhatsAppStatusPost(params: {
+  text: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  instanceName?: string;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    // 1. Try Evolution API v2 sendStatus endpoint
+    try {
+      const statusRes = await fetch(`${evoUrl}/message/sendStatus/${instance}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: evoKey,
+        },
+        body: JSON.stringify(
+          params.mediaUrl
+            ? {
+                type: params.mediaType || "image",
+                content: params.mediaUrl,
+                caption: cleanWhatsAppFormatting(params.text),
+                allContacts: true,
+              }
+            : {
+                type: "text",
+                content: cleanWhatsAppFormatting(params.text),
+                allContacts: true,
+              }
+        ),
+      });
+
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        return { success: true, messageId: data?.key?.id || data?.id };
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Status] sendStatus endpoint failed, trying fallback:", e);
+    }
+
+    // 2. Fallback: send text to status@broadcast
+    const fallbackRes = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: "status@broadcast",
+        text: cleanWhatsAppFormatting(params.text),
+      }),
+    });
+
+    if (fallbackRes.ok) {
+      const data = await fallbackRes.json();
+      return { success: true, messageId: data?.key?.id || data?.id };
+    }
+
+    const err = await fallbackRes.text();
+    return { success: false, error: err };
+  } catch (err: any) {
+    console.error("[WhatsApp Status] sendWhatsAppStatusPost error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+
 
 
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  sql,
   dbGetWorkspaceBySlug,
   dbGetWorkspaceSettings,
   dbUpsertWorkspaceSettings,
@@ -19,11 +20,12 @@ export async function GET(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const [settings, rules, leads, callLogs] = await Promise.all([
+    const [settings, rules, leads, callLogs, statuses] = await Promise.all([
       dbGetWorkspaceSettings(ws.id),
       dbGetWorkspaceRules(ws.id),
       dbGetWorkspaceLeads(ws.id),
       dbGetWorkspaceCallLogs(ws.id),
+      sql ? sql`SELECT * FROM workspace_statuses WHERE workspace_id = ${ws.id} ORDER BY created_at DESC LIMIT 30` : [],
     ]);
 
     return NextResponse.json({
@@ -39,6 +41,7 @@ export async function GET(
       rules: rules || [],
       leads: leads || [],
       callLogs: callLogs || [],
+      statuses: statuses || [],
     });
   } catch (error: any) {
     return NextResponse.json(
