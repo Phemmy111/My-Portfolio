@@ -37,6 +37,7 @@ function CallInterface() {
     name: string;
     slug: string;
     greeting?: string;
+    phone?: string;
   } | null>(null);
 
   const [callStatus, setCallStatus] = useState<
@@ -74,6 +75,7 @@ function CallInterface() {
               name: data.workspace.name,
               slug: data.workspace.slug,
               greeting: data.settings?.voice_greeting,
+              phone: data.workspace.owner_phone,
             });
           }
         })
@@ -139,6 +141,8 @@ function CallInterface() {
     };
   }, [callStatus]);
 
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const startCall = async (overridePhone?: string, overrideName?: string) => {
     if (!vapiConfig) {
       setErrorMessage("Voice service not ready. Please wait a moment.");
@@ -169,6 +173,18 @@ function CallInterface() {
       setCallStatus("connecting");
       setErrorMessage(null);
 
+      // Auto-cancel rotating spinner if connection takes longer than 12 seconds
+      if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = setTimeout(() => {
+        setCallStatus((current) => {
+          if (current === "connecting") {
+            setErrorMessage("Voice connection took longer than usual. Please retry or message Obey directly on WhatsApp.");
+            return "error";
+          }
+          return current;
+        });
+      }, 12000);
+
       // Dynamically import @vapi-ai/web to prevent SSR issues
       const { default: Vapi } = await import("@vapi-ai/web");
 
@@ -176,11 +192,13 @@ function CallInterface() {
         vapiRef.current = new Vapi(vapiConfig.publicKey);
 
         vapiRef.current.on("call-start", () => {
+          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
           setCallStatus("active");
           setCallDuration(0);
         });
 
         vapiRef.current.on("call-end", () => {
+          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
           setCallStatus("ended");
           setIsSpeaking(false);
           setVolumeLevel(0);
@@ -202,7 +220,6 @@ function CallInterface() {
           if (msg.type === "transcript" && msg.transcript) {
             const role = msg.role === "assistant" ? "assistant" : "user";
             setTranscripts((prev) => {
-              // Update last or append
               if (prev.length > 0 && prev[prev.length - 1].role === role) {
                 const next = [...prev];
                 next[next.length - 1].text = msg.transcript;
@@ -214,9 +231,28 @@ function CallInterface() {
         });
 
         vapiRef.current.on("error", (err: any) => {
+          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
           console.error("Vapi call error:", err);
-          const rawErr = err?.error?.message || err?.message || (typeof err === "string" ? err : "");
-          if (rawErr.toLowerCase().includes("audio") || rawErr.toLowerCase().includes("microphone") || !rawErr) {
+          let rawErr = "";
+          if (typeof err === "string") {
+            rawErr = err;
+          } else if (err?.error?.message && typeof err.error.message === "string") {
+            rawErr = err.error.message;
+          } else if (err?.message && typeof err.message === "string") {
+            rawErr = err.message;
+          } else if (typeof err?.error === "string") {
+            rawErr = err.error;
+          } else {
+            try {
+              rawErr = JSON.stringify(err);
+            } catch {
+              rawErr = "Voice connection error";
+            }
+          }
+          const lower = String(rawErr || "").toLowerCase();
+          if (lower.includes("wallet") || lower.includes("balance") || lower.includes("credit") || lower.includes("purchase") || lower.includes("bad request") || lower.includes("400")) {
+            setErrorMessage("Voice hotline service limit reached. You can connect with Obey directly on WhatsApp below.");
+          } else if (lower.includes("audio") || lower.includes("microphone") || !rawErr) {
             setErrorMessage("Voice connection paused. Tap 'Start Voice Call' below to resume speaking with Obey.");
           } else {
             setErrorMessage(rawErr);
@@ -244,6 +280,7 @@ function CallInterface() {
           await navigator.mediaDevices.getUserMedia({ audio: true });
         }
       } catch (micErr: any) {
+        if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
         console.warn("[Call] Microphone permission issue:", micErr);
         setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser to speak with Obey.");
         setCallStatus("error");
@@ -257,29 +294,37 @@ function CallInterface() {
         } catch {}
       }
 
-      await vapiRef.current.start(vapiConfig.assistantId, {
-        metadata: {
-          userPhone,
-          userName,
-          channel: "webrtc_web",
-          workspaceSlug: bizInfo?.slug || "femi-adeleke",
-        },
-        variableValues: {
-          userPhone,
-          userName,
-          businessName: bizInfo?.name || "Femi Adeleke",
-        },
-        assistantOverrides: bizInfo?.greeting
-          ? {
-              firstMessage: bizInfo.greeting,
-            }
-          : undefined,
-      });
+      const overrides: any = {};
+      if (bizInfo?.greeting) {
+        overrides.firstMessage = bizInfo.greeting;
+      }
+
+      await vapiRef.current.start(vapiConfig.assistantId, overrides);
     } catch (err: any) {
+      if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
       console.error("Failed to start call:", err);
-      setErrorMessage(
-        err.message || "Microphone access denied or connection failed. Please allow microphone permissions."
-      );
+      let msg = "";
+      if (typeof err === "string") {
+        msg = err;
+      } else if (err?.message && typeof err.message === "string") {
+        msg = err.message;
+      } else if (err?.error?.message && typeof err.error.message === "string") {
+        msg = err.error.message;
+      } else {
+        try {
+          msg = JSON.stringify(err);
+        } catch {
+          msg = "Connection failed";
+        }
+      }
+      const lower = String(msg || "").toLowerCase();
+      if (lower.includes("wallet") || lower.includes("balance") || lower.includes("credit") || lower.includes("purchase") || lower.includes("400")) {
+        setErrorMessage("Voice hotline service limit reached. Please message Obey directly on WhatsApp below.");
+      } else {
+        setErrorMessage(
+          msg || "Microphone access denied or connection failed. Please allow microphone permissions."
+        );
+      }
       setCallStatus("error");
     }
   };
@@ -541,6 +586,29 @@ function CallInterface() {
               <PhoneCall size={18} />
               <span>Start New Call</span>
             </button>
+          ) : callStatus === "error" ? (
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button
+                type="button"
+                onClick={() => startCall()}
+                disabled={!vapiConfig}
+                className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              >
+                <RefreshCw size={17} />
+                <span>Retry Voice Call</span>
+              </button>
+              <a
+                href={`https://wa.me/${(bizInfo?.phone || "2348120934828").replace(/\D/g, "")}?text=${encodeURIComponent(
+                  `Hi! I tried calling you on the ${bizInfo?.name || "Obey"} Voice Hotline.`
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-6 py-3.5 rounded-2xl bg-zinc-800 hover:bg-zinc-750 text-emerald-400 font-bold text-sm flex items-center gap-2 border border-emerald-500/30 transition-all hover:scale-105"
+              >
+                <MessageSquare size={17} />
+                <span>Chat on WhatsApp</span>
+              </a>
+            </div>
           ) : (
             <button
               type="button"

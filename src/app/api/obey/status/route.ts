@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { sendWhatsAppStatusPost } from "@/lib/whatsapp-gateway";
+import { sendWhatsAppStatusPost, setEvolutionInstanceSettings } from "@/lib/whatsapp-gateway";
 import { getSetting, setSetting } from "@/lib/settings";
 
 export async function GET(req: NextRequest) {
@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
       if (unifiedEngagement !== undefined) {
         await setSetting("AUTO_VIEW_STATUS_ENABLED", String(unifiedEngagement));
         await setSetting("AUTO_COMMENT_STATUS_ENABLED", String(unifiedEngagement));
+        await setEvolutionInstanceSettings("obey", { readStatus: unifiedEngagement });
       }
       if (comment_tone) {
         await setSetting("COMMENT_TONE", String(comment_tone));
@@ -181,6 +182,11 @@ export async function POST(req: NextRequest) {
             updated_at = NOW()
         WHERE id = ${ws.id}
       `;
+
+      if (unifiedEngagement !== undefined) {
+        const inst = ws.whatsapp_instance_name || `obey-${ws.slug}`;
+        await setEvolutionInstanceSettings(inst, { readStatus: unifiedEngagement });
+      }
     }
 
     if (!ws && !isMainObey) {

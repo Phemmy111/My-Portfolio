@@ -392,6 +392,12 @@ export async function getEvolutionInstanceQR(instanceName: string) {
     "https://evolution-api-latest-cx3y.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
+    const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/obey/whatsapp/webhook`
+      : "https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook";
+    setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
+    setEvolutionInstanceSettings(instanceName, { readStatus: true, readMessages: true, alwaysOnline: true }).catch(() => {});
+
     const res = await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
       headers: { apikey: evoKey },
     });
@@ -488,8 +494,9 @@ export async function getEvolutionPairingCode(
       }
     }
 
-    // Always ensure webhook is attached
+    // Always ensure webhook is attached and instance settings are configured
     setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
+    setEvolutionInstanceSettings(instanceName, { readStatus: true, readMessages: true, alwaysOnline: true }).catch(() => {});
 
     if (code && typeof code === "string") {
       return { success: true, pairingCode: code };
@@ -641,7 +648,10 @@ export async function sendWhatsAppStatusPost(params: {
 /**
  * Configure instance settings for auto-read receipts (blue ticks), typing presence, and always online.
  */
-export async function setEvolutionInstanceSettings(instanceName: string) {
+export async function setEvolutionInstanceSettings(
+  instanceName: string,
+  overrides: { readStatus?: boolean; readMessages?: boolean; alwaysOnline?: boolean } = {}
+) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
     "https://evolution-api-latest-cx3y.onrender.com";
@@ -654,9 +664,9 @@ export async function setEvolutionInstanceSettings(instanceName: string) {
         rejectCall: false,
         msgCall: "",
         groupsIgnore: false,
-        alwaysOnline: true,
-        readMessages: true,
-        readStatus: true,
+        alwaysOnline: overrides.alwaysOnline !== undefined ? overrides.alwaysOnline : true,
+        readMessages: overrides.readMessages !== undefined ? overrides.readMessages : true,
+        readStatus: overrides.readStatus !== undefined ? overrides.readStatus : true,
         syncFullHistory: false,
       }),
     });

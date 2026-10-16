@@ -48,6 +48,7 @@ import {
   Layers,
   CreditCard,
   BookOpen,
+  Menu,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -157,6 +158,8 @@ function ControlRoomContent() {
     "overview" | "whatsapp" | "status" | "brain" | "rules" | "leads" | "hotline"
   >("overview");
   const [copiedLink, setCopiedLink] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [navFilter, setNavFilter] = useState("");
 
   // Status Automator states
   const [statuses, setStatuses] = useState<any[]>([]);
@@ -1143,215 +1146,364 @@ function ControlRoomContent() {
     router.push("/sign-in");
   };
 
+  const navTabs = [
+    { id: "overview", label: "Overview", icon: TrendingUp },
+    {
+      id: "whatsapp",
+      label: "WhatsApp Connect",
+      icon: MessageSquare,
+      badge: waState === "connected" ? "Live" : "Scan QR",
+      badgeColor: waState === "connected" ? "text-emerald-400 bg-emerald-950/80 border-emerald-800/60" : "text-amber-300 bg-amber-950/60 border-amber-800/50",
+    },
+    {
+      id: "status",
+      label: "Status Automator",
+      icon: Radio,
+      badge: autoCommentStatus ? "Auto" : undefined,
+      badgeColor: "text-emerald-400 bg-emerald-950/80 border-emerald-800/60",
+    },
+    { id: "brain", label: "AI Brain & Settings", icon: Sparkles, highlight: true },
+    { id: "rules", label: "Keyword Triggers", icon: Zap, badge: rules.length },
+    { id: "leads", label: "Leads CRM", icon: Users, badge: leads.length },
+    { id: "hotline", label: "Voice Hotline & Embed", icon: PhoneCall },
+  ];
+
+  const filteredNavTabs = navTabs.filter((t) =>
+    t.label.toLowerCase().includes(navFilter.toLowerCase().trim())
+  );
+
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-white/20 selection:text-white pb-24 md:pb-12">
-      {/* Top Header - Vercel Minimalist Style */}
-      <header className="border-b border-zinc-800 bg-black/85 backdrop-blur-md sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
-        {/* Left: Breadcrumbs + Project Switcher */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800 shrink-0 bg-zinc-900 shadow-sm">
-              <Image
-                src="/obey-logo.jpg"
-                alt="Obey Logo"
-                width={32}
-                height={32}
-                className="w-full h-full object-cover"
-                priority
-              />
-            </div>
-          </Link>
-
-          <span className="text-zinc-600 font-mono text-sm hidden sm:inline">/</span>
-
-          {workspaces.length > 0 && currentWs && (
-            <div className="relative flex items-center">
-              <select
-                value={currentWs?.slug || ""}
-                onChange={(e) => handleSelectWorkspace(e.target.value)}
-                className="bg-transparent hover:bg-zinc-900 text-white font-semibold text-xs sm:text-sm rounded-lg pl-1.5 sm:pl-2 pr-7 py-1.5 focus:outline-none cursor-pointer appearance-none truncate max-w-[130px] sm:max-w-[220px] transition border border-transparent hover:border-zinc-800"
-              >
-                {workspaces.map((w) => (
-                  <option key={w.id} value={w.slug} className="bg-zinc-950 text-zinc-200">
-                    {w.slug === "femi-adeleke"
-                      ? "⭐ Main Obey"
-                      : `${w.name} (${w.plan || "Starter"})`}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-1.5 flex items-center text-zinc-400">
-                <ChevronDown className="w-3.5 h-3.5" />
+    <div className="min-h-screen bg-[#050b14] text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0">
+      {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-slate-800/80 bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
+        <div className="space-y-4">
+          {/* Top Brand Logo & Room Tag */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <Link href="/" className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg overflow-hidden border border-emerald-500/30 bg-slate-900 shadow-sm shrink-0">
+                <Image src="/obey-logo.jpg" alt="Obey Logo" width={32} height={32} className="w-full h-full object-cover" priority />
               </div>
-            </div>
-          )}
-
-          {/* Vercel-style Plan Badge */}
-          {currentWs && (
-            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 capitalize">
-              {currentWs.plan || "Starter"}
+              <div>
+                <span className="font-black text-sm text-white tracking-tight block">Obey Business</span>
+                <span className="text-[10px] text-slate-400 font-medium">Control Room</span>
+              </div>
+            </Link>
+            <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              Live
             </span>
-          )}
-        </div>
-
-        {/* Right: Status Pill & Actions */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Live Status indicator */}
-          <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="hidden sm:inline font-medium">Live 24/7</span>
           </div>
 
-          <button
-            onClick={handleAddBusinessClick}
-            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition shadow-sm"
-            title="Add Business Workspace"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Add Business</span>
-          </button>
+          {/* Vercel-style Workspace Switcher Card */}
+          {currentWs && (
+            <div className="bg-[#0b1424] border border-slate-800/90 rounded-xl p-2.5 space-y-2 shadow-sm">
+              <div className="relative">
+                <select
+                  value={currentWs?.slug || ""}
+                  onChange={(e) => handleSelectWorkspace(e.target.value)}
+                  className="w-full bg-slate-900/90 text-white font-bold text-xs rounded-lg pl-2.5 pr-8 py-2 focus:outline-none cursor-pointer appearance-none border border-slate-800 hover:border-slate-700 transition"
+                >
+                  {workspaces.map((w) => (
+                    <option key={w.id} value={w.slug} className="bg-slate-950 text-slate-200">
+                      {w.slug === "femi-adeleke" ? "⭐ Main Obey" : `${w.name} (${w.plan || "Starter"})`}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+              </div>
 
+              <div className="flex items-center justify-between text-[11px] px-1 text-slate-400">
+                <span className="truncate max-w-[120px]">+{currentWs.owner_phone}</span>
+                <span className="capitalize px-1.5 py-0.2 rounded-md bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20 text-[10px]">
+                  {currentWs.plan || "Starter"}
+                </span>
+              </div>
+
+              <button
+                onClick={handleAddBusinessClick}
+                className="w-full py-1.5 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Business</span>
+              </button>
+            </div>
+          )}
+
+          {/* Search / Filter Navigation Input */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              value={navFilter}
+              onChange={(e) => setNavFilter(e.target.value)}
+              placeholder="Find page or setting..."
+              className="w-full bg-[#0b1424] text-xs text-slate-200 placeholder-slate-500 pl-8 pr-3 py-1.5 rounded-lg border border-slate-800/80 focus:outline-none focus:border-emerald-500/50 transition"
+            />
+          </div>
+
+          {/* Navigation Items (Vertical Rail) */}
+          <nav className="space-y-1">
+            {filteredNavTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all font-medium cursor-pointer ${
+                    isActive
+                      ? "bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/20"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 ${isActive ? "text-slate-950" : tab.highlight ? "text-amber-400" : "text-slate-400"}`} />
+                    <span>{tab.label}</span>
+                  </div>
+                  {tab.badge !== undefined && (
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
+                        isActive
+                          ? "bg-slate-950/20 text-slate-950 border-slate-950/30 font-bold"
+                          : tab.badgeColor || "bg-slate-800 text-slate-400 border-slate-700/60"
+                      }`}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="pt-4 border-t border-slate-800/80 space-y-2">
           {hotlineUrl && (
             <Link
               href={hotlineUrl}
               target="_blank"
-              className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white text-xs font-medium border border-zinc-800 transition flex items-center gap-1.5"
-              title="Test Voice Hotline"
+              className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition flex items-center justify-between"
             >
-              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden md:inline">Hotline</span>
+              <div className="flex items-center gap-2">
+                <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Test Voice Hotline</span>
+              </div>
+              <ExternalLink className="w-3 h-3 text-slate-500" />
             </Link>
           )}
 
-          <div className="pl-1 sm:pl-2 border-l border-zinc-800 flex items-center gap-2">
+          <div className="flex items-center justify-between pt-1">
             <UserButton />
             <button
               onClick={handleLogout}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white text-xs font-medium border border-zinc-800 transition"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold border border-rose-500/20 transition cursor-pointer"
               title="Log out"
             >
-              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Log Out</span>
             </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-5 space-y-5">
-        {/* Workspace Brand Ribbon - Vercel Project Header Style */}
-        {currentWs && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-                  <span>{currentWs.name}</span>
-                  {currentWs.slug === "femi-adeleke" && (
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
-                      ⭐ Main Obey
-                    </span>
-                  )}
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-600/20 text-blue-300 border border-blue-500/30 capitalize">
-                  {currentWs.plan || "Starter"} Plan
-                </span>
-                {currentWs.subscription_status === "trial" ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>
-                      Trial ({currentWs.trial_ends_at ? `${Math.max(0, Math.ceil((new Date(currentWs.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d left` : "Active"})
-                    </span>
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
-                  </span>
-                )}
+      {/* 2. Mobile Sticky Header + Slide-Out Drawer */}
+      <div className="md:hidden sticky top-0 z-40 bg-[#060d1a]/95 backdrop-blur-md border-b border-slate-800/80 px-3 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="p-1.5 rounded-lg bg-slate-900 text-slate-300 hover:text-white border border-slate-800 cursor-pointer"
+            title="Open Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2 min-w-0">
+            <Image src="/obey-logo.jpg" alt="Logo" width={24} height={24} className="rounded-md shrink-0" />
+            <span className="font-bold text-xs text-white truncate max-w-[130px]">{currentWs?.name || "Obey Business"}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <button
+            onClick={handleAddBusinessClick}
+            className="px-2 py-1 rounded-lg bg-emerald-500 text-slate-950 font-bold text-[11px] cursor-pointer"
+          >
+            + Add
+          </button>
+          <UserButton />
+        </div>
+      </div>
+
+      {/* Mobile Slide-over Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-200">
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="relative w-72 max-w-[85vw] bg-[#060d1a] border-r border-slate-800 h-full p-4 flex flex-col justify-between z-10 overflow-y-auto animate-in slide-in-from-left duration-200">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Image src="/obey-logo.jpg" alt="Logo" width={28} height={28} className="rounded-md" />
+                  <span className="font-black text-sm text-white">Obey Business</span>
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-white border border-slate-800 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <p className="text-xs text-zinc-400 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span>Owner: <strong className="text-zinc-200">{currentWs.owner_name}</strong></span>
-                <span>Hotline: <strong className="text-zinc-200 font-mono">+{currentWs.owner_phone}</strong></span>
-                <span>Slug: <code className="text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 font-mono text-[11px]">{currentWs.slug}</code></span>
-              </p>
+
+              {/* Workspace Switcher in Drawer */}
+              {currentWs && (
+                <div className="bg-[#0b1424] border border-slate-800 rounded-xl p-2.5 space-y-2">
+                  <select
+                    value={currentWs?.slug || ""}
+                    onChange={(e) => {
+                      handleSelectWorkspace(e.target.value);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full bg-slate-900 text-white font-bold text-xs rounded-lg pl-2 pr-7 py-2 border border-slate-800"
+                  >
+                    {workspaces.map((w) => (
+                      <option key={w.id} value={w.slug} className="bg-slate-950 text-slate-200">
+                        {w.slug === "femi-adeleke" ? "⭐ Main Obey" : `${w.name} (${w.plan || "Starter"})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Navigation Links in Drawer */}
+              <nav className="space-y-1">
+                {navTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id as any);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer ${
+                        isActive
+                          ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
+                          : "text-slate-300 hover:bg-slate-800/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className="w-4 h-4" />
+                        <span>{tab.label}</span>
+                      </div>
+                      {tab.badge !== undefined && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 border border-slate-700">
+                          {tab.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0">
+            <div className="pt-4 border-t border-slate-800 space-y-2">
               <button
-                onClick={copyHotlineLink}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-200 text-xs font-medium border border-zinc-800 transition"
+                onClick={handleLogout}
+                className="w-full py-2 rounded-xl bg-rose-500/10 text-rose-400 text-xs font-bold border border-rose-500/20 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
-                <span>{copiedLink ? "Copied!" : "Hotline Link"}</span>
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Log Out</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Main Content Viewport */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen overflow-x-hidden">
+        {/* Desktop Top Sub-header Bar (Breadcrumbs + Actions) */}
+        <div className="hidden md:flex items-center justify-between px-6 py-3 border-b border-slate-800/80 bg-[#060d1a]/60 backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-400 font-medium">Obey Business</span>
+            <span className="text-slate-600">/</span>
+            <span className="text-white font-bold">{currentWs?.name || "Workspace"}</span>
+            <span className="text-slate-600">/</span>
+            <span className="text-emerald-400 font-bold capitalize">{activeTab}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyHotlineLink}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{copiedLink ? "Copied!" : "Hotline Link"}</span>
+            </button>
+            {currentWs?.owner_phone && (
               <a
                 href={`https://wa.me/${currentWs.owner_phone}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-500/30 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold border border-emerald-500/30 transition"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Test WhatsApp</span>
               </a>
-              <button
-                onClick={() => setActiveTab("brain")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-xs font-medium border border-zinc-800 transition"
-              >
-                <Settings className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Settings Room</span>
-              </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Vercel-Style Filter Pills / Tab Navigation */}
-        <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3 overflow-x-auto no-scrollbar">
-          {[
-            { id: "overview", label: "Overview", icon: TrendingUp },
-            {
-              id: "whatsapp",
-              label: "WhatsApp Connect",
-              icon: MessageSquare,
-              badge: waState === "connected" ? "Live" : "Scan QR",
-              badgeColor: waState === "connected" ? "text-emerald-400 bg-emerald-950/60 border-emerald-800/50" : "text-amber-300 bg-amber-950/50 border-amber-800/40",
-            },
-            {
-              id: "status",
-              label: "Status Stories",
-              icon: Radio,
-              badge: autoCommentStatus ? "Auto-Comment" : undefined,
-            },
-            { id: "brain", label: "Settings Room", icon: Sparkles, highlight: true },
-            { id: "rules", label: "Keyword Triggers", icon: Zap, badge: rules.length },
-            { id: "leads", label: "CRM Leads", icon: Users, badge: leads.length },
-            { id: "hotline", label: "Voice Hotline", icon: PhoneCall },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
-                  isActive
-                    ? "bg-white text-black font-semibold border-white shadow-sm"
-                    : "bg-zinc-900/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850 border-zinc-800"
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-black" : tab.highlight ? "text-amber-400" : "text-zinc-400"}`} />
-                <span>{tab.label}</span>
-                {tab.badge !== undefined && (
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
-                      isActive
-                        ? "bg-zinc-200 text-black border-zinc-300"
-                        : tab.badgeColor || "bg-zinc-800 text-zinc-400 border-zinc-700/60"
-                    }`}
-                  >
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
         </div>
+
+        {/* Workspace Brand Ribbon Card */}
+        <main className="p-3 sm:p-6 md:p-8 space-y-6 max-w-7xl">
+          {currentWs && (
+            <div className="bg-[#0b1424] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                    <span>{currentWs.name}</span>
+                    {currentWs.slug === "femi-adeleke" && (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                        ⭐ Main Obey
+                      </span>
+                    )}
+                  </h1>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 capitalize">
+                    {currentWs.plan || "Starter"} Plan
+                  </span>
+                  {currentWs.subscription_status === "trial" ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>
+                        Trial ({currentWs.trial_ends_at ? `${Math.max(0, Math.ceil((new Date(currentWs.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d left` : "Active"})
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span>Owner: <strong className="text-slate-200">{currentWs.owner_name}</strong></span>
+                  <span>Hotline: <strong className="text-slate-200 font-mono">+{currentWs.owner_phone}</strong></span>
+                  <span>Slug: <code className="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 font-mono text-[11px]">{currentWs.slug}</code></span>
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0">
+                <button
+                  onClick={() => setActiveTab("brain")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
+                >
+                  <Settings className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Settings Room</span>
+                </button>
+              </div>
+            </div>
+          )}
 
         {/* Loading State */}
         {loading && !currentWs && (
@@ -3574,6 +3726,7 @@ function ControlRoomContent() {
           </div>
         )}
       </main>
+    </div>
 
       {/* ============================================================== */}
       {/* MODAL: SEND WHATSAPP BROADCAST */}
@@ -3898,7 +4051,7 @@ function ControlRoomContent() {
       )}
 
       {/* Mobile-First Bottom Navigation Bar (md:hidden) */}
-      <nav className="fixed bottom-0 inset-x-0 z-50 bg-black/95 backdrop-blur-xl border-t border-zinc-800/90 py-1 px-3 flex items-center justify-around md:hidden">
+      <nav className="fixed bottom-0 inset-x-0 z-50 bg-[#060d1a]/95 backdrop-blur-xl border-t border-slate-800/90 py-1 px-3 flex items-center justify-around md:hidden">
         {[
           { id: "overview", label: "Overview", icon: TrendingUp },
           { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, alert: waState !== "connected" },
@@ -3912,19 +4065,19 @@ function ControlRoomContent() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as any)}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition relative min-h-[44px] ${
-                isActive ? "text-white font-bold" : "text-zinc-500 hover:text-zinc-300"
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition relative min-h-[44px] cursor-pointer ${
+                isActive ? "text-emerald-400 font-bold" : "text-slate-400 hover:text-slate-200"
               }`}
             >
               <div className="relative">
-                <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-zinc-500"}`} />
+                <Icon className={`w-5 h-5 ${isActive ? "text-emerald-400" : "text-slate-400"}`} />
                 {item.alert && (
                   <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                 )}
               </div>
               <span className="text-[10px] mt-0.5 tracking-tight">{item.label}</span>
               {isActive && (
-                <span className="w-1 h-1 rounded-full bg-white mt-0.5" />
+                <span className="w-1 h-1 rounded-full bg-emerald-400 mt-0.5" />
               )}
             </button>
           );

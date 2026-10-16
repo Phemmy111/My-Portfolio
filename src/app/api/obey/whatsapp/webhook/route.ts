@@ -999,8 +999,23 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
   if (isStatusBroadcast) {
     after(async () => {
       try {
-        const participantJid = msgObj.key?.participant || msgObj.participant || msgObj.key?.remoteJidAlt || "";
-        const posterPhone = participantJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+        // WhatsApp LID vs E.164 phone JID:
+        // key.participant is often an internal 14-digit LID (e.g. 49194689654851@lid),
+        // while key.remoteJidAlt contains the actual real contact phone JID (e.g. 2348055308520@s.whatsapp.net).
+        const rawAlt = msgObj.key?.remoteJidAlt || msgObj.remoteJidAlt || "";
+        const rawPart = msgObj.key?.participant || msgObj.participant || "";
+
+        let phoneJid = "";
+        if (rawAlt && rawAlt.includes("@s.whatsapp.net")) {
+          phoneJid = rawAlt;
+        } else if (rawPart && rawPart.includes("@s.whatsapp.net")) {
+          phoneJid = rawPart;
+        } else {
+          phoneJid = rawAlt || rawPart;
+        }
+
+        const posterPhone = phoneJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+        const readParticipant = rawPart || rawAlt || phoneJid;
 
         // 1. Identify workspace / instance
         let currentWs: any = null;
@@ -1036,7 +1051,7 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
 
         // 3. Auto-View Status (Mark as Read in WhatsApp)
         if (msgObj.key?.id) {
-          await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, participantJid);
+          await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, readParticipant);
           console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
         }
 
@@ -1052,21 +1067,29 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
           let dailyLimit = 10000;
 
           if (currentWs) {
-            const plan = (currentWs.plan || "starter").toLowerCase();
-            if (plan === "starter" || plan === "trial") {
-              rateLimitHours = 24; // 1 comment per contact every 24 hours
-              dailyLimit = 10;     // Max 10 status comments per day
-            } else if (plan === "pro") {
-              rateLimitHours = 8;  // 1 comment per contact every 8 hours
-              dailyLimit = 35;     // Max 35 status comments per day
-            } else if (plan === "enterprise" || plan === "founder" || plan === "lifetime") {
-              const customLimit = currentWs.comment_rate_limit || "unlimited";
-              if (customLimit === "unlimited") rateLimitHours = 0;
-              else if (customLimit === "1h") rateLimitHours = 1;
-              else if (customLimit === "4h") rateLimitHours = 4;
-              else if (customLimit === "8h") rateLimitHours = 8;
-              else rateLimitHours = 0;
-              dailyLimit = 10000; // Unlimited daily cap
+            if (currentWs.comment_rate_limit === "unlimited") {
+              rateLimitHours = 0;
+              dailyLimit = 10000;
+            } else if (currentWs.comment_rate_limit === "1h") {
+              rateLimitHours = 1;
+            } else if (currentWs.comment_rate_limit === "4h") {
+              rateLimitHours = 4;
+            } else if (currentWs.comment_rate_limit === "8h") {
+              rateLimitHours = 8;
+            } else if (currentWs.comment_rate_limit === "24h") {
+              rateLimitHours = 24;
+            } else {
+              const plan = (currentWs.plan || "starter").toLowerCase();
+              if (plan === "starter" || plan === "trial") {
+                rateLimitHours = 24; // 1 comment per contact every 24 hours
+                dailyLimit = 10;     // Max 10 status comments per day
+              } else if (plan === "pro") {
+                rateLimitHours = 8;  // 1 comment per contact every 8 hours
+                dailyLimit = 35;     // Max 35 status comments per day
+              } else if (plan === "enterprise" || plan === "founder" || plan === "lifetime") {
+                rateLimitHours = 0;
+                dailyLimit = 10000; // Unlimited daily cap
+              }
             }
           } else {
             // Main Obey (Femi Adeleke): user can select unlimited or custom hours

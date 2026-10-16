@@ -31,6 +31,9 @@ import {
   Play,
   MessagesSquare,
   Brain,
+  Menu,
+  X,
+  Search,
 } from "lucide-react";
 import { Lead, Proposal, Inquiry } from "@/lib/admin-store";
 import ObeyChatConsole from "@/components/ObeyChatConsole";
@@ -45,6 +48,8 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalTab, setSettingsModalTab] = useState<"brain" | "ai" | "phone" | "integrations">("brain");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [navFilter, setNavFilter] = useState("");
 
   // Agent Obey state
   const [agentTasks, setAgentTasks] = useState<any[]>([]);
@@ -309,45 +314,142 @@ export default function AdminDashboardPage() {
     );
   }
 
+  const navTabs = [
+    { id: "master", label: "Master Control Room", icon: Building2, highlight: true },
+    { id: "inbox", label: "Omnichannel Inbox", icon: MessagesSquare },
+    { id: "leads", label: "Cold Mailing & CRM", icon: Mail, badge: leads.length },
+    { id: "proposals", label: "Gig Automator", icon: Briefcase, badge: proposals.length },
+    {
+      id: "inquiries",
+      label: "Inquiries",
+      icon: Inbox,
+      badge: inquiries.filter((i) => i.status === "unread").length || undefined,
+      badgePulse: inquiries.some((i) => i.status === "unread"),
+    },
+    {
+      id: "obey",
+      label: "Agent Obey",
+      icon: Sparkles,
+      badge: agentTasks.filter((t) => t.status === "pending_approval").length
+        ? `${agentTasks.filter((t) => t.status === "pending_approval").length} pending`
+        : undefined,
+    },
+  ];
+
+  const filteredNavTabs = navTabs.filter((t) =>
+    t.label.toLowerCase().includes(navFilter.toLowerCase().trim())
+  );
+
   return (
-    <div className="min-h-screen bg-[#dfe3e8] dark:bg-black text-zinc-950 dark:text-white font-sans pb-24">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-[#dfe3e8]/90 dark:bg-black/90 backdrop-blur-md border-b border-zinc-400/40 dark:border-zinc-800">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 shadow-sm shrink-0">
-              <Image
-                src="/femi-headshot.webp"
-                alt="Femi Adeleke"
-                fill
-                className="object-cover"
-                priority
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <h1 className="font-black text-sm sm:text-lg tracking-tight truncate">Femi Adeleke</h1>
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
-                  Command
-                </span>
+    <div className="min-h-screen bg-[#dfe3e8] dark:bg-black text-zinc-950 dark:text-white font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0">
+      {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-300 dark:border-zinc-800 bg-[#ebedf0] dark:bg-[#0a0a0a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
+        <div className="space-y-4">
+          {/* Top Brand & Profile */}
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-300 dark:border-zinc-800">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 shadow-sm shrink-0">
+                <Image
+                  src="/femi-headshot.webp"
+                  alt="Femi Adeleke"
+                  fill
+                  className="object-cover"
+                  priority
+                />
               </div>
-              <p className="text-[10px] sm:text-xs text-zinc-600 dark:text-zinc-400 font-semibold truncate">
-                Operations & Freelance Engine
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="font-black text-sm tracking-tight truncate">Femi Adeleke</h1>
+                  <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                    Admin
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-600 dark:text-zinc-400 font-semibold truncate">
+                  Command Center
+                </p>
+              </div>
             </div>
+            <button
+              onClick={handleLogout}
+              className="p-1.5 rounded-lg text-zinc-600 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 transition"
+              title="Log out"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-2">
+          {/* Search Navigation Filter */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              value={navFilter}
+              onChange={(e) => setNavFilter(e.target.value)}
+              placeholder="Find section or tool..."
+              className="w-full bg-white dark:bg-[#121212] text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 pl-8 pr-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-800 focus:outline-none focus:border-emerald-500 transition shadow-2xs"
+            />
+          </div>
+
+          {/* Navigation Items (Vertical Rail) */}
+          <nav className="space-y-1">
+            <div className="text-[10px] font-black uppercase text-zinc-500 dark:text-zinc-400 px-2 py-1 tracking-wider">
+              Navigation
+            </div>
+            {filteredNavTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition group cursor-pointer text-left ${
+                    isActive
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-900 hover:text-zinc-950 dark:hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-zinc-500 dark:text-zinc-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400"}`} />
+                    <span className="truncate">{tab.label}</span>
+                  </div>
+                  {tab.badge !== undefined && (
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : tab.badgePulse
+                          ? "bg-emerald-500 text-white animate-pulse"
+                          : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                  {tab.id === "master" && !tab.badge && (
+                    <span className={`w-2 h-2 rounded-full ${isActive ? "bg-white" : "bg-emerald-500"} animate-pulse`} />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Quick Tools & Shortcuts */}
+          <div className="space-y-1 pt-2 border-t border-zinc-300 dark:border-zinc-800">
+            <div className="text-[10px] font-black uppercase text-zinc-500 dark:text-zinc-400 px-2 py-1 tracking-wider">
+              Quick Controls
+            </div>
             <button
               onClick={() => {
                 setSettingsModalTab("brain");
                 setShowSettingsModal(true);
               }}
-              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-black rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-600 hover:text-white dark:hover:bg-purple-600 dark:hover:text-white transition-all shadow-xs cursor-pointer"
-              title="Teach Obey permanent knowledge & custom behavior directives"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20 hover:bg-purple-600 hover:text-white transition group cursor-pointer text-left"
             >
-              <Brain size={13} className="text-purple-500" />
-              <span>🧠 Obey Brain</span>
+              <div className="flex items-center gap-2">
+                <Brain size={14} className="text-purple-600 group-hover:text-white" />
+                <span>🧠 Obey Brain</span>
+              </div>
+              <span className="text-[10px] opacity-75">Config</span>
             </button>
 
             <button
@@ -355,35 +457,195 @@ export default function AdminDashboardPage() {
                 setSettingsModalTab("ai");
                 setShowSettingsModal(true);
               }}
-              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-emerald-500 hover:text-black dark:hover:bg-emerald-500 dark:hover:text-black text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 transition-all shadow-xs cursor-pointer"
-              title="Configure AI Models & Fallback Keys"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition group cursor-pointer text-left shadow-2xs"
             >
-              <Zap size={13} className="text-emerald-500" />
-              <span className="hidden xs:inline sm:inline">AI Keys</span>
+              <div className="flex items-center gap-2">
+                <Zap size={14} className="text-emerald-600" />
+                <span>AI Fallback Keys</span>
+              </div>
+              <span className="text-[10px] text-zinc-500">API</span>
             </button>
+
+            <Link
+              href="/control-room"
+              target="_blank"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition group text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Building2 size={14} className="text-emerald-600" />
+                <span>Client Control Room</span>
+              </div>
+              <ExternalLink size={12} className="opacity-70" />
+            </Link>
 
             <a
               href="/"
               target="_blank"
               rel="noreferrer"
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-zinc-400 dark:border-zinc-800 hover:border-black dark:hover:border-zinc-600 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-400 hover:bg-zinc-200/80 dark:hover:bg-zinc-900 transition group text-left"
             >
-              <ExternalLink size={13} />
-              Portfolio
+              <div className="flex items-center gap-2">
+                <ExternalLink size={14} className="text-zinc-500" />
+                <span>View Portfolio</span>
+              </div>
+              <span className="text-[10px] text-zinc-500">Live</span>
             </a>
-            <button
-              onClick={handleLogout}
-              className="p-1.5 sm:p-2 rounded-lg text-zinc-700 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-              title="Log out"
-            >
-              <LogOut size={16} className="sm:w-[18px] sm:h-[18px]" />
-            </button>
           </div>
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="pt-3 border-t border-zinc-300 dark:border-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-semibold text-[11px]">Neon DB Connected</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+          >
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* 2. Mobile-First Sticky Header (md:hidden) */}
+      <header className="md:hidden sticky top-0 z-40 bg-[#dfe3e8]/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-300 dark:border-zinc-800 px-3 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-zinc-400 dark:border-zinc-700 shrink-0">
+            <Image src="/femi-headshot.webp" alt="Femi" fill className="object-cover" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-black text-xs truncate">Femi Adeleke</p>
+            <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase truncate">Admin Command</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              setSettingsModalTab("brain");
+              setShowSettingsModal(true);
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-purple-500/10 text-purple-600 border border-purple-500/30"
+          >
+            🧠 Brain
+          </button>
+          <button
+            onClick={() => {
+              setSettingsModalTab("ai");
+              setShowSettingsModal(true);
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-700"
+          >
+            <Zap size={12} className="text-emerald-500 inline mr-0.5" />
+            AI Keys
+          </button>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-8 space-y-5 sm:space-y-8">
+      {/* Mobile Drawer Menu Modal */}
+      {mobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="w-72 bg-[#ebedf0] dark:bg-[#0a0a0a] border-r border-zinc-300 dark:border-zinc-800 h-full p-4 flex flex-col justify-between overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-300 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden border border-zinc-400 dark:border-zinc-700">
+                    <Image src="/femi-headshot.webp" alt="Femi" fill className="object-cover" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm">Femi Adeleke</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold">Super Admin</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1 rounded-lg text-zinc-500 hover:text-black dark:hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <nav className="space-y-1">
+                {navTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id as any);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition text-left ${
+                        isActive
+                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                          : "text-zinc-800 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-900"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon size={16} />
+                        <span>{tab.label}</span>
+                      </div>
+                      {tab.badge !== undefined && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/10 dark:bg-white/10">
+                          {tab.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="pt-2 border-t border-zinc-300 dark:border-zinc-800 space-y-1.5">
+                <Link
+                  href="/control-room"
+                  target="_blank"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                >
+                  <span>Client Control Room</span>
+                  <ExternalLink size={13} />
+                </Link>
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-900"
+                >
+                  <span>View Portfolio</span>
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-300 dark:border-zinc-800 flex items-center justify-between">
+              <span className="text-[11px] text-zinc-500">Femi Adeleke OS</span>
+              <button
+                onClick={handleLogout}
+                className="text-xs font-bold text-red-600 hover:underline"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Main Content Area */}
+      <main className="flex-1 min-w-0 p-3 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-7xl">
         {/* Metric Cards Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
           <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#080808] shadow-xs">
@@ -429,102 +691,6 @@ export default function AdminDashboardPage() {
               Neon DB Cloud
             </p>
           </div>
-        </div>
-
-        {/* Tab Navigation with horizontal overflow scrolling */}
-        <div className="flex items-center gap-1.5 sm:gap-2 border-b border-zinc-300 dark:border-zinc-800 pb-3 overflow-x-auto no-scrollbar scroll-smooth -mx-3 px-3 sm:mx-0 sm:px-0">
-          <button
-            onClick={() => setActiveTab("master")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "master"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Building2 size={15} />
-            <span>Master Control Room</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab("inbox")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "inbox"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <MessagesSquare size={15} />
-            <span>Omnichannel Inbox</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("leads")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "leads"
-                ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Mail size={15} />
-            <span>Cold Mailing</span>
-            <span className="text-xs opacity-75">({leads.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("proposals")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "proposals"
-                ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Briefcase size={15} />
-            <span>Gig Automator</span>
-            <span className="text-xs opacity-75">({proposals.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("inquiries")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "inquiries"
-                ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-md"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Inbox size={15} />
-            <span>Inquiries</span>
-            {inquiries.some((i) => i.status === "unread") && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab("obey")}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
-              activeTab === "obey"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
-                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <img src="/obey-logo.jpg" alt="Obey" className="w-4 h-4 rounded-full object-cover shrink-0" />
-            <span>Agent Obey</span>
-            {agentTasks.some((t) => t.status === "pending_approval") && (
-              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-400 text-black">
-                {agentTasks.filter((t) => t.status === "pending_approval").length} pending
-              </span>
-            )}
-          </button>
-
-          <Link
-            href="/control-room"
-            target="_blank"
-            className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition-all shadow-xs"
-          >
-            <Building2 size={15} />
-            <span>Control Room</span>
-            <ExternalLink size={12} className="opacity-70" />
-          </Link>
         </div>
 
         {/* ============================================================ */}
@@ -1546,6 +1712,42 @@ export default function AdminDashboardPage() {
         onSaved={fetchData}
         initialTab={settingsModalTab}
       />
+
+      {/* 4. Mobile-First Bottom Navigation Bar (md:hidden) */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#ebedf0]/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-zinc-300 dark:border-zinc-800 py-1 px-2 flex items-center justify-around md:hidden">
+        {[
+          { id: "master", label: "Master", icon: Building2 },
+          { id: "inbox", label: "Inbox", icon: MessagesSquare },
+          { id: "leads", label: "Leads", icon: Mail, badge: leads.length },
+          { id: "proposals", label: "Proposals", icon: Briefcase, badge: proposals.length },
+          { id: "obey", label: "Obey", icon: Sparkles },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition relative min-h-[44px] cursor-pointer ${
+                isActive ? "text-emerald-700 dark:text-emerald-400 font-bold" : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              <div className="relative">
+                <Icon className={`w-5 h-5 ${isActive ? "text-emerald-700 dark:text-emerald-400" : "text-zinc-600 dark:text-zinc-400"}`} />
+                {item.badge && item.badge > 0 ? (
+                  <span className="absolute -top-1 -right-2 text-[9px] font-black px-1 rounded-full bg-emerald-600 text-white">
+                    {item.badge}
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-[10px] mt-0.5 tracking-tight">{item.label}</span>
+              {isActive && (
+                <span className="w-1 h-1 rounded-full bg-emerald-600 dark:bg-emerald-400 mt-0.5" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
