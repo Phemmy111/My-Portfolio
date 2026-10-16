@@ -594,7 +594,90 @@ export async function sendWhatsAppStatusPost(params: {
   }
 }
 
+/**
+ * Configure instance settings for auto-read receipts (blue ticks), typing presence, and always online.
+ */
+export async function setEvolutionInstanceSettings(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/settings/set/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoKey },
+      body: JSON.stringify({
+        rejectCall: false,
+        msgCall: "",
+        groupsIgnore: false,
+        alwaysOnline: true,
+        readMessages: true,
+        readStatus: true,
+        syncFullHistory: false,
+      }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.warn("[Evolution] setEvolutionInstanceSettings error:", err);
+  }
+}
 
+/**
+ * Explicitly marks a received WhatsApp message as read to trigger blue double ticks for the sender.
+ */
+export async function markWhatsAppMessageRead(
+  instanceName: string,
+  remoteJid: string,
+  messageId: string
+) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+    const res = await fetch(`${evoUrl}/chat/markMessageAsRead/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoKey },
+      body: JSON.stringify({
+        readMessages: [
+          {
+            remoteJid: jid,
+            fromMe: false,
+            id: messageId,
+          },
+        ],
+      }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.warn("[Evolution] markWhatsAppMessageRead error:", err);
+  }
+}
 
-
-
+/**
+ * Emits "composing..." (typing) indicator on WhatsApp while Obey generates an answer.
+ */
+export async function sendWhatsAppPresence(
+  instanceName: string,
+  number: string,
+  presence: "composing" | "recording" | "available" | "unavailable" = "composing",
+  delayMs: number = 1500
+) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const cleaned = number.replace(/\D/g, "");
+    await fetch(`${evoUrl}/chat/sendPresence/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoKey },
+      body: JSON.stringify({
+        number: cleaned,
+        presence,
+        delay: delayMs,
+      }),
+    });
+  } catch {}
+}

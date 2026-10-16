@@ -18,8 +18,13 @@ import {
   dbGetWorkspaceBySlug,
   dbGetWorkspaceByInstanceName,
   dbGetWorkspaceSettings,
-} from "@/lib/db";
-import { sendWhatsAppMessage, sendWhatsAppStatusPost, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
+import {
+  sendWhatsAppMessage,
+  sendWhatsAppStatusPost,
+  fetchEvolutionMediaBase64,
+  markWhatsAppMessageRead,
+  sendWhatsAppPresence,
+} from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -899,7 +904,17 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
     return NextResponse.json({ ok: true });
   }
 
+  // 1. Explicitly trigger blue ticks (Read receipt) for the sender
+  if (msgObj.key?.id && senderJid) {
+    markWhatsAppMessageRead(instanceName, senderJid, msgObj.key.id).catch(() => {});
+  }
+
   let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+
+  // 2. Trigger typing indicator presence
+  if (senderNumber) {
+    sendWhatsAppPresence(instanceName, senderNumber, "composing", 1500).catch(() => {});
+  }
 
   // In WhatsApp multi-device, messages to linked accounts can arrive with @lid.
   // For Main Obey (instance 'obey'), route unrecognized LIDs to Femi's verified number.

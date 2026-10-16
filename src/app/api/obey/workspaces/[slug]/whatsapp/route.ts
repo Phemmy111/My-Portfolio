@@ -11,6 +11,7 @@ import {
   setEvolutionInstanceWebhook,
   getEvolutionPairingCode,
   logoutEvolutionInstance,
+  setEvolutionInstanceSettings,
 } from "@/lib/whatsapp-gateway";
 
 export async function GET(
@@ -52,9 +53,10 @@ export async function GET(
       }
     }
 
-    // 2. If connected, update DB and return status
+    // 2. If connected, update DB, activate blue ticks & online presence, and return status
     if (currentState === "open") {
       await dbUpdateWorkspaceWhatsAppStatus(ws.id, instanceName, "connected");
+      setEvolutionInstanceSettings(instanceName).catch(() => {});
       return NextResponse.json({
         status: "connected",
         instanceName,
@@ -127,6 +129,7 @@ export async function POST(
 
       // Configure webhook for this instance
       await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+      setEvolutionInstanceSettings(instanceName).catch(() => {});
 
       // Request 8-digit Baileys pairing code from Evolution API
       const pairRes = await getEvolutionPairingCode(instanceName, cleaned);
@@ -153,6 +156,7 @@ export async function POST(
 
     // 2. Set webhook for this instance
     await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+    setEvolutionInstanceSettings(instanceName).catch(() => {});
 
     // 3. Fetch QR code
     const qrData = await getEvolutionInstanceQR(instanceName);
