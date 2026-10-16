@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
-import { dbAddGuestMessage, dbAddChatMessage, dbGetRecentActiveGuestNumber } from "@/lib/db";
 import { getVapiProvidersPool, getSetting } from "@/lib/settings";
+import {
+  dbAddGuestMessage,
+  dbAddChatMessage,
+  dbGetRecentActiveGuestNumber,
+  dbGetWorkspaceBySlug,
+  dbAddWorkspaceCallLog,
+  dbUpsertWorkspaceLead,
+} from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -227,6 +234,45 @@ YOUR VIBE & PERSONALITY:
           } catch (recipErr) {
             console.error(`[Vapi Webhook] Failed to dispatch to recipient ${recipient}:`, recipErr);
           }
+        }
+
+        // Multi-tenant Workspace Logging & Auto Lead Capture
+        const wsSlug =
+          body.call?.metadata?.workspaceSlug ||
+          report.call?.metadata?.workspaceSlug ||
+          report.metadata?.workspaceSlug ||
+          "femi-adeleke";
+        try {
+          const ws = await dbGetWorkspaceBySlug(wsSlug);
+          if (ws) {
+            await dbAddWorkspaceCallLog({
+              workspace_id: ws.id,
+              caller_phone: candidatePhone || null,
+              caller_name: body.call?.metadata?.userName || report.call?.metadata?.userName || null,
+              vapi_call_id: callId,
+              duration_seconds: durationSeconds,
+              summary: summary || null,
+              transcript: transcript || null,
+              recording_url: proxyAudioUrl || recordingUrl || null,
+            });
+
+            if (candidatePhone) {
+              await dbUpsertWorkspaceLead({
+                workspace_id: ws.id,
+                phone: candidatePhone,
+                name: body.call?.metadata?.userName || report.call?.metadata?.userName || "Hotline Caller",
+                source: "voice_call",
+                status: "lead",
+                intent_summary: summary || "Spoke with AI on WebRTC Voice Hotline",
+              });
+            }
+
+            if (ws.owner_phone && ws.owner_phone !== FEMI_PERSONAL_NUMBER) {
+              recipients.add(ws.owner_phone);
+            }
+          }
+        } catch (wsErr) {
+          console.warn("[Vapi Webhook] Workspace logging error:", wsErr);
         }
 
         // Always save to main chat for Femi

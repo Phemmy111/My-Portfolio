@@ -11,6 +11,9 @@ import {
   dbCreateUserPendingAction,
   dbGetPendingUserAction,
   dbUpdateUserActionStatus,
+  dbGetWorkspaceRules,
+  dbUpsertWorkspaceLead,
+  dbGetWorkspaceBySlug,
 } from "@/lib/db";
 import { sendWhatsAppMessage, fetchEvolutionMediaBase64 } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
@@ -347,6 +350,52 @@ How can I assist you today?`;
     }
   }
 
+  // 5.5 MULTI-TENANT KEYWORD TRIGGER & LEAD CAPTURE (Wasbot AI Supercharged)
+  if (!isFemi && userText && !visionMedia?.base64 && !docMedia?.base64) {
+    try {
+      const defaultWs = await dbGetWorkspaceBySlug("femi-adeleke");
+      const wsId = defaultWs ? defaultWs.id : "ws_femi_default";
+      const rules = await dbGetWorkspaceRules(wsId);
+      const cleanUserText = userText.toLowerCase();
+
+      for (const rule of rules) {
+        if (!rule.is_active) continue;
+        const matched = rule.trigger_keywords.some((kw) =>
+          cleanUserText.includes(kw.toLowerCase().trim())
+        );
+
+        if (matched) {
+          console.log(`[WA] Triggered Keyword Rule: "${rule.trigger_keywords.join(", ")}" -> ${rule.action}`);
+          await reply(rule.response_text);
+
+          // Save assistant reply to guest DB
+          await dbAddGuestMessage({
+            id: `guest-asst-${Date.now()}`,
+            phone_number: replyTo,
+            sender_name: "Obey",
+            role: "assistant",
+            content: rule.response_text,
+          });
+
+          // Auto-capture lead in Workspace CRM
+          await dbUpsertWorkspaceLead({
+            workspace_id: wsId,
+            phone: replyTo,
+            name: pushName || "WhatsApp User",
+            source: "whatsapp",
+            status: rule.action === "collect_order" ? "interested" : "lead",
+            intent_summary: `Triggered rule [${rule.trigger_keywords.slice(0, 3).join(", ")}] with: "${userText.slice(0, 80)}"`,
+            last_message: userText,
+          });
+
+          return;
+        }
+      }
+    } catch (ruleErr) {
+      console.warn("[WA] Workspace rule evaluation error:", ruleErr);
+    }
+  }
+
   // 6. DYNAMIC COMPANION ENGINE (Zero-Regex Universal Task & Companion Processing)
   try {
     const companionRes = await processDynamicCompanionTurn({
@@ -380,6 +429,25 @@ How can I assist you today?`;
       role: "assistant",
       message: finalReply,
     });
+
+    // Auto-save lead in Workspace CRM
+    if (!isFemi) {
+      try {
+        const defaultWs = await dbGetWorkspaceBySlug("femi-adeleke");
+        const wsId = defaultWs ? defaultWs.id : "ws_femi_default";
+        await dbUpsertWorkspaceLead({
+          workspace_id: wsId,
+          phone: replyTo,
+          name: pushName || "WhatsApp Contact",
+          source: "whatsapp",
+          status: "lead",
+          intent_summary: userText.slice(0, 120),
+          last_message: userText,
+        });
+      } catch (crmErr) {
+        console.warn("[WA] Auto-save lead CRM warning:", crmErr);
+      }
+    }
   } catch (err: any) {
     console.error("[WA] Dynamic companion error:", err);
     await reply("Please, I am busy right now. Check back with me in a moment. Thanks!");

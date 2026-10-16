@@ -26,12 +26,18 @@ function CallInterface() {
   const searchParams = useSearchParams();
   const rawPhone = searchParams.get("phone") || "";
   const rawName = searchParams.get("name") || "";
+  const rawBiz = searchParams.get("biz") || searchParams.get("workspace") || "";
 
   const [inputPhone, setInputPhone] = useState(rawPhone || "");
   const [inputName, setInputName] = useState(rawName || "");
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [modalPhone, setModalPhone] = useState(rawPhone || "");
   const [modalName, setModalName] = useState(rawName || "");
+  const [bizInfo, setBizInfo] = useState<{
+    name: string;
+    slug: string;
+    greeting?: string;
+  } | null>(null);
 
   const [callStatus, setCallStatus] = useState<
     "idle" | "loading" | "connecting" | "active" | "ended" | "error"
@@ -46,6 +52,24 @@ function CallInterface() {
 
   const vapiRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch workspace details if biz param provided
+  useEffect(() => {
+    if (rawBiz) {
+      fetch(`/api/obey/workspaces/${rawBiz}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.workspace) {
+            setBizInfo({
+              name: data.workspace.name,
+              slug: data.workspace.slug,
+              greeting: data.settings?.voice_greeting,
+            });
+          }
+        })
+        .catch((err) => console.warn("Failed to fetch workspace branding:", err));
+    }
+  }, [rawBiz]);
 
   // Initialize from localStorage if query params were empty
   useEffect(() => {
@@ -212,11 +236,18 @@ function CallInterface() {
           userPhone,
           userName,
           channel: "webrtc_web",
+          workspaceSlug: bizInfo?.slug || "femi-adeleke",
         },
         variableValues: {
           userPhone,
           userName,
+          businessName: bizInfo?.name || "Femi Adeleke",
         },
+        assistantOverrides: bizInfo?.greeting
+          ? {
+              firstMessage: bizInfo.greeting,
+            }
+          : undefined,
       });
     } catch (err: any) {
       console.error("Failed to start call:", err);
@@ -293,11 +324,15 @@ function CallInterface() {
             <div className="relative w-4 h-4 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
               <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
             </div>
-            <span>Femi Adeleke&apos;s AI Assistant</span>
+            <span>{bizInfo?.name ? `${bizInfo.name} AI Hotline` : "Femi Adeleke's AI Assistant"}</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-            {rawName ? `Speaking with ${rawName}` : "Voice Call with Obey"}
+            {bizInfo?.name
+              ? `${bizInfo.name} Voice Hotline`
+              : rawName
+              ? `Speaking with ${rawName}`
+              : "Voice Call with Obey"}
           </h1>
 
           <p className="text-xs text-zinc-400 max-w-md mx-auto">
