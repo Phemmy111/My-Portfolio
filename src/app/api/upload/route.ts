@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
 
       // Upload to Cloudinary using upload_stream
       const uploadResult = await new Promise<{
+        public_id: string;
         secure_url: string;
         resource_type: string;
         format?: string;
@@ -58,10 +59,35 @@ export async function POST(req: NextRequest) {
         stream.end(buffer);
       });
 
+      let finalUrl = uploadResult.secure_url;
+
+      // For videos: enforce max 90 seconds (1:30s) trim and mobile WhatsApp compression
+      if (isVideo) {
+        const startRaw = formData.get("start_offset");
+        const endRaw = formData.get("end_offset");
+        const startOffset = startRaw ? Math.max(0, parseFloat(startRaw as string)) : 0;
+        const endOffset = endRaw ? parseFloat(endRaw as string) : undefined;
+
+        let clipDuration = 90; // Default max 1:30s
+        if (typeof endOffset === "number" && endOffset > startOffset) {
+          clipDuration = Math.min(endOffset - startOffset, 90);
+        }
+
+        finalUrl = cloudinary.url(uploadResult.public_id, {
+          resource_type: "video",
+          start_offset: startOffset,
+          duration: clipDuration,
+          quality: "auto",
+          video_codec: "auto",
+          format: "mp4",
+          secure: true,
+        });
+      }
+
       return NextResponse.json({
         success: true,
-        url: uploadResult.secure_url,
-        resource_type: uploadResult.resource_type === "video" ? "video" : "image",
+        url: finalUrl,
+        resource_type: isVideo ? "video" : "image",
         format: uploadResult.format,
       });
     }
@@ -80,10 +106,32 @@ export async function POST(req: NextRequest) {
         resource_type: isVideo ? "video" : "auto",
       });
 
+      let finalUrl = uploadResult.secure_url;
+
+      if (isVideo) {
+        const startOffset = body.start_offset ? Math.max(0, parseFloat(body.start_offset)) : 0;
+        const endOffset = body.end_offset ? parseFloat(body.end_offset) : undefined;
+
+        let clipDuration = 90;
+        if (typeof endOffset === "number" && endOffset > startOffset) {
+          clipDuration = Math.min(endOffset - startOffset, 90);
+        }
+
+        finalUrl = cloudinary.url(uploadResult.public_id, {
+          resource_type: "video",
+          start_offset: startOffset,
+          duration: clipDuration,
+          quality: "auto",
+          video_codec: "auto",
+          format: "mp4",
+          secure: true,
+        });
+      }
+
       return NextResponse.json({
         success: true,
-        url: uploadResult.secure_url,
-        resource_type: uploadResult.resource_type === "video" ? "video" : "image",
+        url: finalUrl,
+        resource_type: isVideo ? "video" : "image",
         format: uploadResult.format,
       });
     }

@@ -40,6 +40,7 @@ import {
   UploadCloud,
   Video,
   X,
+  Scissors,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -152,6 +153,22 @@ function ControlRoomContent() {
   const [mediaFileName, setMediaFileName] = useState("");
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Video Trimmer states (Max 1:30s WhatsApp Standard)
+  const [showVideoTrimmer, setShowVideoTrimmer] = useState(false);
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [trimStart, setTrimStart] = useState<number>(0);
+  const [trimEnd, setTrimEnd] = useState<number>(90);
+  const videoPlayerRef = useRef<HTMLVideoElement>(null);
+
+  const formatSeconds = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
   const [postingStatus, setPostingStatus] = useState(false);
   const [statusSuccessMsg, setStatusSuccessMsg] = useState("");
   const [statusErrorMsg, setStatusErrorMsg] = useState("");
@@ -301,18 +318,41 @@ function ControlRoomContent() {
     }
   }
 
-  const handleMediaFileUpload = async (file: File) => {
+  const handleSelectMediaFile = (file: File) => {
     if (!file) return;
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
 
     if (!isImage && !isVideo) {
-      setStatusErrorMsg("Unsupported format. Please select an image (JPG, PNG, WEBP, GIF) or video (MP4, MOV, WEBM).");
+      setStatusErrorMsg("Unsupported format. Please select an image (JPG, PNG, WEBP) or video (MP4, MOV, WEBM).");
       return;
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      setStatusErrorMsg("File is too large. WhatsApp status media limit is 50MB.");
+    if (isVideo) {
+      const url = URL.createObjectURL(file);
+      setVideoPreviewUrl(url);
+      setPendingVideoFile(file);
+
+      const tempVideo = document.createElement("video");
+      tempVideo.preload = "metadata";
+      tempVideo.src = url;
+      tempVideo.onloadedmetadata = () => {
+        const dur = Math.round(tempVideo.duration) || 0;
+        setVideoDuration(dur);
+        setTrimStart(0);
+        setTrimEnd(Math.min(dur, 90)); // Enforce default max 1:30s (90 seconds)
+        setShowVideoTrimmer(true);
+      };
+      return;
+    }
+
+    uploadMediaAsset(file);
+  };
+
+  const uploadMediaAsset = async (file: File, startOffset: number = 0, endOffset?: number) => {
+    if (!file) return;
+    if (file.size > 80 * 1024 * 1024) {
+      setStatusErrorMsg("File is too large. Maximum supported upload size is 80MB.");
       return;
     }
 
@@ -321,6 +361,12 @@ function ControlRoomContent() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (file.type.startsWith("video/")) {
+        formData.append("start_offset", String(startOffset));
+        if (typeof endOffset === "number") {
+          formData.append("end_offset", String(endOffset));
+        }
+      }
 
       const res = await fetch("/api/upload", {
         method: "POST",
@@ -335,8 +381,19 @@ function ControlRoomContent() {
       setStatusMediaUrl(data.url);
       setStatusMediaType(data.resource_type === "video" ? "video" : "image");
       setMediaFileName(file.name);
-      setStatusSuccessMsg(`Media uploaded successfully! Ready to post as ${data.resource_type === "video" ? "WhatsApp Video Story" : "WhatsApp Photo Story"}.`);
-      setTimeout(() => setStatusSuccessMsg(""), 3500);
+      setShowVideoTrimmer(false);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+        setVideoPreviewUrl("");
+      }
+      setPendingVideoFile(null);
+
+      setStatusSuccessMsg(
+        data.resource_type === "video"
+          ? `🎬 Video trimmed & compressed to WhatsApp standards (max 1:30s)! Ready to post.`
+          : `📸 Photo uploaded successfully! Ready to post.`
+      );
+      setTimeout(() => setStatusSuccessMsg(""), 4000);
     } catch (err: any) {
       setStatusErrorMsg(err.message || "Failed to upload media file");
     } finally {
@@ -1440,7 +1497,7 @@ function ControlRoomContent() {
                             e.preventDefault();
                             setIsDraggingMedia(false);
                             const file = e.dataTransfer.files?.[0];
-                            if (file) handleMediaFileUpload(file);
+                            if (file) handleSelectMediaFile(file);
                           }}
                           onClick={() => fileInputRef.current?.click()}
                           className={`cursor-pointer border-2 border-dashed rounded-xl p-5 text-center transition flex flex-col items-center justify-center gap-2 ${
@@ -1456,7 +1513,7 @@ function ControlRoomContent() {
                             className="hidden"
                             onChange={(e) => {
                               const file = e.target.files?.[0];
-                              if (file) handleMediaFileUpload(file);
+                              if (file) handleSelectMediaFile(file);
                               e.target.value = "";
                             }}
                           />
@@ -1465,7 +1522,7 @@ function ControlRoomContent() {
                             <div className="flex flex-col items-center gap-2 py-2">
                               <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
                               <span className="text-xs font-semibold text-emerald-300">
-                                Uploading media to high-speed cloud...
+                                Uploading & compressing media to WhatsApp standard...
                               </span>
                             </div>
                           ) : (
@@ -1478,7 +1535,7 @@ function ControlRoomContent() {
                                   Click to upload or drag & drop photo/video
                                 </p>
                                 <p className="text-[10px] text-slate-400">
-                                  Supports JPG, PNG, WEBP, MP4, MOV, WEBM (up to 50MB)
+                                  Supports JPG, PNG, WEBP, MP4, MOV (Trim up to 1:30s max with auto-compression)
                                 </p>
                               </div>
                             </>
@@ -1490,7 +1547,7 @@ function ControlRoomContent() {
                             <span className="flex items-center gap-1.5 font-bold text-emerald-400 text-[11px] uppercase tracking-wider">
                               {statusMediaType === "video" ? (
                                 <>
-                                  <Video className="w-3.5 h-3.5" /> Video Story
+                                  <Video className="w-3.5 h-3.5" /> Video Story (Max 1:30s Compressed)
                                 </>
                               ) : (
                                 <>
@@ -1517,6 +1574,149 @@ function ControlRoomContent() {
                                 className="max-h-56 w-auto object-contain rounded-lg"
                               />
                             )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Interactive WhatsApp Video Trimmer & Compressor Modal */}
+                      {showVideoTrimmer && pendingVideoFile && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                          <div className="bg-slate-900 border border-slate-750 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  <Scissors className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-bold text-white">WhatsApp Video Trimmer & Compressor</h4>
+                                  <p className="text-[11px] text-slate-400">Standard Status Limit: 1 minute 30 seconds</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setShowVideoTrimmer(false);
+                                  if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+                                  setVideoPreviewUrl("");
+                                  setPendingVideoFile(null);
+                                }}
+                                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Video Preview */}
+                            <div className="bg-black/90 rounded-xl overflow-hidden flex items-center justify-center max-h-60 border border-slate-800">
+                              <video
+                                ref={videoPlayerRef}
+                                src={videoPreviewUrl}
+                                controls
+                                className="max-h-60 w-full object-contain"
+                              />
+                            </div>
+
+                            {/* Duration & Trimming Status */}
+                            <div className="space-y-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400">Original Video Duration:</span>
+                                <span className="font-mono font-bold text-white">{formatSeconds(videoDuration)}</span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400">Trimmed Clip Range:</span>
+                                <span className="font-mono font-bold text-emerald-400">
+                                  {formatSeconds(trimStart)} → {formatSeconds(trimEnd)} ({formatSeconds(trimEnd - trimStart)})
+                                </span>
+                              </div>
+
+                              {videoDuration > 90 && (
+                                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed">
+                                  ⚠️ Original video exceeds 1:30s. WhatsApp status standard allows up to 1m 30s. We've preset your clip to the maximum allowed 1:30s window.
+                                </div>
+                              )}
+
+                              {/* Sliders */}
+                              <div className="space-y-2 pt-1">
+                                <div>
+                                  <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                                    <span>Start Point: {formatSeconds(trimStart)}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={Math.max(0, videoDuration - 1)}
+                                    value={trimStart}
+                                    onChange={(e) => {
+                                      const newStart = Number(e.target.value);
+                                      setTrimStart(newStart);
+                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newStart;
+                                      if (trimEnd <= newStart) {
+                                        setTrimEnd(Math.min(videoDuration, newStart + 90));
+                                      } else if (trimEnd - newStart > 90) {
+                                        setTrimEnd(newStart + 90);
+                                      }
+                                    }}
+                                    className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+                                  />
+                                </div>
+
+                                <div>
+                                  <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                                    <span>End Point: {formatSeconds(trimEnd)} (Max +90s from start)</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={trimStart + 1}
+                                    max={Math.min(videoDuration, trimStart + 90)}
+                                    value={trimEnd}
+                                    onChange={(e) => {
+                                      const newEnd = Number(e.target.value);
+                                      setTrimEnd(newEnd);
+                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newEnd;
+                                    }}
+                                    className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-3 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowVideoTrimmer(false);
+                                  if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+                                  setVideoPreviewUrl("");
+                                  setPendingVideoFile(null);
+                                }}
+                                className="flex-1 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-bold text-xs transition"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={uploadingMedia}
+                                onClick={() => {
+                                  if (pendingVideoFile) {
+                                    uploadMediaAsset(pendingVideoFile, trimStart, trimEnd);
+                                  }
+                                }}
+                                className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                              >
+                                {uploadingMedia ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <span>Compressing & Uploading...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Scissors className="w-4 h-4" />
+                                    <span>✂️ Trim to {formatSeconds(trimEnd - trimStart)} & Upload</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
