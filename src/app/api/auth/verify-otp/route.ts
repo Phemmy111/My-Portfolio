@@ -59,11 +59,12 @@ export async function POST(req: Request) {
     let ownerName = "Business Owner";
     let plan = "starter";
 
+    const cleanDigits = cleanIdentifier.replace(/\D/g, "");
+
     const workspaces = await sql`
       SELECT * FROM workspaces
-      WHERE owner_phone = ${cleanIdentifier} 
-         OR owner_email = ${cleanIdentifier.toLowerCase()}
-         OR (phone IS NOT NULL AND phone = ${cleanIdentifier})
+      WHERE (owner_phone IS NOT NULL AND REGEXP_REPLACE(owner_phone, '\\D', '', 'g') = ${cleanDigits})
+         OR (owner_email IS NOT NULL AND LOWER(owner_email) = ${cleanIdentifier.toLowerCase()})
       ORDER BY created_at ASC
       LIMIT 1
     `;

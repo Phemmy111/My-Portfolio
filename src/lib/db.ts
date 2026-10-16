@@ -852,7 +852,7 @@ export async function dbGetWorkspacesByOwnerClerkId(
       SELECT * FROM workspaces
       WHERE owner_clerk_id = ${clerkId}
          OR (${cleanEmail} != '' AND LOWER(COALESCE(owner_email, '')) = ${cleanEmail})
-         OR (${cleanPhone} != '' AND owner_phone = ${cleanPhone})
+         OR (${cleanPhone} != '' AND REGEXP_REPLACE(owner_phone, '\\D', '', 'g') = ${cleanPhone})
          OR (${isFemi} AND slug = 'femi-adeleke')
       ORDER BY created_at DESC
     `;
