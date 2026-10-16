@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserButton, useUser } from "@clerk/nextjs";
+import { UserButton, useUser, useClerk } from "@clerk/nextjs";
 import {
   Building2,
   Users,
@@ -1019,9 +1019,14 @@ function ControlRoomContent() {
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const { signOut } = useClerk();
+
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      if (signOut) {
+        await signOut();
+      }
     } catch {}
     router.push("/sign-in");
   };
