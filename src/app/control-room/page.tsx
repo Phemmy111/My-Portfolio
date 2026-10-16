@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -37,6 +37,9 @@ import {
   Radio,
   Clock,
   Image as ImageIcon,
+  UploadCloud,
+  Video,
+  X,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -144,6 +147,11 @@ function ControlRoomContent() {
   const [statuses, setStatuses] = useState<any[]>([]);
   const [statusContent, setStatusContent] = useState("");
   const [statusMediaUrl, setStatusMediaUrl] = useState("");
+  const [statusMediaType, setStatusMediaType] = useState<"image" | "video">("image");
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaFileName, setMediaFileName] = useState("");
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [postingStatus, setPostingStatus] = useState(false);
   const [statusSuccessMsg, setStatusSuccessMsg] = useState("");
   const [statusErrorMsg, setStatusErrorMsg] = useState("");
@@ -293,13 +301,57 @@ function ControlRoomContent() {
     }
   }
 
-  const handlePostStatus = async (customContent?: string, customMedia?: string) => {
+  const handleMediaFileUpload = async (file: File) => {
+    if (!file) return;
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+
+    if (!isImage && !isVideo) {
+      setStatusErrorMsg("Unsupported format. Please select an image (JPG, PNG, WEBP, GIF) or video (MP4, MOV, WEBM).");
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      setStatusErrorMsg("File is too large. WhatsApp status media limit is 50MB.");
+      return;
+    }
+
+    setUploadingMedia(true);
+    setStatusErrorMsg("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to upload file to media cloud");
+      }
+
+      setStatusMediaUrl(data.url);
+      setStatusMediaType(data.resource_type === "video" ? "video" : "image");
+      setMediaFileName(file.name);
+      setStatusSuccessMsg(`Media uploaded successfully! Ready to post as ${data.resource_type === "video" ? "WhatsApp Video Story" : "WhatsApp Photo Story"}.`);
+      setTimeout(() => setStatusSuccessMsg(""), 3500);
+    } catch (err: any) {
+      setStatusErrorMsg(err.message || "Failed to upload media file");
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handlePostStatus = async (customContent?: string, customMedia?: string, customType?: "image" | "video") => {
     if (!currentWs) return;
     const textToPost = customContent !== undefined ? customContent : statusContent;
     const mediaToPost = customMedia !== undefined ? customMedia : statusMediaUrl;
+    const typeToPost = customType !== undefined ? customType : statusMediaType;
 
-    if (!textToPost.trim()) {
-      setStatusErrorMsg("Please write some text for your WhatsApp status story.");
+    if (!textToPost.trim() && !mediaToPost.trim()) {
+      setStatusErrorMsg("Please write some text or upload an image/video for your WhatsApp status story.");
       return;
     }
 
@@ -316,7 +368,7 @@ function ControlRoomContent() {
           slug: currentWs.slug,
           content: textToPost.trim(),
           media_url: mediaToPost.trim() || undefined,
-          media_type: mediaToPost ? "image" : "text",
+          media_type: mediaToPost.trim() ? typeToPost : "text",
           auto_post_now: true,
         }),
       });
@@ -329,6 +381,7 @@ function ControlRoomContent() {
       setStatusSuccessMsg("🚀 Boom! Your status was published directly to your WhatsApp Status Broadcast!");
       setStatusContent("");
       setStatusMediaUrl("");
+      setMediaFileName("");
       const refRes = await fetch(`/api/obey/status?workspace_id=${currentWs.id}`);
       const refData = await refRes.json();
       if (refData.statuses) setStatuses(refData.statuses);
@@ -1356,30 +1409,133 @@ function ControlRoomContent() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                        Optional Media URL (Image or Video)
-                      </label>
-                      <div className="relative">
-                        <ImageIcon className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                        <input
-                          type="url"
-                          value={statusMediaUrl}
-                          onChange={(e) => setStatusMediaUrl(e.target.value)}
-                          placeholder="https://example.com/promo-flyer.jpg (Optional)"
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none transition"
-                        />
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-medium text-slate-300">
+                          Status Media (Image or Video)
+                        </label>
+                        {statusMediaUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatusMediaUrl("");
+                              setMediaFileName("");
+                            }}
+                            className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Remove Media</span>
+                          </button>
+                        )}
                       </div>
+
+                      {/* File Upload Dropzone / Picker */}
+                      {!statusMediaUrl ? (
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDraggingMedia(true);
+                          }}
+                          onDragLeave={() => setIsDraggingMedia(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingMedia(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleMediaFileUpload(file);
+                          }}
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`cursor-pointer border-2 border-dashed rounded-xl p-5 text-center transition flex flex-col items-center justify-center gap-2 ${
+                            isDraggingMedia
+                              ? "border-emerald-400 bg-emerald-500/10"
+                              : "border-slate-800 hover:border-emerald-500/50 bg-slate-950/60"
+                          } ${uploadingMedia ? "opacity-60 pointer-events-none" : ""}`}
+                        >
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*,video/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleMediaFileUpload(file);
+                              e.target.value = "";
+                            }}
+                          />
+
+                          {uploadingMedia ? (
+                            <div className="flex flex-col items-center gap-2 py-2">
+                              <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+                              <span className="text-xs font-semibold text-emerald-300">
+                                Uploading media to high-speed cloud...
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-emerald-400 shadow-sm">
+                                <UploadCloud className="w-5 h-5" />
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-semibold text-slate-200">
+                                  Click to upload or drag & drop photo/video
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  Supports JPG, PNG, WEBP, MP4, MOV, WEBM (up to 50MB)
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 font-bold text-emerald-400 text-[11px] uppercase tracking-wider">
+                              {statusMediaType === "video" ? (
+                                <>
+                                  <Video className="w-3.5 h-3.5" /> Video Story
+                                </>
+                              ) : (
+                                <>
+                                  <ImageIcon className="w-3.5 h-3.5" /> Photo Story
+                                </>
+                              )}
+                            </span>
+                            <span className="text-[11px] text-slate-400 truncate max-w-[200px]">
+                              {mediaFileName || "Uploaded Asset"}
+                            </span>
+                          </div>
+
+                          <div className="rounded-lg overflow-hidden bg-black/60 border border-slate-800 flex items-center justify-center max-h-56">
+                            {statusMediaType === "video" ? (
+                              <video
+                                src={statusMediaUrl}
+                                controls
+                                className="max-h-56 w-auto object-contain rounded-lg"
+                              />
+                            ) : (
+                              <img
+                                src={statusMediaUrl}
+                                alt="Status Preview"
+                                className="max-h-56 w-auto object-contain rounded-lg"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <button
                       onClick={() => handlePostStatus()}
-                      disabled={postingStatus || !statusContent.trim()}
+                      disabled={postingStatus || uploadingMedia || (!statusContent.trim() && !statusMediaUrl.trim())}
                       className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {postingStatus ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
                           <span>Publishing to WhatsApp Status...</span>
+                        </>
+                      ) : uploadingMedia ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Uploading Media File...</span>
                         </>
                       ) : (
                         <>
@@ -1529,9 +1685,20 @@ function ControlRoomContent() {
                             </span>
                             <span>{st.posted_at ? new Date(st.posted_at).toLocaleString() : "Just now"}</span>
                           </div>
-                          <p className="text-slate-200 whitespace-pre-line text-xs font-sans">
-                            {st.content}
-                          </p>
+                          {st.media_url && (
+                            <div className="rounded-lg overflow-hidden bg-black/40 border border-slate-800 my-1 max-w-[220px]">
+                              {st.media_type === "video" ? (
+                                <video src={st.media_url} controls className="max-h-36 w-full object-cover" />
+                              ) : (
+                                <img src={st.media_url} alt="Status media" className="max-h-36 w-full object-cover" />
+                              )}
+                            </div>
+                          )}
+                          {st.content && (
+                            <p className="text-slate-200 whitespace-pre-line text-xs font-sans">
+                              {st.content}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>

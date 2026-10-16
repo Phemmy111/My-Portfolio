@@ -84,19 +84,25 @@ export async function POST(req: NextRequest) {
       `;
     }
 
-    // If posting a new status update
-    if (content && content.trim()) {
+    // If posting a new status update (either text content or media exists)
+    const hasText = Boolean(content && content.trim());
+    const hasMedia = Boolean(media_url && media_url.trim());
+
+    if (hasText || hasMedia) {
       const instanceName = ws.whatsapp_instance_name || `obey-${ws.slug}`;
       const statusId = `stat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
       let postSuccess = false;
       let errorMsg: string | null = null;
 
+      const normalizedMediaType: "image" | "video" | undefined =
+        media_type === "video" ? "video" : (media_type === "image" || hasMedia ? "image" : undefined);
+
       if (auto_post_now) {
         const dispatchRes = await sendWhatsAppStatusPost({
-          text: content.trim(),
-          mediaUrl: media_url || undefined,
-          mediaType: media_type === "image" ? "image" : undefined,
+          text: (content || "").trim(),
+          mediaUrl: media_url ? media_url.trim() : undefined,
+          mediaType: normalizedMediaType,
           instanceName,
         });
 
@@ -112,9 +118,9 @@ export async function POST(req: NextRequest) {
         ) VALUES (
           ${statusId},
           ${ws.id},
-          ${content.trim()},
+          ${(content || "").trim()},
           ${media_url || null},
-          ${media_type},
+          ${media_type || (hasMedia ? "image" : "text")},
           ${postSuccess ? "posted" : auto_post_now ? "failed" : "scheduled"},
           ${errorMsg},
           ${postSuccess ? new Date().toISOString() : null}
