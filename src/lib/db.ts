@@ -946,15 +946,39 @@ export async function dbGetWorkspaceByOwnerPhone(phone: string): Promise<Workspa
 
 export async function dbGetWorkspaceByInstanceName(instanceName: string): Promise<Workspace | null> {
   const db = getSql();
-  if (!db) return null;
+  if (!db || !instanceName) return null;
   try {
     await createWorkspaceTables();
-    const rows = await db`
+    const clean = instanceName.toLowerCase().trim();
+    // 1. Direct match on whatsapp_instance_name
+    let rows = await db`
       SELECT * FROM workspaces 
-      WHERE LOWER(whatsapp_instance_name) = ${instanceName.toLowerCase().trim()} 
+      WHERE LOWER(whatsapp_instance_name) = ${clean} 
       LIMIT 1
     `;
-    return (rows && rows.length > 0 ? rows[0] : null) as Workspace | null;
+    if (rows && rows.length > 0) return rows[0] as Workspace;
+
+    // 2. Check if clean instanceName is an Evolution instance UUID, name, or phone number in evolution."Instance"
+    try {
+      const evoInstances = await db`
+        SELECT name, "ownerJid" FROM evolution."Instance"
+        WHERE id = ${clean} 
+           OR LOWER(name) = ${clean} 
+           OR "ownerJid" LIKE ${`%${clean}%`}
+        LIMIT 1
+      `;
+      if (evoInstances && evoInstances.length > 0) {
+        const evoName = evoInstances[0].name.toLowerCase().trim();
+        rows = await db`
+          SELECT * FROM workspaces 
+          WHERE LOWER(whatsapp_instance_name) = ${evoName} 
+          LIMIT 1
+        `;
+        if (rows && rows.length > 0) return rows[0] as Workspace;
+      }
+    } catch {}
+
+    return null;
   } catch (err) {
     console.error("dbGetWorkspaceByInstanceName error:", err);
     return null;

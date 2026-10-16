@@ -63,6 +63,7 @@ interface ProcessMessageParams {
   docMedia?: { base64: string; mimetype: string } | null;
   documentFileName?: string;
   instanceName?: string;
+  connectedOwner?: string;
 }
 
 /**
@@ -164,7 +165,18 @@ Your role and personality:
     temperature: 0.7,
   });
 
-  await reply(aiRes.text);
+  const replyText = aiRes.text;
+  await reply(replyText);
+
+  try {
+    await dbAddGuestMessage({
+      id: `guest-asst-${Date.now()}`,
+      phone_number: replyTo,
+      sender_name: currentWs.name,
+      role: "assistant",
+      content: replyText,
+    });
+  } catch {}
 }
 
 /**
@@ -256,6 +268,7 @@ async function processMessage(params: ProcessMessageParams) {
     docMedia = null,
     documentFileName,
     instanceName = "obey",
+    connectedOwner = "",
   } = params;
 
   const lower = userText.toLowerCase();
@@ -264,10 +277,13 @@ async function processMessage(params: ProcessMessageParams) {
     replyTo = FEMI_PERSONAL_NUMBER;
   }
 
-  // Resolve Workspace by Evolution instance name
+  // Resolve Workspace by Evolution instance name or connected bot phone
   let currentWs = null;
   if (instanceName && instanceName !== "obey" && instanceName !== "default") {
     currentWs = await dbGetWorkspaceByInstanceName(instanceName);
+  }
+  if (!currentWs && connectedOwner) {
+    currentWs = await dbGetWorkspaceByInstanceName(connectedOwner);
   }
   if (!currentWs) {
     currentWs = await dbGetWorkspaceBySlug("femi-adeleke");
@@ -280,12 +296,13 @@ async function processMessage(params: ProcessMessageParams) {
     ? replyTo === FEMI_PERSONAL_NUMBER
     : replyTo.endsWith(ownerClean.slice(-10));
 
-  const isFemi = replyTo === FEMI_PERSONAL_NUMBER;
+  const isFemi = isDefaultFemi && (replyTo === FEMI_PERSONAL_NUMBER);
 
   // Helper: send reply via WhatsApp + save to DB
   async function reply(text: string) {
     const formatted = cleanWhatsAppFormatting(text);
-    await sendWhatsAppMessage(formatted, replyTo, instanceName);
+    const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
+    await sendWhatsAppMessage(formatted, replyTo, sendInstance);
     if (isOwner && isDefaultFemi) {
       try {
         await dbAddChatMessage({
@@ -757,13 +774,59 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const queryInstance = req.nextUrl.searchParams.get("instance");
-  let instanceName = queryInstance || body?.instance || body?.data?.instance || "obey";
+  // 1. URL search params (e.g. ?instance=obey-autolearn-spot)
+  let queryInstance = req.nextUrl?.searchParams?.get("instance") || "";
+  if (!queryInstance) {
+    try {
+      const parsedUrl = new URL(req.url);
+      queryInstance = parsedUrl.searchParams.get("instance") || "";
+    } catch {}
+  }
 
-  // Safeguard: Check if event sender or destination matches AutoLearn Spot's connected number (09074027451)
-  const eventSenderClean = (body?.sender || body?.destination || "").replace(/\D/g, "");
-  if (eventSenderClean.endsWith("9074027451")) {
+  // 2. Webhook destination URL sent in body (Evolution API sends destination = registered webhook URL)
+  let destInstance = "";
+  if (body?.destination && typeof body.destination === "string") {
+    try {
+      const destUrl = new URL(body.destination);
+      destInstance = destUrl.searchParams.get("instance") || "";
+    } catch {}
+    if (!destInstance && body.destination.includes("instance=obey-autolearn-spot")) {
+      destInstance = "obey-autolearn-spot";
+    }
+  }
+
+  // 3. Direct instance identifier from Evolution payload
+  const bodyInstance =
+    (typeof body?.instance === "string" ? body.instance : body?.instance?.name) ||
+    (typeof body?.instanceId === "string" ? body.instanceId : "") ||
+    (typeof body?.data?.instance === "string" ? body.data.instance : body?.data?.instance?.name) ||
+    (typeof body?.data?.instanceId === "string" ? body.data.instanceId : "") ||
+    (Array.isArray(body?.data) && (body.data[0]?.instance || body.data[0]?.instanceId)) ||
+    "";
+
+  // 4. Connected bot owner phone (the bot account receiving the message)
+  const connectedOwner = (
+    body?.sender ||
+    body?.owner ||
+    body?.data?.owner ||
+    (Array.isArray(body?.data) && body.data[0]?.owner) ||
+    ""
+  ).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+
+  let instanceName = queryInstance || destInstance || bodyInstance || "obey";
+
+  // Bulletproof mapping: If connected bot number is 09074027451 or instance hints match AutoLearn Spot
+  if (
+    connectedOwner.endsWith("9074027451") ||
+    instanceName.toLowerCase().includes("autolearn") ||
+    instanceName === "6acca55e-e17a-4116-af24-585cd0d5161b"
+  ) {
     instanceName = "obey-autolearn-spot";
+  } else if (
+    connectedOwner.endsWith("9161488564") ||
+    instanceName === "f3fd36fd-b59c-462d-863d-01eaf4c8c190"
+  ) {
+    instanceName = "obey";
   }
   const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
   if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
@@ -868,6 +931,7 @@ export async function POST(req: NextRequest) {
         docMedia,
         documentFileName: msgObj.message?.documentMessage?.fileName,
         instanceName,
+        connectedOwner,
       });
     } catch (err) {
       console.error("[WA] processMessage background task error:", err);
