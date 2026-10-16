@@ -53,10 +53,20 @@ function CallInterface() {
   const vapiRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch workspace details if biz param provided
+  // Fetch workspace details if biz param provided or saved in localStorage
   useEffect(() => {
-    if (rawBiz) {
-      fetch(`/api/obey/workspaces/${rawBiz}`)
+    let effectiveBiz = rawBiz;
+    if (!effectiveBiz && typeof window !== "undefined") {
+      try {
+        const savedBiz = localStorage.getItem("obey_current_workspace") || localStorage.getItem("current_workspace_slug");
+        if (savedBiz && savedBiz !== "femi" && savedBiz !== "femi-adeleke") {
+          effectiveBiz = savedBiz;
+        }
+      } catch {}
+    }
+
+    if (effectiveBiz) {
+      fetch(`/api/obey/workspaces/${effectiveBiz}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.workspace) {
@@ -205,20 +215,36 @@ function CallInterface() {
 
         vapiRef.current.on("error", (err: any) => {
           console.error("Vapi call error:", err);
-          const rawErr = err?.message || (typeof err === "string" ? err : "");
-          setErrorMessage(rawErr || "Voice connection interrupted. Please check your microphone and try again.");
+          const rawErr = err?.error?.message || err?.message || (typeof err === "string" ? err : "");
+          if (rawErr.toLowerCase().includes("audio") || rawErr.toLowerCase().includes("microphone") || !rawErr) {
+            setErrorMessage("Voice connection paused. Tap 'Start Voice Call' below to resume speaking with Obey.");
+          } else {
+            setErrorMessage(rawErr);
+          }
           setCallStatus("error");
         });
       }
 
-      // Explicitly prompt and ensure microphone permission before initiating WebRTC
+      // Resume AudioContext on mobile devices (required for iOS Safari and Android Chrome)
+      try {
+        if (typeof window !== "undefined") {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContextClass) {
+            const ctx = new AudioContextClass();
+            if (ctx.state === "suspended") {
+              await ctx.resume().catch(() => {});
+            }
+          }
+        }
+      } catch {}
+
+      // Ensure microphone permission without pre-killing the track on mobile
       try {
         if (typeof navigator !== "undefined" && navigator?.mediaDevices?.getUserMedia) {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStream.getTracks().forEach((t) => t.stop());
+          await navigator.mediaDevices.getUserMedia({ audio: true });
         }
       } catch (micErr: any) {
-        console.warn("[Call] Microphone permission denied:", micErr);
+        console.warn("[Call] Microphone permission issue:", micErr);
         setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser to speak with Obey.");
         setCallStatus("error");
         return;

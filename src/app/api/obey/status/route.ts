@@ -34,16 +34,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Default settings for Main Obey or Workspace
-    let auto_view_status = true;
-    let auto_comment_status = false;
+    let engagementActive = false;
     let comment_tone = "friendly";
     let comment_rate_limit = "unlimited";
     let auto_status_enabled = false;
     let auto_status_interval = 24;
 
     if (ws) {
-      auto_view_status = ws.auto_view_status !== false;
-      auto_comment_status = Boolean(ws.auto_comment_status);
+      engagementActive = Boolean(ws.auto_comment_status && ws.auto_view_status !== false);
       comment_tone = ws.comment_tone || "friendly";
       const plan = (ws.plan || "starter").toLowerCase();
       comment_rate_limit = ws.comment_rate_limit || (plan === "enterprise" || plan === "founder" || plan === "lifetime" ? "unlimited" : plan === "pro" ? "8h" : "24h");
@@ -53,10 +51,12 @@ export async function GET(req: NextRequest) {
       const v = await getSetting("AUTO_VIEW_STATUS_ENABLED");
       const c = await getSetting("AUTO_COMMENT_STATUS_ENABLED");
       const r = await getSetting("STATUS_COMMENT_RATE_LIMIT");
-      auto_view_status = v !== "false";
-      auto_comment_status = c === "true";
+      engagementActive = v === "true" && c === "true";
       comment_rate_limit = r || "unlimited";
     }
+
+    const auto_view_status = engagementActive;
+    const auto_comment_status = engagementActive;
 
     if (!targetWorkspaceId) {
       return NextResponse.json({
@@ -114,15 +114,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Database not connected" }, { status: 500 });
     }
 
+    // Unified single feature: auto_view and auto_comment are combined
+    const unifiedEngagement =
+      auto_comment_status !== undefined
+        ? Boolean(auto_comment_status)
+        : auto_view_status !== undefined
+        ? Boolean(auto_view_status)
+        : undefined;
+
     // Check if this is Main Obey settings toggle
-    const isMainObey = slug === "femi" || workspace_id === "femi" || (!slug && !workspace_id);
+    const isMainObey =
+      slug === "femi" ||
+      slug === "femi-adeleke" ||
+      workspace_id === "femi" ||
+      workspace_id === "ws_femi_default" ||
+      (!slug && !workspace_id);
 
     if (isMainObey) {
-      if (auto_view_status !== undefined) {
-        await setSetting("AUTO_VIEW_STATUS_ENABLED", String(auto_view_status));
-      }
-      if (auto_comment_status !== undefined) {
-        await setSetting("AUTO_COMMENT_STATUS_ENABLED", String(auto_comment_status));
+      if (unifiedEngagement !== undefined) {
+        await setSetting("AUTO_VIEW_STATUS_ENABLED", String(unifiedEngagement));
+        await setSetting("AUTO_COMMENT_STATUS_ENABLED", String(unifiedEngagement));
       }
       if (comment_tone) {
         await setSetting("COMMENT_TONE", String(comment_tone));
@@ -130,14 +141,29 @@ export async function POST(req: NextRequest) {
       if (comment_rate_limit !== undefined) {
         await setSetting("STATUS_COMMENT_RATE_LIMIT", String(comment_rate_limit));
       }
+
+      // Also sync ws_femi_default in workspaces table
+      try {
+        await sql`
+          UPDATE workspaces
+          SET auto_view_status = COALESCE(${unifiedEngagement}, auto_view_status),
+              auto_comment_status = COALESCE(${unifiedEngagement}, auto_comment_status),
+              comment_tone = COALESCE(${comment_tone}, comment_tone),
+              comment_rate_limit = COALESCE(${comment_rate_limit}, comment_rate_limit),
+              updated_at = NOW()
+          WHERE id = 'ws_femi_default' OR LOWER(slug) IN ('femi', 'femi-adeleke')
+        `;
+      } catch (e) {
+        console.warn("[Status API] ws_femi_default update error:", e);
+      }
     }
 
     // Lookup workspace
     let ws: any = null;
-    if (workspace_id && workspace_id !== "femi") {
+    if (workspace_id && workspace_id !== "femi" && workspace_id !== "ws_femi_default") {
       const wsRows = await sql`SELECT * FROM workspaces WHERE id = ${workspace_id} LIMIT 1`;
       if (wsRows && wsRows.length > 0) ws = wsRows[0];
-    } else if (slug && slug !== "femi") {
+    } else if (slug && slug !== "femi" && slug !== "femi-adeleke") {
       const wsRows = await sql`SELECT * FROM workspaces WHERE LOWER(slug) = ${slug.toLowerCase().trim()} LIMIT 1`;
       if (wsRows && wsRows.length > 0) ws = wsRows[0];
     }
@@ -148,8 +174,8 @@ export async function POST(req: NextRequest) {
         UPDATE workspaces
         SET auto_status_enabled = COALESCE(${auto_status_enabled}, auto_status_enabled),
             auto_status_interval = COALESCE(${auto_status_interval}, auto_status_interval),
-            auto_view_status = COALESCE(${auto_view_status}, auto_view_status),
-            auto_comment_status = COALESCE(${auto_comment_status}, auto_comment_status),
+            auto_view_status = COALESCE(${unifiedEngagement}, auto_view_status),
+            auto_comment_status = COALESCE(${unifiedEngagement}, auto_comment_status),
             comment_tone = COALESCE(${comment_tone}, comment_tone),
             comment_rate_limit = COALESCE(${comment_rate_limit}, comment_rate_limit),
             updated_at = NOW()

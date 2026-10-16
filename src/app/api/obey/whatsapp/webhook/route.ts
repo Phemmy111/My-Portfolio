@@ -16,6 +16,7 @@ import {
   dbUpsertWorkspaceLead,
   dbGetWorkspaceLeads,
   dbGetWorkspaceBySlug,
+  dbGetWorkspaceById,
   dbGetWorkspaceByInstanceName,
   dbGetWorkspaceSettings,
   dbRecordStatusComment,
@@ -168,6 +169,8 @@ async function handleObeyBusinessOwnerTurn(params: {
   const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
   const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
   const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
+  const voiceCallLink = `https://femiadelekeportfolio.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}`;
+  const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|can (?:we|i) call)\b/i.test(userText);
 
   const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
 You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
@@ -177,6 +180,12 @@ ${businessBio}
 
 Product & Service Catalog:
 ${JSON.stringify(catalog)}
+
+VOICE CALL CAPABILITY:
+- You have an active, 100% free live 24/7 WebRTC voice calling capability powered by Obey!
+- Your direct voice call hotline link is: ${voiceCallLink}
+- When Boss asks to call, speak on the phone, hop on a voice call, or asks for your voice call link, ALWAYS invite them warmly and provide this exact link: ${voiceCallLink}
+- NEVER say you cannot speak or don't have a voice calling feature! You can speak live via WebRTC!
 
 Your role and personality:
 - You are their dedicated business manager for "${currentWs.name}".
@@ -193,7 +202,10 @@ Your role and personality:
     temperature: 0.7,
   });
 
-  const replyText = aiRes.text;
+  let replyText = aiRes.text;
+  if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
+    replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
+  }
   await reply(replyText);
 
   try {
@@ -265,6 +277,9 @@ async function handleObeyBusinessCustomerTurn(params: {
     }
   }
 
+  const voiceCallLink = `https://femiadelekeportfolio.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}&name=${encodeURIComponent(customerName)}`;
+  const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|speak to (?:you|someone)|can (?:we|i) call)\b/i.test(userText);
+
   const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".
 You are chatting with ${customerName}.
 
@@ -297,7 +312,13 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - If they ask about something you don't do (e.g. cash payouts), answer simply and directly: "No, we don't distribute cash payouts. We provide training and learning packages to help you build skills."
    - Keep emojis tasteful and minimal (0-2 max per message, never excessive).
 
-5. STRICT BRAND ISOLATION:
+5. LIVE VOICE CALL HOTLINE:
+   - You HAVE an active 24/7 WebRTC Live Voice Hotline where customers can speak directly with you over audio!
+   - Your direct hotline link is: ${voiceCallLink}
+   - When a customer asks to talk on the phone, hop on a call, or asks for your voice call link, ALWAYS invite them warmly and share the link: "You can speak with me directly on a live voice call right now! Tap here to start: ${voiceCallLink}"
+   - NEVER say you are only text-based or don't have a phone/calling feature!
+
+6. STRICT BRAND ISOLATION:
    - You represent "${currentWs.name}" ONLY. NEVER mention Femi Adeleke, software engineering portfolios, Upwork proposals, or tech resumes unless the business itself is Femi's portfolio.`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
@@ -308,7 +329,10 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
     temperature: 0.5,
   });
 
-  const replyText = aiRes.text;
+  let replyText = aiRes.text;
+  if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
+    replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
+  }
   await reply(replyText);
 
   // Save assistant reply to guest DB
@@ -963,24 +987,19 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
-  // remoteJidAlt provides the actual phone JID (e.g. 2348120934828@s.whatsapp.net) when remoteJid is an LID
-  const senderJid = msgObj.key?.remoteJidAlt || msgObj.key?.remoteJid || "";
+  // 1. Detect WhatsApp Status Stories (must inspect key.remoteJid directly before any LID/remoteJidAlt rewriting)
+  const rawRemoteJid = msgObj.key?.remoteJid || msgObj.remoteJid || "";
+  const isStatusBroadcast =
+    rawRemoteJid === "status@broadcast" ||
+    rawRemoteJid.endsWith("@broadcast") ||
+    rawRemoteJid.includes("status@broadcast") ||
+    rawRemoteJid === "status";
 
-  // Ignore regular group chats
-  if (senderJid.endsWith("@g.us")) {
-    return NextResponse.json({ ok: true });
-  }
-
-  // Handle WhatsApp Status Stories (senderJid is "status@broadcast" or ends with "@broadcast")
-  if (senderJid.endsWith("@broadcast")) {
-    // Only process status@broadcast
-    if (senderJid !== "status@broadcast" && !senderJid.includes("status")) {
-      return NextResponse.json({ ok: true });
-    }
-
+  // Handle WhatsApp Status Stories
+  if (isStatusBroadcast) {
     after(async () => {
       try {
-        const participantJid = msgObj.key?.participant || msgObj.participant || "";
+        const participantJid = msgObj.key?.participant || msgObj.participant || msgObj.key?.remoteJidAlt || "";
         const posterPhone = participantJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
 
         // 1. Identify workspace / instance
@@ -988,31 +1007,41 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
         if (instanceName && instanceName !== "obey" && instanceName !== "default") {
           currentWs = await dbGetWorkspaceByInstanceName(instanceName);
         }
+        if (!currentWs) {
+          currentWs = await dbGetWorkspaceBySlug("femi-adeleke");
+        }
+        if (!currentWs) {
+          currentWs = await dbGetWorkspaceById("ws_femi_default");
+        }
 
-        // 2. Check settings
-        let autoViewEnabled = true;
-        let autoCommentEnabled = false;
+        // 2. Check settings (Unified single feature: Viewing & AI Commenting are active together)
+        let engagementEnabled = false;
         let commentTone = "friendly";
 
         if (currentWs) {
-          autoViewEnabled = currentWs.auto_view_status !== false;
-          autoCommentEnabled = Boolean(currentWs.auto_comment_status);
+          engagementEnabled = Boolean(currentWs.auto_comment_status && currentWs.auto_view_status !== false);
           commentTone = currentWs.comment_tone || "friendly";
         } else {
           const viewSetting = await getSetting("AUTO_VIEW_STATUS_ENABLED");
           const commentSetting = await getSetting("AUTO_COMMENT_STATUS_ENABLED");
-          autoViewEnabled = viewSetting !== "false";
-          autoCommentEnabled = commentSetting === "true";
+          engagementEnabled = viewSetting === "true" && commentSetting === "true";
+          commentTone = (await getSetting("COMMENT_TONE")) || "friendly";
+        }
+
+        // If unified status engagement is disabled, DO NOT view and DO NOT comment
+        if (!engagementEnabled) {
+          console.log(`[WA Status] Status engagement is OFF for ${instanceName}. Ignoring status story.`);
+          return;
         }
 
         // 3. Auto-View Status (Mark as Read in WhatsApp)
-        if (autoViewEnabled && msgObj.key?.id) {
+        if (msgObj.key?.id) {
           await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, participantJid);
           console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
         }
 
         // 4. AI Status Commenting
-        if (autoCommentEnabled && posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
+        if (posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
           // Guard: Don't comment on our own number or Femi's number
           if (posterPhone === FEMI_PERSONAL_NUMBER || (currentWs?.owner_phone && posterPhone.endsWith(currentWs.owner_phone.slice(-10)))) {
             return;
@@ -1122,6 +1151,15 @@ Output ONLY the comment text.`,
     });
 
     return NextResponse.json({ ok: true, statusHandled: true });
+  }
+
+  // 2. Direct Messages & Chat routing
+  // remoteJidAlt provides the actual phone JID (e.g. 2348120934828@s.whatsapp.net) when remoteJid is an LID
+  const senderJid = msgObj.key?.remoteJidAlt || msgObj.key?.remoteJid || "";
+
+  // Ignore regular group chats
+  if (senderJid.endsWith("@g.us")) {
+    return NextResponse.json({ ok: true });
   }
 
   // 1. Explicitly trigger blue ticks (Read receipt) for the sender

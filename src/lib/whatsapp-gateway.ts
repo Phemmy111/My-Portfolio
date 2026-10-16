@@ -420,35 +420,76 @@ export async function getEvolutionPairingCode(
       return { success: false, error: "Please provide a valid phone number with country code" };
     }
 
-    // 1. Try requesting connect with phone number directly
-    let res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+    const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/obey/whatsapp/webhook`
+      : "https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook";
+
+    // 1. Check if instance already exists
+    let stateRes = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {
       headers: { apikey: evoKey },
-    });
-    let data = await res.json();
+    }).catch(() => null);
+    let stateData = stateRes && stateRes.ok ? await stateRes.json() : null;
+    const instanceExists = Boolean(stateData?.instance);
 
-    let code = data?.pairingCode || (typeof data?.code === "string" && data.code.length <= 12 ? data.code : null);
-
-    // 2. If pairingCode was null (e.g. instance was previously initialized with qrcode: true),
-    // we recreate the instance with qrcode: false and number: cleaned
-    if (!code) {
-      await deleteEvolutionInstance(instanceName);
-      await new Promise((r) => setTimeout(r, 1200));
+    // 2. If instance doesn't exist, create it immediately in number/pairing mode!
+    if (!instanceExists) {
+      console.log(`[Evolution] Instance ${instanceName} does not exist. Creating instance...`);
       await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
-      await new Promise((r) => setTimeout(r, 1500));
+      await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+      // Wait for Baileys socket to initialize
+      await new Promise((r) => setTimeout(r, 2000));
+    }
 
-      // Retry connect with number up to 3 times
-      for (let attempt = 0; attempt < 3; attempt++) {
-        res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+    // 3. Request pairing code with retry polling
+    let code: string | null = null;
+    let lastData: any = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+        headers: { apikey: evoKey },
+      });
+      lastData = await res.json();
+      code = lastData?.pairingCode || (typeof lastData?.code === "string" && lastData.code.length <= 12 ? lastData.code : null);
+      if (code && typeof code === "string" && code.length >= 6 && code.length <= 12) {
+        break;
+      }
+
+      // If instance was missing or error on connect, create it if not created yet
+      if (
+        lastData?.message?.includes?.("does not exist") ||
+        (Array.isArray(lastData?.message) && lastData.message[0]?.includes?.("does not exist"))
+      ) {
+        await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
+        await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+      }
+
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    // 4. If code was still not returned, recreate instance and make final attempts
+    if (!code) {
+      console.log(`[Evolution] No pairing code on initial attempts for ${instanceName}. Recreating instance...`);
+      await deleteEvolutionInstance(instanceName).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1000));
+      await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
+      await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+      await new Promise((r) => setTimeout(r, 2000));
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
           headers: { apikey: evoKey },
         });
-        data = await res.json();
-        code = data?.pairingCode || (typeof data?.code === "string" && data.code.length <= 12 ? data.code : null);
+        lastData = await res.json();
+        code = lastData?.pairingCode || (typeof lastData?.code === "string" && lastData.code.length <= 12 ? lastData.code : null);
         if (code && typeof code === "string" && code.length >= 6 && code.length <= 12) {
           break;
         }
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 1500));
       }
     }
+
+    // Always ensure webhook is attached
+    setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
 
     if (code && typeof code === "string") {
       return { success: true, pairingCode: code };
@@ -456,7 +497,7 @@ export async function getEvolutionPairingCode(
 
     return {
       success: false,
-      error: data?.response?.message || data?.message || data?.error || "Failed to generate pairing code. Please try again.",
+      error: lastData?.response?.message || lastData?.message || lastData?.error || "Failed to generate pairing code. Please try again.",
     };
   } catch (err: any) {
     console.error("[Evolution] getEvolutionPairingCode error:", err);

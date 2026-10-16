@@ -44,6 +44,10 @@ import {
   Smartphone,
   QrCode,
   Eye,
+  ChevronDown,
+  Layers,
+  CreditCard,
+  BookOpen,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -412,15 +416,18 @@ function ControlRoomContent() {
       const data = await res.json();
       if (data.workspace) {
         setCurrentWs(data.workspace);
+        try {
+          localStorage.setItem("obey_current_workspace", data.workspace.slug);
+        } catch {}
         setSettings(data.settings);
         setRules(data.rules || []);
         setLeads(data.leads || []);
         setCallLogs(data.callLogs || []);
         setStatuses(data.statuses || []);
         setAutoStatusEnabled(data.workspace.auto_status_enabled || false);
-        setAutoStatusInterval(data.workspace.auto_status_interval || "daily_morning");
-        setAutoViewStatus(data.workspace.auto_view_status !== false);
-        setAutoCommentStatus(Boolean(data.workspace.auto_comment_status));
+        const isEngagementActive = Boolean(data.workspace.auto_comment_status && data.workspace.auto_view_status !== false);
+        setAutoViewStatus(isEngagementActive);
+        setAutoCommentStatus(isEngagementActive);
         setCommentTone(data.workspace.comment_tone || "friendly");
         setCommentRateLimit(data.workspace.comment_rate_limit || (data.workspace.slug === "femi" ? "unlimited" : "plan_based"));
         if (data.workspace.whatsapp_status) {
@@ -670,30 +677,11 @@ function ControlRoomContent() {
     }
   };
 
-  const handleToggleAutoView = async () => {
+  const handleToggleStatusEngagement = async () => {
     if (!currentWs) return;
-    const nextVal = !autoViewStatus;
+    const isCurrentlyActive = Boolean(autoCommentStatus && autoViewStatus);
+    const nextVal = !isCurrentlyActive;
     setAutoViewStatus(nextVal);
-    try {
-      await fetch("/api/obey/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspace_id: currentWs.id,
-          slug: currentWs.slug,
-          auto_view_status: nextVal,
-        }),
-      });
-      setStatusSuccessMsg(nextVal ? "👁️ Auto-View Statuses enabled! Obey will view contacts' status stories." : "Auto-View Statuses disabled.");
-      setTimeout(() => setStatusSuccessMsg(""), 3500);
-    } catch (e) {
-      console.warn("Toggle auto-view error:", e);
-    }
-  };
-
-  const handleToggleAutoComment = async () => {
-    if (!currentWs) return;
-    const nextVal = !autoCommentStatus;
     setAutoCommentStatus(nextVal);
     try {
       await fetch("/api/obey/status", {
@@ -702,13 +690,18 @@ function ControlRoomContent() {
         body: JSON.stringify({
           workspace_id: currentWs.id,
           slug: currentWs.slug,
+          auto_view_status: nextVal,
           auto_comment_status: nextVal,
         }),
       });
-      setStatusSuccessMsg(nextVal ? "💬 AI Status Commenting enabled! Obey will warmly comment under contacts' stories." : "AI Status Commenting disabled.");
+      setStatusSuccessMsg(
+        nextVal
+          ? "👁️💬 Status Viewing & AI Commenting enabled! Obey will view and engage with contacts' stories."
+          : "Status Viewing & AI Commenting disabled."
+      );
       setTimeout(() => setStatusSuccessMsg(""), 3500);
     } catch (e) {
-      console.warn("Toggle auto-comment error:", e);
+      console.warn("Toggle status engagement error:", e);
     }
   };
 
@@ -911,6 +904,30 @@ function ControlRoomContent() {
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  const handleInsertBioTemplate = (templateType: string) => {
+    if (!settings) return;
+    let bio = "";
+    if (templateType === "services") {
+      bio = `${currentWs?.name || "Our business"} is a premier provider of professional services, specialized consulting, and dedicated client solutions. Operating Monday to Saturday from 8:00 AM to 6:00 PM. Our mission is to deliver fast, reliable, high-impact results tailored to each client's unique needs.`;
+    } else if (templateType === "retail") {
+      bio = `${currentWs?.name || "Our company"} is a trusted commercial brand offering authentic products with express delivery nationwide. We pride ourselves on transparent pricing, top quality, and 24/7 dedicated customer service.`;
+    } else if (templateType === "training") {
+      bio = `${currentWs?.name || "Our academy"} empowers individuals and professionals with industry-leading training, hands-on mentorship, practical workshops, and high-income skill development.`;
+    }
+    setSettings({ ...settings, business_bio: bio });
+    setStatusSuccessMsg("✨ Bio template applied! Review and click Save Brain Settings.");
+    setTimeout(() => setStatusSuccessMsg(""), 3500);
+  };
+
+  const handleAppendCatalog = (snippet: string) => {
+    if (!settings) return;
+    const current = (settings.catalog_summary || "").trim();
+    const updated = current ? `${current}\n${snippet}` : snippet;
+    setSettings({ ...settings, catalog_summary: updated });
+    setStatusSuccessMsg("➕ Format snippet added! Edit prices and click Save Brain Settings.");
+    setTimeout(() => setStatusSuccessMsg(""), 3500);
   };
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
@@ -1127,196 +1144,184 @@ function ControlRoomContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-30 px-4 md:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/20 shrink-0">
-            <Image
-              src="/obey-logo.jpg"
-              alt="Obey Logo"
-              width={40}
-              height={40}
-              className="w-full h-full object-cover"
-              priority
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg tracking-tight text-white">
-                Obey Business
-              </span>
-              <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full uppercase tracking-wider">
-                Control Room
-              </span>
+    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-white/20 selection:text-white pb-24 md:pb-12">
+      {/* Top Header - Vercel Minimalist Style */}
+      <header className="border-b border-zinc-800 bg-black/85 backdrop-blur-md sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
+        {/* Left: Breadcrumbs + Project Switcher */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800 shrink-0 bg-zinc-900 shadow-sm">
+              <Image
+                src="/obey-logo.jpg"
+                alt="Obey Logo"
+                width={32}
+                height={32}
+                className="w-full h-full object-cover"
+                priority
+              />
             </div>
-            <p className="text-xs text-slate-400">
-              Multi-Tenant AI WhatsApp & Voice Hotline Automation
-            </p>
-          </div>
-        </div>
+          </Link>
 
-        {/* Workspace Switcher & Action Buttons */}
-        <div className="flex items-center gap-3">
-          {workspaces.length > 0 && (
-            <div className="relative">
+          <span className="text-zinc-600 font-mono text-sm hidden sm:inline">/</span>
+
+          {workspaces.length > 0 && currentWs && (
+            <div className="relative flex items-center">
               <select
                 value={currentWs?.slug || ""}
                 onChange={(e) => handleSelectWorkspace(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-slate-200 text-xs sm:text-sm rounded-lg px-3 py-2 pr-8 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer appearance-none font-medium"
+                className="bg-transparent hover:bg-zinc-900 text-white font-semibold text-xs sm:text-sm rounded-lg pl-1.5 sm:pl-2 pr-7 py-1.5 focus:outline-none cursor-pointer appearance-none truncate max-w-[130px] sm:max-w-[220px] transition border border-transparent hover:border-zinc-800"
               >
                 {workspaces.map((w) => (
-                  <option key={w.id} value={w.slug}>
+                  <option key={w.id} value={w.slug} className="bg-zinc-950 text-zinc-200">
                     {w.slug === "femi-adeleke"
-                      ? "⭐ Main Obey (Permanent Flagship)"
-                      : `🏢 ${w.name} (${w.plan || "Starter"})`}
+                      ? "⭐ Main Obey"
+                      : `${w.name} (${w.plan || "Starter"})`}
                   </option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                <Building2 className="w-4 h-4" />
+              <div className="pointer-events-none absolute right-1.5 flex items-center text-zinc-400">
+                <ChevronDown className="w-3.5 h-3.5" />
               </div>
             </div>
           )}
 
+          {/* Vercel-style Plan Badge */}
+          {currentWs && (
+            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 capitalize">
+              {currentWs.plan || "Starter"}
+            </span>
+          )}
+        </div>
+
+        {/* Right: Status Pill & Actions */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Live Status indicator */}
+          <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="hidden sm:inline font-medium">Live 24/7</span>
+          </div>
+
           <button
             onClick={handleAddBusinessClick}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/10 cursor-pointer"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition shadow-sm"
+            title="Add Business Workspace"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Business</span>
-            {currentWs?.plan !== "enterprise" && currentWs?.plan !== "lifetime" && (
-              <span className="text-[10px] bg-slate-950/20 text-slate-950 font-bold px-1.5 py-0.2 rounded uppercase">
-                Enterprise
-              </span>
-            )}
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Add Business</span>
           </button>
 
           {hotlineUrl && (
             <Link
               href={hotlineUrl}
               target="_blank"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs sm:text-sm transition-all border border-slate-700"
+              className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white text-xs font-medium border border-zinc-800 transition flex items-center gap-1.5"
+              title="Test Voice Hotline"
             >
-              <PhoneCall className="w-4 h-4 text-emerald-400" />
-              <span>Open Hotline</span>
+              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">Hotline</span>
             </Link>
           )}
 
-          <div className="pl-2 border-l border-slate-800 flex items-center gap-2">
+          <div className="pl-1 sm:pl-2 border-l border-zinc-800 flex items-center gap-2">
             <UserButton />
-            {sessionUser && !user && (
-              <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span className="max-w-[130px] truncate">{sessionUser.ownerName || sessionUser.phone || "Owner"}</span>
-              </span>
-            )}
             <button
               onClick={handleLogout}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
-              title="Log out of Control Room"
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white text-xs font-medium border border-zinc-800 transition"
+              title="Log out"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">Log Out</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-6">
-        {/* Workspace Brand Ribbon */}
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-5 space-y-5">
+        {/* Workspace Brand Ribbon - Vercel Project Header Style */}
         {currentWs && (
-          <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2.5">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
                   <span>{currentWs.name}</span>
                   {currentWs.slug === "femi-adeleke" && (
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
-                      ⭐ Main Obey · Permanent Flagship
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                      ⭐ Main Obey
                     </span>
                   )}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 capitalize">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-600/20 text-blue-300 border border-blue-500/30 capitalize">
                   {currentWs.plan || "Starter"} Plan
                 </span>
                 {currentWs.subscription_status === "trial" ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-amber-400" />
                     <span>
-                      7-Day Free Trial (
-                      {currentWs.trial_ends_at
-                        ? `${Math.max(
-                            0,
-                            Math.ceil(
-                              (new Date(currentWs.trial_ends_at).getTime() - Date.now()) /
-                                (1000 * 60 * 60 * 24)
-                            )
-                          )} days left`
-                        : "Active"}
-                      )
+                      Trial ({currentWs.trial_ends_at ? `${Math.max(0, Math.ceil((new Date(currentWs.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d left` : "Active"})
                     </span>
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>Active Subscription</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
                   </span>
                 )}
-                <span className="flex items-center gap-1 text-xs text-emerald-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Live 24/7
-                </span>
               </div>
-              <p className="text-xs sm:text-sm text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span>Owner: <strong className="text-slate-300">{currentWs.owner_name}</strong></span>
-                <span>Phone: <strong className="text-slate-300">+{currentWs.owner_phone}</strong></span>
-                <span>Slug: <code className="text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-800/40 font-mono text-xs">{currentWs.slug}</code></span>
+              <p className="text-xs text-zinc-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>Owner: <strong className="text-zinc-200">{currentWs.owner_name}</strong></span>
+                <span>Hotline: <strong className="text-zinc-200 font-mono">+{currentWs.owner_phone}</strong></span>
+                <span>Slug: <code className="text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 font-mono text-[11px]">{currentWs.slug}</code></span>
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0">
               <button
                 onClick={copyHotlineLink}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-200 text-xs font-medium border border-zinc-800 transition"
               >
-                {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                <span>{copiedLink ? "Link Copied!" : "Copy Call Hotline"}</span>
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                <span>{copiedLink ? "Copied!" : "Hotline Link"}</span>
               </button>
               <a
                 href={`https://wa.me/${currentWs.owner_phone}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-medium border border-emerald-500/30 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-500/30 transition"
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-3.5 h-3.5" />
                 <span>Test WhatsApp</span>
               </a>
+              <button
+                onClick={() => setActiveTab("brain")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-xs font-medium border border-zinc-800 transition"
+              >
+                <Settings className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Settings Room</span>
+              </button>
             </div>
           </div>
         )}
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar">
+        {/* Vercel-Style Filter Pills / Tab Navigation */}
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3 overflow-x-auto no-scrollbar">
           {[
-            { id: "overview", label: "Overview & Metrics", icon: TrendingUp },
+            { id: "overview", label: "Overview", icon: TrendingUp },
             {
               id: "whatsapp",
               label: "WhatsApp Connect",
               icon: MessageSquare,
               badge: waState === "connected" ? "Live" : "Scan QR",
+              badgeColor: waState === "connected" ? "text-emerald-400 bg-emerald-950/60 border-emerald-800/50" : "text-amber-300 bg-amber-950/50 border-amber-800/40",
             },
             {
               id: "status",
-              label: "Status Automator",
+              label: "Status Stories",
               icon: Radio,
-              badge: "AI",
+              badge: autoCommentStatus ? "Auto-Comment" : undefined,
             },
-            { id: "brain", label: "AI Brain & Catalog", icon: Sparkles },
+            { id: "brain", label: "Settings Room", icon: Sparkles, highlight: true },
             { id: "rules", label: "Keyword Triggers", icon: Zap, badge: rules.length },
-            { id: "leads", label: "Leads CRM", icon: Users, badge: leads.length },
-            { id: "hotline", label: "Voice Hotline & Embed", icon: PhoneCall },
+            { id: "leads", label: "CRM Leads", icon: Users, badge: leads.length },
+            { id: "hotline", label: "Voice Hotline", icon: PhoneCall },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1324,20 +1329,20 @@ function ControlRoomContent() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
                   isActive
-                    ? "bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-850"
+                    ? "bg-white text-black font-semibold border-white shadow-sm"
+                    : "bg-zinc-900/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850 border-zinc-800"
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-black" : tab.highlight ? "text-amber-400" : "text-zinc-400"}`} />
                 <span>{tab.label}</span>
                 {tab.badge !== undefined && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
                       isActive
-                        ? "bg-slate-950/20 text-slate-950 font-extrabold"
-                        : "bg-slate-800 text-slate-400"
+                        ? "bg-zinc-200 text-black border-zinc-300"
+                        : tab.badgeColor || "bg-zinc-800 text-zinc-400 border-zinc-700/60"
                     }`}
                   >
                     {tab.badge}
@@ -2607,84 +2612,59 @@ function ControlRoomContent() {
                 </div>
 
                 {/* Autonomous Status Engagement Suite */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <div className="border-b border-slate-800 pb-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
+                  <div className="border-b border-zinc-800 pb-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                      <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
                         <Eye className="w-4 h-4 text-emerald-400" />
-                        Status Viewing & Commenting
+                        Status Viewing & AI Commenting
                       </h3>
                       <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                        autoViewStatus || autoCommentStatus
+                        autoViewStatus && autoCommentStatus
                           ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
-                          : "bg-slate-800 text-slate-400 border-slate-700"
+                          : "bg-zinc-900 text-zinc-400 border-zinc-800"
                       }`}>
-                        {autoViewStatus || autoCommentStatus ? "Active" : "Off"}
+                        {autoViewStatus && autoCommentStatus ? "Active" : "Off"}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Regulate whether Obey automatically views and comments under your contacts' WhatsApp status stories.
+                    <p className="text-[11px] text-zinc-400 mt-1">
+                      Regulate whether Obey automatically views contacts&apos; WhatsApp status stories and posts intelligent, warm reactions to keep your business visible.
                     </p>
                   </div>
 
                   <div className="space-y-4">
-                    {/* Toggle 1: Auto-View Statuses */}
-                    <div className="flex items-center justify-between p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
+                    {/* Unified Single Toggle: Viewing & Commenting Combined */}
+                    <div className="flex items-center justify-between p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
                       <div className="space-y-0.5 pr-3">
                         <div className="flex items-center gap-2">
-                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-xs font-semibold text-white">Auto-View Stories</span>
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-xs font-semibold text-white">Auto-View & AI Status Commenting</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 leading-tight">
-                          Automatically view contacts' statuses in real-time so your business/number stays visible in their viewers list.
+                        <p className="text-[11px] text-zinc-400 leading-tight">
+                          Automatically view contacts&apos; status stories in real-time and post warm, supportive reactions (rate-limited to keep your account safe and natural).
                         </p>
                       </div>
                       <button
                         type="button"
-                        onClick={handleToggleAutoView}
+                        onClick={handleToggleStatusEngagement}
                         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                          autoViewStatus ? "bg-emerald-500" : "bg-slate-800"
+                          autoViewStatus && autoCommentStatus ? "bg-emerald-500" : "bg-zinc-800"
                         }`}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            autoViewStatus ? "translate-x-6" : "translate-x-1"
+                            autoViewStatus && autoCommentStatus ? "translate-x-6" : "translate-x-1"
                           }`}
                         />
                       </button>
                     </div>
 
-                    {/* Toggle 2: AI Status Commenting */}
-                    <div className="space-y-3 p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5 pr-3">
-                          <div className="flex items-center gap-2">
-                            <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-xs font-semibold text-white">AI Status Commenting</span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 leading-tight">
-                            Intelligently post warm, uplifting 1-sentence reactions under contacts' status stories (smart rate-limited to 1x every 12h per person).
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleToggleAutoComment}
-                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                            autoCommentStatus ? "bg-emerald-500" : "bg-slate-800"
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              autoCommentStatus ? "translate-x-6" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                      </div>
-
-                      {/* Comment Tone Selector (when commenting is enabled) */}
-                      {autoCommentStatus && (
-                        <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                          <label className="block text-[11px] font-medium text-slate-400">
+                    {/* Status Engagement Options (only shown when enabled) */}
+                    {autoViewStatus && autoCommentStatus ? (
+                      <>
+                        {/* Comment Tone Selector */}
+                        <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                          <label className="block text-[11px] font-medium text-zinc-400">
                             Comment Personality / Tone:
                           </label>
                           <div className="grid grid-cols-3 gap-1.5">
@@ -2699,8 +2679,8 @@ function ControlRoomContent() {
                                 onClick={() => handleSetCommentTone(t.id)}
                                 className={`py-1.5 px-2 rounded-lg text-[10px] font-semibold border transition ${
                                   commentTone === t.id
-                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                    : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                    ? "bg-white text-black border-white shadow-sm font-bold"
+                                    : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
                                 }`}
                               >
                                 {t.label}
@@ -2708,11 +2688,9 @@ function ControlRoomContent() {
                             ))}
                           </div>
                         </div>
-                      )}
 
-                      {/* Rate Limiting Controls */}
-                      {autoCommentStatus && (
-                        <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                        {/* Rate Limiting Controls */}
+                        <div className="pt-2.5 border-t border-zinc-800 space-y-2">
                           {currentWs.slug === "femi" || currentWs.id === "femi" ? (
                             /* Main Obey - Custom / Unlimited Rate Limiting */
                             <div className="space-y-1.5">
@@ -2725,7 +2703,7 @@ function ControlRoomContent() {
                                   {commentRateLimit === "unlimited" ? "🚀 Unlimited Active" : `Every ${commentRateLimit}`}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-400 leading-tight">
+                              <p className="text-[11px] text-zinc-400 leading-tight">
                                 Pick how frequently Obey reacts to contacts&apos; status stories. Choose <strong>Unlimited</strong> to comment on all statuses (with a 2-min anti-spam safety debounce).
                               </p>
                               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
@@ -2743,7 +2721,7 @@ function ControlRoomContent() {
                                     className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${
                                       commentRateLimit === r.id
                                         ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/20"
-                                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                        : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
                                     }`}
                                   >
                                     {r.label}
@@ -2777,7 +2755,7 @@ function ControlRoomContent() {
                                     className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${
                                       commentRateLimit === r.id
                                         ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                        : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white"
                                     }`}
                                   >
                                     {r.label}
@@ -2787,7 +2765,7 @@ function ControlRoomContent() {
                             </div>
                           ) : currentWs.plan === "pro" ? (
                             /* Pro Plan - 8h cooldown badge */
-                            <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-1.5">
+                            <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                                   <Zap className="w-3.5 h-3.5 text-emerald-400" />
@@ -2797,11 +2775,11 @@ function ControlRoomContent() {
                                   1 Comment / 8 hrs (Max 35/day)
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-400 leading-tight">
+                              <p className="text-[11px] text-zinc-400 leading-tight">
                                 Your Pro plan allows high-frequency status engagement with a smart 8-hour cooldown per contact.
                               </p>
                               <div className="pt-1 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400">Want 100% Unlimited status commenting?</span>
+                                <span className="text-zinc-400">Want 100% Unlimited status commenting?</span>
                                 <button
                                   type="button"
                                   onClick={() => handleCheckoutPlan("enterprise")}
@@ -2813,7 +2791,7 @@ function ControlRoomContent() {
                             </div>
                           ) : (
                             /* Starter Plan - 24h cooldown badge */
-                            <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-1.5">
+                            <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                                   <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
@@ -2823,11 +2801,11 @@ function ControlRoomContent() {
                                   1 Comment / 24 hrs (Max 10/day)
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-400 leading-tight">
+                              <p className="text-[11px] text-zinc-400 leading-tight">
                                 Starter workspaces are limited to 1 comment per contact every 24 hours to protect your WhatsApp number from spam flags.
                               </p>
                               <div className="pt-1 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400">Need faster engagement or unlimited comments?</span>
+                                <span className="text-zinc-400">Need faster engagement or unlimited comments?</span>
                                 <button
                                   type="button"
                                   onClick={() => handleCheckoutPlan("pro")}
@@ -2839,51 +2817,93 @@ function ControlRoomContent() {
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </>
+                    ) : (
+                      <div className="p-3.5 bg-zinc-900/30 border border-zinc-800/60 rounded-xl text-center">
+                        <p className="text-[11px] text-zinc-500">
+                          Status viewing and AI commenting are currently inactive. Obey will neither view nor comment on any contact stories.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Published Stories Log */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-400" />
-                      Published Stories Log ({statuses.length})
-                    </h3>
+                {/* Published Stories Log - Vercel Deployments Style */}
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                    <div>
+                      <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                        Status Broadcast Deployments ({statuses.length})
+                      </h3>
+                      <p className="text-[11px] text-zinc-400">
+                        Live stories deployed to your WhatsApp Status audience.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                      <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-2.5 py-1 rounded-md font-mono">
+                        Author: Obey AI
+                      </span>
+                      <span className="text-[10px] bg-blue-600/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
+                        Production
+                      </span>
+                    </div>
                   </div>
 
                   {statuses.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 text-xs">
-                      No status stories published yet. Compose your first status on the left!
+                    <div className="p-8 text-center text-zinc-500 text-xs space-y-2 border border-dashed border-zinc-800/80 rounded-xl">
+                      <Radio className="w-8 h-8 mx-auto text-zinc-600" />
+                      <p>No status stories published yet. Compose your first status broadcast on the left!</p>
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                      {statuses.slice(0, 10).map((st, i) => (
+                    <div className="divide-y divide-zinc-800/60 max-h-96 overflow-y-auto pr-1">
+                      {statuses.slice(0, 15).map((st, i) => (
                         <div
                           key={st.id || i}
-                          className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5 text-xs"
+                          className="py-3 px-2 sm:px-3 hover:bg-zinc-900/40 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                         >
-                          <div className="flex items-center justify-between text-[10px] text-slate-400">
-                            <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                              <CheckCircle2 className="w-3 h-3" /> Published
-                            </span>
-                            <span>{st.posted_at ? new Date(st.posted_at).toLocaleString() : "Just now"}</span>
-                          </div>
-                          {st.media_url && (
-                            <div className="rounded-lg overflow-hidden bg-black/40 border border-slate-800 my-1 max-w-[220px]">
-                              {st.media_type === "video" ? (
-                                <video src={st.media_url} controls className="max-h-36 w-full object-cover" />
-                              ) : (
-                                <img src={st.media_url} alt="Status media" className="max-h-36 w-full object-cover" />
-                              )}
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs">
+                                <span className={`w-2 h-2 rounded-full ${st.status === "failed" ? "bg-rose-500" : "bg-emerald-400 animate-pulse"}`} />
+                                {st.status === "failed" ? (
+                                  <span className="text-rose-400">Failed</span>
+                                ) : (
+                                  <span>Published</span>
+                                )}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[10px] tracking-wide uppercase">
+                                Production
+                              </span>
+                              <span className="font-mono text-[11px] text-zinc-500">
+                                -o- {(st.id || "").slice(-7) || "live"}
+                              </span>
                             </div>
-                          )}
-                          {st.content && (
-                            <p className="text-slate-200 whitespace-pre-line text-xs font-sans">
-                              {st.content}
-                            </p>
-                          )}
+
+                            {st.content && (
+                              <p className="text-zinc-200 line-clamp-2 text-xs font-sans leading-relaxed">
+                                {st.content}
+                              </p>
+                            )}
+
+                            {st.media_url && (
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <span className="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded-md flex items-center gap-1 font-mono">
+                                  {st.media_type === "video" ? "🎬 Video Story" : "📸 Photo Story"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0 text-zinc-500 text-[11px] justify-between sm:justify-end">
+                            <span className="font-mono">
+                              {st.posted_at ? new Date(st.posted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
+                            </span>
+                            <span className="text-zinc-600 font-mono text-[10px] bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                              main
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -2897,115 +2917,280 @@ function ControlRoomContent() {
         {/* ============================================================== */}
         {/* TAB 2: AI BRAIN & CATALOG */}
         {/* ============================================================== */}
+        {/* ============================================================== */}
+        {/* TAB: SETTINGS ROOM (AI BRAIN & COMMERCIAL CATALOG) */}
+        {/* ============================================================== */}
         {activeTab === "brain" && settings && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-emerald-400" />
-                  Custom Knowledge & Catalog Configuration
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Teach Obey everything about {currentWs?.name}: services, pricing, bank details, and greetings.
+          <div className="space-y-6">
+            {/* Top Vercel Settings Header */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-400" />
+                    Settings Room · Knowledge & Behavior
+                  </h2>
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Configure Obey&apos;s intelligence, commercial knowledge, and autonomous behavior for <strong className="text-zinc-200">{currentWs?.name}</strong>.
                 </p>
               </div>
 
-              <button
-                onClick={handleSaveSettings}
-                disabled={savingSettings}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-              >
-                {savingSettings ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : saveSuccess ? (
-                  <Check className="w-4 h-4" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>{saveSuccess ? "Saved Successfully!" : "Save Brain Settings"}</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleSaveSettings}
+                  disabled={savingSettings}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold text-xs sm:text-sm transition shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {savingSettings ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                  ) : saveSuccess ? (
+                    <Check className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Save className="w-4 h-4 text-black" />
+                  )}
+                  <span>{saveSuccess ? "Saved Successfully!" : savingSettings ? "Saving..." : "Save Settings"}</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Business Story & Bio */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>Business Bio & Overview</span>
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
-                </label>
-                <p className="text-[11px] text-slate-500">
-                  What does your company do? What is your mission, operational hours, and key value propositions?
-                </p>
+            {/* Structured Settings Cards Suite */}
+            <div className="space-y-5">
+              {/* Card 1: Business Identity & Overview */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-amber-400" />
+                      1. Business Profile & Core Value Proposition
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      What does your company do? What is your mission, operational hours, and key benefits?
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {(settings.business_bio || "").length} characters
+                  </span>
+                </div>
+
+                {/* Quick Bio Preset Chips */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">
+                    Quick-Fill Presets (Click to insert):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleInsertBioTemplate("services")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-[11px] border border-zinc-800 transition"
+                    >
+                      ✨ Professional Services
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInsertBioTemplate("retail")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-[11px] border border-zinc-800 transition"
+                    >
+                      ✨ Retail & E-Commerce
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInsertBioTemplate("training")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-[11px] border border-zinc-800 transition"
+                    >
+                      ✨ Training & Mentorship
+                    </button>
+                  </div>
+                </div>
+
                 <textarea
-                  rows={6}
+                  rows={5}
                   value={settings.business_bio || ""}
-                  onChange={(e) =>
-                    setSettings({ ...settings, business_bio: e.target.value })
-                  }
-                  className="w-full bg-slate-850 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed"
-                  placeholder="e.g. Havilah Touch is a leading agricultural development and training enterprise in Ibadan..."
+                  onChange={(e) => setSettings({ ...settings, business_bio: e.target.value })}
+                  className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
+                  placeholder="e.g. Havilah Touch is a leading agricultural development and training enterprise in Ibadan. Open Mon-Sat 8am-6pm. We build smart greenhouses, conduct educational farm workshops, and supply organic produce..."
                 />
               </div>
 
-              {/* Product Catalog & Pricing */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>Product Catalog, Pricing & Bank Payment Info</span>
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
-                </label>
-                <p className="text-[11px] text-slate-500">
-                  List items, package prices, discounts, and payment account numbers so Obey can quote accurately.
-                </p>
+              {/* Card 2: Commercial Catalog, Pricing & Payment Info */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-emerald-400" />
+                      2. Products, Pricing & Bank Payment Accounts
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Obey quotes prices and shares bank payment details directly from this section during customer chats.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {(settings.catalog_summary || "").length} characters
+                  </span>
+                </div>
+
+                {/* Quick Add Snippets */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">
+                    Quick-Add Helpers (Click to append snippet):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleAppendCatalog("• Standard Package: ₦25,000 — Includes 1-month full access & onboarding.")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-emerald-400 text-[11px] border border-zinc-800 transition"
+                    >
+                      ➕ Add Service Package
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAppendCatalog("• Bank Transfer: Bank Name | Account Number: 0123456789 | Account Name: Business Name")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-emerald-400 text-[11px] border border-zinc-800 transition"
+                    >
+                      💳 Add Bank Details
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAppendCatalog("• Delivery Policy: Lagos within 24-48 hours (₦2,500), Nationwide within 3-5 days (₦4,500).")}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-emerald-400 text-[11px] border border-zinc-800 transition"
+                    >
+                      🚚 Add Delivery Terms
+                    </button>
+                  </div>
+                </div>
+
                 <textarea
-                  rows={6}
+                  rows={7}
                   value={settings.catalog_summary || ""}
-                  onChange={(e) =>
-                    setSettings({ ...settings, catalog_summary: e.target.value })
-                  }
-                  className="w-full bg-slate-850 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed"
-                  placeholder="• Smart Greenhouse Setup: From ₦2.5M&#10;• Secondary School Outreach Mentorship: ₦50k/session&#10;• Direct Bank: Zenith Bank, 1029384756..."
+                  onChange={(e) => setSettings({ ...settings, catalog_summary: e.target.value })}
+                  className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 font-mono focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
+                  placeholder="• Starter Package: ₦15,000&#10;• Pro Package: ₦45,000&#10;• Direct Bank: Zenith Bank, 1029384756 (Havilah Enterprises)"
                 />
               </div>
 
-              {/* Voice Hotline Greeting */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>WebRTC Voice Hotline Greeting</span>
-                  <PhoneCall className="w-3.5 h-3.5 text-teal-400" />
-                </label>
-                <p className="text-[11px] text-slate-500">
-                  The first sentence spoken out loud by Obey when a customer connects to your voice call.
-                </p>
+              {/* Card 3: WebRTC Voice Call Greeting */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                      <PhoneCall className="w-4 h-4 text-teal-400" />
+                      3. WebRTC Voice Call Hotline Greeting
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      The first spoken sentence uttered out loud by Obey when a customer calls your WebRTC voice link.
+                    </p>
+                  </div>
+                  {hotlineUrl && (
+                    <Link
+                      href={hotlineUrl}
+                      target="_blank"
+                      className="text-xs text-teal-400 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      Test Live Call &rarr;
+                    </Link>
+                  )}
+                </div>
+
                 <textarea
                   rows={3}
                   value={settings.voice_greeting || ""}
-                  onChange={(e) =>
-                    setSettings({ ...settings, voice_greeting: e.target.value })
-                  }
-                  className="w-full bg-slate-850 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-200 focus:ring-2 focus:ring-teal-500 outline-none leading-relaxed"
+                  onChange={(e) => setSettings({ ...settings, voice_greeting: e.target.value })}
+                  className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
                   placeholder="Hello! You have reached Havilah Touch. How can I assist you with our agricultural packages today?"
                 />
               </div>
 
-              {/* WhatsApp Welcome Greeting */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>WhatsApp Initial Welcome Message</span>
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                </label>
-                <p className="text-[11px] text-slate-500">
-                  Automated greeting dispatched when a new customer initiates chat on WhatsApp.
-                </p>
+              {/* Card 4: WhatsApp Initial Welcome Greeting */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+                <div className="border-b border-zinc-800/80 pb-3">
+                  <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-emerald-400" />
+                    4. WhatsApp Welcome Greeting
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Automated initial greeting sent when a new customer initiates chat on WhatsApp. Supports tags: <code className="text-zinc-300 font-mono text-[10px] bg-zinc-900 px-1 py-0.5 rounded">&#123;name&#125;</code> and <code className="text-zinc-300 font-mono text-[10px] bg-zinc-900 px-1 py-0.5 rounded">&#123;business&#125;</code>.
+                  </p>
+                </div>
+
                 <textarea
                   rows={3}
                   value={settings.whatsapp_welcome || ""}
-                  onChange={(e) =>
-                    setSettings({ ...settings, whatsapp_welcome: e.target.value })
-                  }
-                  className="w-full bg-slate-850 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed"
-                  placeholder="Hello! Welcome to Havilah Touch. I am Obey, your dedicated virtual assistant. How can we serve you today?"
+                  onChange={(e) => setSettings({ ...settings, whatsapp_welcome: e.target.value })}
+                  className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
+                  placeholder="Hello {name}! Welcome to {business}. I am Obey, your dedicated AI companion. How can we serve you today?"
                 />
               </div>
+
+              {/* Card 5: Autonomous Fallback & Escalation Mode */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+                <div className="border-b border-zinc-800/80 pb-3">
+                  <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-blue-400" />
+                    5. Autonomous Fallback & Escalation Behavior
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Choose what Obey should do when a customer asks a question not documented in your catalog.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {[
+                    {
+                      id: "ai_reply",
+                      title: "AI Smart Fallback",
+                      desc: "Generates a polite, natural response based on your company bio and general business knowledge.",
+                    },
+                    {
+                      id: "notify_owner",
+                      title: "Alert Owner on WhatsApp",
+                      desc: `Dispatches an instant WhatsApp alert to the owner (+${currentWs?.owner_phone}) to follow up.`,
+                    },
+                    {
+                      id: "human_handoff",
+                      title: "Human Team Takeover",
+                      desc: "Informs the customer that a human manager will take over the chat shortly.",
+                    },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, fallback_action: option.id })}
+                      className={`text-left p-3.5 rounded-xl border transition cursor-pointer ${
+                        (settings.fallback_action || "ai_reply") === option.id
+                          ? "bg-zinc-900 text-white border-white shadow-sm"
+                          : "bg-zinc-900/40 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-900/80"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold">{option.title}</span>
+                        {(settings.fallback_action || "ai_reply") === option.id && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-500 leading-tight">{option.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile Floating Save Action Bar (md:hidden) */}
+            <div className="md:hidden sticky bottom-16 inset-x-0 z-40 pt-2">
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="w-full py-3 rounded-xl bg-white text-black font-bold text-sm shadow-xl flex items-center justify-center gap-2 border border-zinc-200 transition active:scale-98"
+              >
+                {savingSettings ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                ) : saveSuccess ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Save className="w-4 h-4 text-black" />
+                )}
+                <span>{saveSuccess ? "Settings Saved!" : savingSettings ? "Saving Changes..." : "Save Settings Room"}</span>
+              </button>
             </div>
           </div>
         )}
@@ -3711,6 +3896,40 @@ function ControlRoomContent() {
           </div>
         </div>
       )}
+
+      {/* Mobile-First Bottom Navigation Bar (md:hidden) */}
+      <nav className="fixed bottom-0 inset-x-0 z-50 bg-black/95 backdrop-blur-xl border-t border-zinc-800/90 py-1 px-3 flex items-center justify-around md:hidden">
+        {[
+          { id: "overview", label: "Overview", icon: TrendingUp },
+          { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, alert: waState !== "connected" },
+          { id: "status", label: "Status", icon: Radio },
+          { id: "brain", label: "Settings", icon: Sparkles },
+          { id: "leads", label: "Leads", icon: Users, badge: leads.length },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition relative min-h-[44px] ${
+                isActive ? "text-white font-bold" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              <div className="relative">
+                <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-zinc-500"}`} />
+                {item.alert && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                )}
+              </div>
+              <span className="text-[10px] mt-0.5 tracking-tight">{item.label}</span>
+              {isActive && (
+                <span className="w-1 h-1 rounded-full bg-white mt-0.5" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
