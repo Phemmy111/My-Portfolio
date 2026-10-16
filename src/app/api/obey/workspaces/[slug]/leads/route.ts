@@ -42,6 +42,34 @@ export async function GET(
       });
     }
 
+    if (format === "vcf") {
+      const vcards = leads.map((l) => {
+        const cleanName = (l.name || `Lead +${l.phone}`).replace(/[\r\n]/g, " ").trim();
+        const cleanPhone = l.phone.startsWith("+") ? l.phone : `+${l.phone}`;
+        const note = `Auto-saved via ${ws.name} | ${l.intent_summary || "Lead"}`;
+        return [
+          "BEGIN:VCARD",
+          "VERSION:3.0",
+          `FN:${cleanName}`,
+          `TEL;TYPE=CELL:${cleanPhone}`,
+          l.email ? `EMAIL:${l.email}` : "",
+          `NOTE:${note}`,
+          "END:VCARD",
+        ]
+          .filter(Boolean)
+          .join("\r\n");
+      });
+
+      const vcfContent = vcards.join("\r\n\r\n");
+      return new NextResponse(vcfContent, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/vcard; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${ws.slug}-contacts.vcf"`,
+        },
+      });
+    }
+
     return NextResponse.json({ leads });
   } catch (error: any) {
     return NextResponse.json(

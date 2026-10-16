@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   Save,
   HelpCircle,
+  Send,
 } from "lucide-react";
 
 interface Workspace {
@@ -137,6 +138,21 @@ function ControlRoomContent() {
   // Leads Filter
   const [leadSearch, setLeadSearch] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+
+  // Broadcast state
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTemplate, setBroadcastTemplate] = useState(
+    "Hello {name}! We have an exclusive update from {business}. Would you like to check out our latest offers?"
+  );
+  const [broadcastFilter, setBroadcastFilter] = useState("all");
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState<{
+    dispatchedCount: number;
+    totalTargets: number;
+  } | null>(null);
+
+  // Billing state
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   // Load workspaces on mount
   useEffect(() => {
@@ -295,6 +311,61 @@ function ControlRoomContent() {
       }
     } catch (err) {
       console.error("Failed to delete rule:", err);
+    }
+  };
+
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentWs) return;
+    setBroadcastLoading(true);
+    setBroadcastResult(null);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/broadcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template: broadcastTemplate,
+          statusFilter: broadcastFilter,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBroadcastResult({
+          dispatchedCount: data.dispatchedCount,
+          totalTargets: data.totalTargets,
+        });
+      } else {
+        alert(data.error || "Failed to dispatch broadcast");
+      }
+    } catch (err: any) {
+      alert("Broadcast error: " + err.message);
+    } finally {
+      setBroadcastLoading(false);
+    }
+  };
+
+  const handleCheckoutPlan = async (plan: string) => {
+    if (!currentWs) return;
+    setCheckoutLoading(plan);
+    try {
+      const res = await fetch("/api/obey/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: currentWs.slug,
+          plan,
+        }),
+      });
+      const data = await res.json();
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url;
+      } else {
+        alert(data.error || "Could not start Paystack checkout");
+      }
+    } catch (err: any) {
+      alert("Checkout error: " + err.message);
+    } finally {
+      setCheckoutLoading(null);
     }
   };
 
@@ -909,14 +980,37 @@ function ControlRoomContent() {
               </div>
 
               {currentWs && (
-                <a
-                  href={`/api/obey/workspaces/${currentWs.slug}/leads?format=csv`}
-                  download
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition"
-                >
-                  <Download className="w-4 h-4 text-emerald-400" />
-                  <span>Export to Excel / CSV</span>
-                </a>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setBroadcastResult(null);
+                      setShowBroadcastModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-md shadow-emerald-500/10"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Send Broadcast</span>
+                  </button>
+
+                  <a
+                    href={`/api/obey/workspaces/${currentWs.slug}/leads?format=vcf`}
+                    download
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs sm:text-sm font-semibold border border-teal-500/30 transition"
+                    title="Export .vcf file for 1-tap import into Google Contacts or phone address book"
+                  >
+                    <Phone className="w-4 h-4 text-teal-400" />
+                    <span>Save to Phone (VCF)</span>
+                  </a>
+
+                  <a
+                    href={`/api/obey/workspaces/${currentWs.slug}/leads?format=csv`}
+                    download
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition"
+                  >
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    <span>Excel / CSV</span>
+                  </a>
+                </div>
               )}
             </div>
 
@@ -1076,45 +1170,166 @@ function ControlRoomContent() {
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3">
-                  <div className="text-xs font-bold text-slate-400 uppercase">Starter Plan</div>
-                  <div className="text-2xl font-black text-white">₦9,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                  <ul className="text-xs text-slate-400 space-y-1.5">
-                    <li>• Up to 250 auto-saved leads</li>
-                    <li>• 10 Keyword Auto-responders</li>
-                    <li>• WebRTC Voice Hotline (15 hrs/mo)</li>
-                    <li>• CSV Leads Export</li>
-                  </ul>
+                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="text-xs font-bold text-slate-400 uppercase">Starter Plan</div>
+                    <div className="text-2xl font-black text-white">₦9,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-400 space-y-1.5">
+                      <li>• Up to 250 auto-saved leads</li>
+                      <li>• 10 Keyword Auto-responders</li>
+                      <li>• WebRTC Voice Hotline (15 hrs/mo)</li>
+                      <li>• CSV & Phone VCF Export</li>
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => handleCheckoutPlan("starter")}
+                    disabled={checkoutLoading === "starter"}
+                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 disabled:opacity-50"
+                  >
+                    {checkoutLoading === "starter" ? "Redirecting..." : "Activate Starter"}
+                  </button>
                 </div>
 
-                <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 relative">
+                <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 relative flex flex-col justify-between">
                   <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 uppercase">Popular</span>
-                  <div className="text-xs font-bold text-emerald-400 uppercase">Pro Business</div>
-                  <div className="text-2xl font-black text-white">₦22,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                  <ul className="text-xs text-slate-300 space-y-1.5">
-                    <li>• Unlimited auto-saved leads</li>
-                    <li>• 50 Keyword Auto-responders</li>
-                    <li>• WebRTC Voice Hotline (50 hrs/mo)</li>
-                    <li>• Audio recordings & transcripts on WhatsApp</li>
-                    <li>• Custom Business Catalog & Payment Info</li>
-                  </ul>
+                  <div className="space-y-3">
+                    <div className="text-xs font-bold text-emerald-400 uppercase">Pro Business</div>
+                    <div className="text-2xl font-black text-white">₦22,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-300 space-y-1.5">
+                      <li>• Unlimited auto-saved leads</li>
+                      <li>• 50 Keyword Auto-responders</li>
+                      <li>• WebRTC Voice Hotline (50 hrs/mo)</li>
+                      <li>• WhatsApp audio recordings & transcripts</li>
+                      <li>• Custom Business Catalog & Payment Info</li>
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => handleCheckoutPlan("pro")}
+                    disabled={checkoutLoading === "pro"}
+                    className="w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                  >
+                    {checkoutLoading === "pro" ? "Redirecting..." : "Upgrade to Pro"}
+                  </button>
                 </div>
 
-                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3">
-                  <div className="text-xs font-bold text-slate-400 uppercase">Enterprise / Founder</div>
-                  <div className="text-2xl font-black text-white">₦55,000 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                  <ul className="text-xs text-slate-400 space-y-1.5">
-                    <li>• Full Multi-tenant WhatsApp bot</li>
-                    <li>• Unlimited Voice Hotline minutes</li>
-                    <li>• Autonomous Web App & Document Generator</li>
-                    <li>• Priority 24/7 dedicated server support</li>
-                  </ul>
+                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="text-xs font-bold text-slate-400 uppercase">Enterprise / Founder</div>
+                    <div className="text-2xl font-black text-white">₦55,000 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-400 space-y-1.5">
+                      <li>• Full Multi-tenant WhatsApp bot</li>
+                      <li>• Unlimited Voice Hotline minutes</li>
+                      <li>• Autonomous Web App & Document Generator</li>
+                      <li>• Priority 24/7 dedicated server support</li>
+                    </ul>
+                  </div>
+                  <button
+                    onClick={() => handleCheckoutPlan("enterprise")}
+                    disabled={checkoutLoading === "enterprise"}
+                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 disabled:opacity-50"
+                  >
+                    {checkoutLoading === "enterprise" ? "Redirecting..." : "Activate Enterprise"}
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         )}
       </main>
+
+      {/* ============================================================== */}
+      {/* MODAL: SEND WHATSAPP BROADCAST */}
+      {/* ============================================================== */}
+      {showBroadcastModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Send className="w-5 h-5 text-emerald-400" />
+                Dispatch Personalized WhatsApp Broadcast
+              </h3>
+              <button
+                onClick={() => setShowBroadcastModal(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {broadcastResult ? (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Broadcast Dispatched Successfully!</span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Delivered personalized messages to {broadcastResult.dispatchedCount} out of {broadcastResult.totalTargets} contact(s).
+                </p>
+                <button
+                  onClick={() => setShowBroadcastModal(false)}
+                  className="mt-2 w-full py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">
+                    Audience Segment
+                  </label>
+                  <select
+                    value={broadcastFilter}
+                    onChange={(e) => setBroadcastFilter(e.target.value)}
+                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="all">All Captured Leads ({leads.length} contacts)</option>
+                    <option value="lead">New Leads Only</option>
+                    <option value="interested">Interested Prospects Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">
+                    Message Template (Supports <code className="text-emerald-400 font-mono">{"{name}"}</code> & <code className="text-emerald-400 font-mono">{"{business}"}</code>)
+                  </label>
+                  <textarea
+                    rows={5}
+                    required
+                    value={broadcastTemplate}
+                    onChange={(e) => setBroadcastTemplate(e.target.value)}
+                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed font-sans"
+                    placeholder="Hello {name}! We have an exclusive update from {business}..."
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Preview: &quot;{broadcastTemplate.replace(/\{name\}/gi, "Chioma").replace(/\{business\}/gi, currentWs?.name || "Business")}&quot;
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={broadcastLoading}
+                    className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {broadcastLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Dispatching to WhatsApp...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Send Broadcast Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* MODAL: ADD BUSINESS WORKSPACE */}

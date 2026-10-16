@@ -6,6 +6,8 @@ import {
   dbCreateUserPendingAction,
   dbUpdateUserActionStatus,
   dbGetLatestExecutedUserAction,
+  dbGetWorkspaceSettings,
+  dbGetWorkspaceBySlug,
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
@@ -795,6 +797,22 @@ Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.
   }
 
   // 5. COMPANION & CONVERSATIONAL SYNTHESIS (Concise, 100% Human, Deep Emotional Intelligence)
+  // Load dynamic workspace knowledge & business catalog
+  let workspaceCatalogContext = "";
+  try {
+    const wsSettings = await dbGetWorkspaceSettings("ws_femi_default");
+    if (wsSettings) {
+      if (wsSettings.catalog_summary) {
+        workspaceCatalogContext += `\nVERIFIED BUSINESS SERVICES & CATALOG PRICING:\n${wsSettings.catalog_summary}\n`;
+      }
+      if (wsSettings.business_bio) {
+        workspaceCatalogContext += `\nBUSINESS OVERVIEW & POLICIES:\n${wsSettings.business_bio}\n`;
+      }
+    }
+  } catch (wsErr) {
+    console.warn("[Companion] Workspace knowledge fetch error:", wsErr);
+  }
+
   const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
   const hasHistory = Boolean(historyText && historyText.trim().length > 10);
 
@@ -869,7 +887,7 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
 10. RECENT ACTIVITY & ACTION STATUS:
 ${latestExecutedAction ? `   - You recently dispatched an approved message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
 
-${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
+${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
   const companionUserPrompt = historyText
     ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`

@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import {
+  Building2,
   Mail,
   Briefcase,
   Inbox,
@@ -500,6 +502,16 @@ export default function AdminDashboardPage() {
               </span>
             )}
           </button>
+
+          <Link
+            href="/control-room"
+            target="_blank"
+            className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition-all shadow-xs"
+          >
+            <Building2 size={15} />
+            <span>Control Room</span>
+            <ExternalLink size={12} className="opacity-70" />
+          </Link>
         </div>
 
         {/* ============================================================ */}
