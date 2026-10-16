@@ -336,21 +336,40 @@ function ControlRoomContent() {
   // Billing state
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // Load workspaces once on mount when user is authenticated
+  // Session user state (for OTP auth)
+  const [sessionUser, setSessionUser] = useState<{
+    phone?: string;
+    email?: string;
+    workspaceSlug?: string;
+    ownerName?: string;
+    plan?: string;
+  } | null>(null);
+
+  // Load auth session & workspaces immediately on mount
   useEffect(() => {
-    if (!initialLoadedRef.current && user?.id) {
-      initialLoadedRef.current = true;
-      fetchWorkspaces();
-    }
-  }, [user?.id]);
+    fetchSessionUser();
+    fetchWorkspaces();
+  }, [paramSlug, user?.id]);
+
+  async function fetchSessionUser() {
+    try {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        setSessionUser(data.user);
+      }
+    } catch {}
+  }
 
   async function fetchWorkspaces() {
     setLoading(true);
     try {
+      let loadedCurrent: Workspace | null = null;
       if (paramSlug) {
         const slugRes = await fetch(`/api/obey/workspaces?slug=${encodeURIComponent(paramSlug)}`);
         const slugData = await slugRes.json();
         if (slugData.workspace) {
+          loadedCurrent = slugData.workspace;
           setCurrentWs(slugData.workspace);
           loadWorkspaceDetails(slugData.workspace.slug);
         }
@@ -359,12 +378,18 @@ function ControlRoomContent() {
       const res = await fetch("/api/obey/workspaces");
       const data = await res.json();
       if (data.workspaces && data.workspaces.length > 0) {
-        setWorkspaces(data.workspaces);
+        let wsList: Workspace[] = [...data.workspaces];
+        if (loadedCurrent && !wsList.some((w) => w.id === loadedCurrent!.id)) {
+          wsList.unshift(loadedCurrent);
+        }
+        setWorkspaces(wsList);
         if (!paramSlug) {
-          const selected = data.workspaces[0];
+          const selected = wsList[0];
           setCurrentWs(selected);
           loadWorkspaceDetails(selected.slug);
         }
+      } else if (loadedCurrent) {
+        setWorkspaces([loadedCurrent]);
       } else if (!paramSlug) {
         setWorkspaces([]);
         setLoading(false);
@@ -1080,6 +1105,12 @@ function ControlRoomContent() {
 
           <div className="pl-2 border-l border-slate-800 flex items-center gap-2">
             <UserButton />
+            {sessionUser && !user && (
+              <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="max-w-[130px] truncate">{sessionUser.ownerName || sessionUser.phone || "Owner"}</span>
+              </span>
+            )}
             <button
               onClick={handleLogout}
               className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
@@ -1217,10 +1248,40 @@ function ControlRoomContent() {
           })}
         </div>
 
+        {/* Loading State */}
+        {loading && !currentWs && (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-3 bg-slate-900/40 border border-slate-800/80 rounded-2xl p-8">
+            <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+            <p className="text-sm text-slate-200 font-semibold">Loading your Business Control Room...</p>
+            <p className="text-xs text-slate-400">Syncing database, WhatsApp instance, and AI catalog</p>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && !currentWs && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center max-w-lg mx-auto space-y-4 shadow-xl">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+              <Building2 className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white">No Business Workspace Found</h3>
+              <p className="text-xs text-slate-400">
+                You do not have an active business workspace linked yet. Create your workspace now to activate your 24/7 AI WhatsApp bot.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowNewWsModal(true)}
+              className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer"
+            >
+              + Create Business Workspace
+            </button>
+          </div>
+        )}
+
         {/* ============================================================== */}
         {/* TAB 1: OVERVIEW */}
         {/* ============================================================== */}
-        {activeTab === "overview" && (
+        {activeTab === "overview" && currentWs && (
           <div className="space-y-6">
             {/* Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

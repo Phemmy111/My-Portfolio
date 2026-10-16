@@ -55,7 +55,15 @@ export async function GET(req: NextRequest) {
       const primaryEmail = obeySession.email;
       const primaryPhone = obeySession.phone;
       const userKey = "session_" + (primaryPhone || primaryEmail);
-      const workspaces = await dbGetWorkspacesByOwnerClerkId(userKey, primaryEmail, primaryPhone);
+      let workspaces = await dbGetWorkspacesByOwnerClerkId(userKey, primaryEmail, primaryPhone);
+
+      // If session specifically points to a workspace slug, ensure it is in the list
+      if (obeySession.workspaceSlug) {
+        const sessionWs = await dbGetWorkspaceBySlug(obeySession.workspaceSlug);
+        if (sessionWs && !workspaces.some((w) => w.id === sessionWs.id)) {
+          workspaces = [sessionWs, ...workspaces];
+        }
+      }
 
       // If Femi's flagship account
       if (
