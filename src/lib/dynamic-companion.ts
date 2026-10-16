@@ -24,7 +24,7 @@ import {
   getUserArtifacts,
   findUserArtifact,
 } from "./artifact-engine";
-import { sendWhatsAppImage, sendWhatsAppDocument } from "./whatsapp-gateway";
+import { sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppDocument } from "./whatsapp-gateway";
 
 export interface CompanionResponse {
   reply: string;
@@ -204,11 +204,14 @@ AVAILABLE TOOLS & ACTIONS:
    - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
 8. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
-9. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
-10. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
+9. "notify_femi": Use when a guest or user asks you to tell your boss, tell Femi, forward feedback, or suggest something to Femi Adeleke (e.g. "tell him", "tell your boss", "suggest this to Femi", "tell your boss to implement that", "let Femi know").
+10. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
+11. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
+- FORWARDING SUGGESTIONS & NOTES TO FEMI:
+  If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
 - CRITICAL DOCUMENT & FILE CONTINUITY:
   When the user says "Can you turn it to docs?", "turn into doc", "make it a doc", "put it in google doc", "turn it to PDF", "export as document", "the pitch nau", "this":
   1. DO NOT ask "What is this?" or "Which idea are we revisiting?" if a pitch, concept, business idea, outline, story, or project was discussed anywhere in recent turns!
@@ -234,7 +237,7 @@ REASONING GUIDELINES:
 Respond ONLY with a valid JSON object matching this schema:
 {
   "thought": "1-sentence executive reasoning analyzing what the user is asking and which tool applies",
-  "action": "check_action_status" | "draft_whatsapp_message" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "create_document_file" | "search_live_web" | "direct_voice_call" | "none",
+  "action": "check_action_status" | "draft_whatsapp_message" | "notify_femi" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "create_document_file" | "search_live_web" | "direct_voice_call" | "none",
   "action_params": {
     "recipient_phone": "phone number or null",
     "message_content": "message or null",
@@ -406,14 +409,66 @@ Respond ONLY with a valid JSON object matching this schema:
 
   // 4. EXECUTE AUTONOMOUS DECISION
 
+  // Tool: Notify Femi Adeleke of User Suggestion / Feedback
+  if (decision.action === "notify_femi" || (/\b(tell him|tell your boss|tell femi|let him know|suggest to him|pass to femi)\b/i.test(userText) && !isFemi)) {
+    try {
+      const recentDiscussion = (historyText || "").split("\n").slice(-4).join("\n");
+      await sendWhatsAppMessage(
+        `💡 *Guest Feedback / Suggestion for Femi:*\n\n` +
+        `• *From:* ${senderName || "Guest"} (+${userIdentifier})\n` +
+        `• *User Request:* "${userText}"\n` +
+        `• *Recent Discussion:*\n${recentDiscussion || "User conversation with Obey"}`,
+        "2348120934828"
+      );
+    } catch (err) {
+      console.warn("[Companion] Failed to forward suggestion to Femi:", err);
+    }
+
+    return {
+      reply: cleanWhatsApp(
+        `Message delivered straight to Femi! 🚀 I've forwarded your exact suggestion to his personal WhatsApp so he can review it directly. Trust me, he takes feedback seriously!`
+      ),
+    };
+  }
+
   // Tool: Check Delivery Status
   if (decision.action === "check_action_status") {
+    const asksAboutFemi = /\b(boss|femi|him|creator)\b/i.test(userText) || /\b(boss|femi|tell him|tell your boss)\b/i.test(historyText);
+
+    if (asksAboutFemi && !isFemi) {
+      try {
+        const recentDiscussion = (historyText || "").split("\n").slice(-4).join("\n");
+        await sendWhatsAppMessage(
+          `💡 *Guest Feedback / Follow-up for Femi:*\n\n` +
+          `• *From:* ${senderName || "Guest"} (+${userIdentifier})\n` +
+          `• *Message:* "${userText}"\n` +
+          `• *Discussion:*\n${recentDiscussion || "User discussion with Obey"}`,
+          "2348120934828"
+        );
+      } catch (err) {
+        console.warn("[Companion] Failed to alert Femi:", err);
+      }
+
+      return {
+        reply: cleanWhatsApp(
+          `Yes! I have dispatched your feedback directly to Femi's personal WhatsApp (+2348120934828) just now. He receives all guest suggestions directly on his phone! 🚀`
+        ),
+      };
+    }
+
     if (latestExecutedAction) {
       const elapsedMinutes = Math.round((Date.now() - new Date(latestExecutedAction.executed_at || latestExecutedAction.created_at).getTime()) / 60000);
+      if (elapsedMinutes > 25) {
+        return {
+          reply: cleanWhatsApp(
+            `The last message I dispatched on your behalf was to *+${latestExecutedAction.target_recipient}* about ${elapsedMinutes} minutes ago. If you want me to message someone new or pass a note to Femi, just let me know!`
+          ),
+        };
+      }
       const timePhrase = elapsedMinutes <= 1 ? "just now" : `${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} ago`;
       return {
         reply: cleanWhatsApp(
-          `Yes! I have already delivered your message to *+${latestExecutedAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
+          `Yes! I have delivered your message to *+${latestExecutedAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
         ),
         actionExecuted: true,
       };
