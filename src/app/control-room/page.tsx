@@ -43,6 +43,7 @@ import {
   Scissors,
   Smartphone,
   QrCode,
+  Eye,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -256,6 +257,9 @@ function ControlRoomContent() {
   const [autoStatusEnabled, setAutoStatusEnabled] = useState(false);
   const [autoStatusInterval, setAutoStatusInterval] = useState("daily_morning");
   const [savingStatusSchedule, setSavingStatusSchedule] = useState(false);
+  const [autoViewStatus, setAutoViewStatus] = useState(true);
+  const [autoCommentStatus, setAutoCommentStatus] = useState(false);
+  const [commentTone, setCommentTone] = useState("friendly");
 
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
 
@@ -414,6 +418,9 @@ function ControlRoomContent() {
         setStatuses(data.statuses || []);
         setAutoStatusEnabled(data.workspace.auto_status_enabled || false);
         setAutoStatusInterval(data.workspace.auto_status_interval || "daily_morning");
+        setAutoViewStatus(data.workspace.auto_view_status !== false);
+        setAutoCommentStatus(Boolean(data.workspace.auto_comment_status));
+        setCommentTone(data.workspace.comment_tone || "friendly");
         if (data.workspace.whatsapp_status) {
           setWaState(data.workspace.whatsapp_status);
         }
@@ -658,6 +665,68 @@ function ControlRoomContent() {
       console.error("Save schedule error:", err);
     } finally {
       setSavingStatusSchedule(false);
+    }
+  };
+
+  const handleToggleAutoView = async () => {
+    if (!currentWs) return;
+    const nextVal = !autoViewStatus;
+    setAutoViewStatus(nextVal);
+    try {
+      await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          auto_view_status: nextVal,
+        }),
+      });
+      setStatusSuccessMsg(nextVal ? "👁️ Auto-View Statuses enabled! Obey will view contacts' status stories." : "Auto-View Statuses disabled.");
+      setTimeout(() => setStatusSuccessMsg(""), 3500);
+    } catch (e) {
+      console.warn("Toggle auto-view error:", e);
+    }
+  };
+
+  const handleToggleAutoComment = async () => {
+    if (!currentWs) return;
+    const nextVal = !autoCommentStatus;
+    setAutoCommentStatus(nextVal);
+    try {
+      await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          auto_comment_status: nextVal,
+        }),
+      });
+      setStatusSuccessMsg(nextVal ? "💬 AI Status Commenting enabled! Obey will warmly comment under contacts' stories." : "AI Status Commenting disabled.");
+      setTimeout(() => setStatusSuccessMsg(""), 3500);
+    } catch (e) {
+      console.warn("Toggle auto-comment error:", e);
+    }
+  };
+
+  const handleSetCommentTone = async (newTone: string) => {
+    if (!currentWs) return;
+    setCommentTone(newTone);
+    try {
+      await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          comment_tone: newTone,
+        }),
+      });
+      setStatusSuccessMsg(`Tone updated to: ${newTone}`);
+      setTimeout(() => setStatusSuccessMsg(""), 3000);
+    } catch (e) {
+      console.warn("Update comment tone error:", e);
     }
   };
 
@@ -1577,10 +1646,29 @@ function ControlRoomContent() {
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Disconnect</span>
                     </button>
-                  </div>
-                </div>
               ) : (
                 <div className="space-y-6">
+                  {/* Dedicated Business Number Best-Practice Banner */}
+                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-amber-950/30 border border-emerald-500/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-lg">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30 text-lg">
+                      💡
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-xs sm:text-sm font-bold text-white">
+                          Owner Tip: Link a Dedicated Business Number
+                        </h4>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold px-2 py-0.5 rounded-full uppercase">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        We strongly advise using a <strong>dedicated secondary SIM or WhatsApp Business line</strong> as Obey&apos;s bot number.
+                        This allows you (the owner) to message Obey from your personal WhatsApp to test pricing, command the AI, and control your business hotline seamlessly without interfering with your personal chats.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Connection Method Switcher (Plan B vs Plan A) */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
                     <div>
@@ -2487,6 +2575,113 @@ function ControlRoomContent() {
                       <Save className="w-3.5 h-3.5 text-emerald-400" />
                       <span>{savingStatusSchedule ? "Saving..." : "Save Schedule Preferences"}</span>
                     </button>
+                  </div>
+                </div>
+
+                {/* Autonomous Status Engagement Suite */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                  <div className="border-b border-slate-800 pb-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-emerald-400" />
+                        Status Viewing & Commenting
+                      </h3>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                        autoViewStatus || autoCommentStatus
+                          ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
+                          : "bg-slate-800 text-slate-400 border-slate-700"
+                      }`}>
+                        {autoViewStatus || autoCommentStatus ? "Active" : "Off"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Regulate whether Obey automatically views and comments under your contacts' WhatsApp status stories.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Toggle 1: Auto-View Statuses */}
+                    <div className="flex items-center justify-between p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
+                      <div className="space-y-0.5 pr-3">
+                        <div className="flex items-center gap-2">
+                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-xs font-semibold text-white">Auto-View Stories</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-tight">
+                          Automatically view contacts' statuses in real-time so your business/number stays visible in their viewers list.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleAutoView}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                          autoViewStatus ? "bg-emerald-500" : "bg-slate-800"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            autoViewStatus ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Toggle 2: AI Status Commenting */}
+                    <div className="space-y-3 p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5 pr-3">
+                          <div className="flex items-center gap-2">
+                            <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-xs font-semibold text-white">AI Status Commenting</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-tight">
+                            Intelligently post warm, uplifting 1-sentence reactions under contacts' status stories (smart rate-limited to 1x every 12h per person).
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleToggleAutoComment}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                            autoCommentStatus ? "bg-emerald-500" : "bg-slate-800"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              autoCommentStatus ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Comment Tone Selector (when commenting is enabled) */}
+                      {autoCommentStatus && (
+                        <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                          <label className="block text-[11px] font-medium text-slate-400">
+                            Comment Personality / Tone:
+                          </label>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: "friendly", label: "Warm & Friendly" },
+                              { id: "professional", label: "Professional" },
+                              { id: "hype", label: "Hype & Fun" },
+                            ].map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => handleSetCommentTone(t.id)}
+                                className={`py-1.5 px-2 rounded-lg text-[10px] font-semibold border transition ${
+                                  commentTone === t.id
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                    : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                                }`}
+                              >
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

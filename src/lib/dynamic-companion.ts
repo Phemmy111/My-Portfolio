@@ -15,6 +15,8 @@ import {
   generateAIImage,
   getUserImageMemory,
   saveUserImageMemory,
+  getUserFullMemory,
+  saveUserPersonalMemory,
   isImageRevisionRequest,
   synthesizeImageRevisionPrompt,
 } from "./image-generator";
@@ -64,8 +66,9 @@ export async function formatOutboundDelegatedWhatsAppMessage(params: {
   userInstruction: string;
   senderName?: string;
   isFemi: boolean;
+  senderGender?: string;
 }): Promise<string> {
-  const { rawContent, userInstruction, senderName, isFemi } = params;
+  const { rawContent, userInstruction, senderName, isFemi, senderGender } = params;
 
   // Calculate Nigeria WAT greeting
   const { timeStr } = getNigerianTime();
@@ -82,18 +85,23 @@ export async function formatOutboundDelegatedWhatsAppMessage(params: {
   }
 
   const senderLabel = isFemi ? "Femi" : (senderName ? senderName.trim() : "Femi");
+  const pronounRule = senderGender === "female"
+    ? `CRITICAL GENDER RULE: ${senderLabel} is a female/lady. Use "she" or "her" when referring to ${senderLabel}. NEVER use "he" or "his" on her behalf.`
+    : senderGender === "male"
+    ? `CRITICAL GENDER RULE: ${senderLabel} is a male. Use "he" or "his".`
+    : `CRITICAL GENDER RULE: ${senderLabel}'s gender is unspecified. Use "${senderLabel}" or gender-neutral "they/them". NEVER assume male or use "he/his".`;
 
-  // Transform message into clear, polite reported speech on Femi's behalf
+  // Transform message into clear, polite reported speech on sender's behalf
   let reportedSpeech = `${senderLabel} asked me to relay this to you: "${rawContent}"`;
   try {
     const res = await executeAICompletion({
       systemPrompt: `You are Obey, the professional AI executive assistant to ${senderLabel}.
 Convert the user's instructions into polite, natural, crisp reported speech addressed to the recipient.
 Always explicitly mention that ${senderLabel} asked you to deliver this message.
+${pronounRule}
 Examples:
-- "tell him I am busy right now" -> "${senderLabel} asked me to let you know that he is currently busy right now."
+- "tell him I am busy right now" -> "${senderLabel} asked me to let you know that ${senderGender === 'female' ? 'she is' : senderGender === 'male' ? 'he is' : senderLabel + ' is'} currently busy right now."
 - "tell her to send the project files" -> "${senderLabel} asked me to request the project files from you."
-- "tell them I will be around tomorrow" -> "${senderLabel} asked me to inform you that he will be around tomorrow."
 Return ONLY the single transformed reported speech sentence without quotes or intro text.`,
       userPrompt: `USER COMMAND: "${userInstruction}"\nMESSAGE ESSENCE: "${rawContent}"\nREPORTED SPEECH:`,
       temperature: 0.2,
@@ -133,8 +141,9 @@ export async function processDynamicCompanionTurn(params: {
   mediaBase64?: string;
   mediaMimeType?: string;
   isVoiceNote?: boolean;
+  instanceName?: string;
 }): Promise<CompanionResponse> {
-  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType, isVoiceNote = false } = params;
+  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType, isVoiceNote = false, instanceName } = params;
   const lower = userText.toLowerCase().trim();
   const isFemi = userIdentifier === "2348120934828";
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
@@ -144,15 +153,53 @@ export async function processDynamicCompanionTurn(params: {
     pendingAction,
     latestExecutedAction,
     userImageMemory,
+    userFullMemory,
     recentArtifacts,
   ] = await Promise.all([
     dbGetPendingUserAction(userIdentifier),
     dbGetLatestExecutedUserAction(userIdentifier),
     getUserImageMemory(userIdentifier),
+    getUserFullMemory(userIdentifier),
     getUserArtifacts(userIdentifier, 6),
   ]);
 
   const latestArtifact = recentArtifacts.length > 0 ? recentArtifacts[0] : null;
+
+  // 1.5 USER PERSONAL MEMORY & DIRECTIVE LISTENER
+  const declaresFemale = /\b(i am (?:a )?(?:lady|woman|girl|female)|i'm (?:a )?(?:lady|woman|girl|female)|i am her|i'm her|she\/her|call me (?:a )?lady)\b/i.test(userText);
+  const declaresMale = /\b(i am (?:a )?(?:guy|man|boy|male)|i'm (?:a )?(?:guy|man|boy|male)|i am him|i'm him|he\/him)\b/i.test(userText);
+  const declaresRemember = /^(?:remember|never forget|note this|save this|keep in mind|from now on)\b/i.test(userText.trim()) ||
+    /\b(?:my name is|i am called|my business is|my company is)\b/i.test(userText);
+
+  if (declaresFemale) {
+    await saveUserPersonalMemory({
+      userIdentifier,
+      gender: "female",
+      userName: senderName,
+    });
+    return {
+      reply: cleanWhatsApp(`Locked into memory! 👑 I apologize for any previous mix-up. I've permanently saved that you are a lady (*she/her*). No more mistakes! How can I assist you right now?`),
+    };
+  } else if (declaresMale) {
+    await saveUserPersonalMemory({
+      userIdentifier,
+      gender: "male",
+      userName: senderName,
+    });
+    return {
+      reply: cleanWhatsApp(`Got it! I've noted that in my memory (*he/him*). How can I assist you today?`),
+    };
+  } else if (declaresRemember) {
+    const noteToSave = userText.replace(/^(?:remember|never forget|note this|save this|keep in mind|from now on)[:\s]*/i, "").trim();
+    await saveUserPersonalMemory({
+      userIdentifier,
+      userNotes: noteToSave,
+      userName: senderName,
+    });
+    return {
+      reply: cleanWhatsApp(`Understood and noted! 🧠 I have committed this permanently to memory for your chat:\n\n• "${noteToSave}"\n\nI will remember and apply this in all our conversations.`),
+    };
+  }
 
   // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
   if (pendingAction) {
@@ -180,6 +227,10 @@ You possess human-grade reasoning and autonomously decide which action or tool t
 Current Local Time (WAT): ${watTime} (${watDate})
 Channel: ${channel}
 Speaker: ${isFemi ? "Femi Adeleke (Your Boss & Creator)" : (senderName || "User")}
+
+USER PERSONAL PROFILE & MEMORY (PERMANENTLY NOTED):
+- Gender: ${userFullMemory?.gender === 'female' ? 'Female / Lady (Refer to her as she/her or queen. NEVER use "my guy", "bro", "he", or "him"!)' : userFullMemory?.gender === 'male' ? 'Male (he/him)' : 'Unspecified (Keep speech gender-neutral. NEVER assume male, NEVER use "my guy" or "bro")'}
+- Permanent Notes: ${userFullMemory?.user_notes || 'None yet'}
 
 USER MEMORY STATE:
 - Active Image Memory: ${userImageMemory?.last_image_prompt ? `Previous artwork: "${userImageMemory.last_image_prompt}" (Seed: ${userImageMemory.last_image_seed})` : "None"}
@@ -211,6 +262,11 @@ AVAILABLE TOOLS & ACTIONS:
 11. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
+- CRITICAL CONVERSATIONAL RULES (MUST FOLLOW STRICTLY):
+  1. NEVER REPEAT GREETINGS OR NAMES AT EVERY TURN:
+     Real humans on WhatsApp do NOT begin every single message with "Hello [Name]!" or repeat the person's name continuously. Jump straight into answering their question naturally, concisely, and warmly (1 to 2 sentences max default).
+  2. GENDER ACCURACY & NEUTRALITY:
+     ${userFullMemory?.gender === 'female' ? 'The user is a female/lady. Address her as queen or she/her. NEVER call her "my guy", "bro", "he", or "him"!' : userFullMemory?.gender === 'male' ? 'The user is a male.' : 'Gender is unspecified. Stay gender-neutral. NEVER assume male, NEVER use "my guy" or "bro".'}
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
 - FORWARDING SUGGESTIONS & NOTES TO FEMI:
   If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
@@ -314,19 +370,38 @@ Respond ONLY with a valid JSON object matching this schema:
     };
   }
 
+  // Validate actual phone numbers and prevent Unix timestamps / artifact IDs from being treated as numbers
+  const isValidPhoneNumber = (str: string): boolean => {
+    if (!str) return false;
+    const digits = str.replace(/\D/g, "");
+    if (digits.startsWith("17") && digits.length >= 12) return false;
+    if (digits.startsWith("234") && digits.length === 13) return true;
+    if (digits.startsWith("0") && digits.length === 11) return true;
+    if (digits.length >= 10 && digits.length <= 14 && !digits.startsWith("179")) return true;
+    return false;
+  };
+
   // Look up recent phone number in userText, or in historyText ONLY IF the previous task isn't already closed
   let recentPhoneInContext: string | null = contactCardPhone;
   if (!recentPhoneInContext) {
     const rawMatch = userText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})|(?:\+?234|0)[789][01]\d{8}|\b234\d{10}\b|\b0\d{10}\b/i);
     if (rawMatch) {
-      recentPhoneInContext = (rawMatch[1] || rawMatch[0]).replace(/\D/g, "");
+      const candidate = (rawMatch[1] || rawMatch[0]).replace(/\D/g, "");
+      if (isValidPhoneNumber(candidate)) {
+        recentPhoneInContext = candidate;
+      }
     }
   }
   // ONLY look back into history if a delegation task is actively in flight (not already completed/closed!)
   if (!recentPhoneInContext && historyText && !lastTaskAlreadyClosed) {
-    const histMatches = Array.from(historyText.matchAll(/(?:Phone:\s*\+?|waid=|\+?)(\d{10,14})/gi));
-    if (histMatches.length > 0) {
-      recentPhoneInContext = histMatches[histMatches.length - 1][1].replace(/\D/g, "");
+    const cleanHistory = historyText.replace(/https?:\/\/[^\s]+/gi, "").replace(/art-\d+-[a-z0-9]+/gi, "");
+    const histMatches = Array.from(cleanHistory.matchAll(/(?:Phone:\s*\+?|waid=|\+?)(\d{10,14})/gi));
+    for (let i = histMatches.length - 1; i >= 0; i--) {
+      const candidate = histMatches[i][1].replace(/\D/g, "");
+      if (isValidPhoneNumber(candidate)) {
+        recentPhoneInContext = candidate;
+        break;
+      }
     }
   }
   if (recentPhoneInContext && recentPhoneInContext.startsWith("0") && recentPhoneInContext.length === 11) {
@@ -344,23 +419,25 @@ Respond ONLY with a valid JSON object matching this schema:
     if (extractedPhone.startsWith("0") && extractedPhone.length === 11) {
       extractedPhone = "234" + extractedPhone.slice(1);
     }
-    let extractedMsg = "";
-    const msgMatch = userText.match(/(?:tell (?:him|her|them)|saying|that|:)\s*(.*)/i);
-    if (msgMatch && msgMatch[1] && msgMatch[1].trim().length > 2) {
-      extractedMsg = msgMatch[1].trim().replace(/^(?:that|saying|:)\s*/i, "");
-    } else {
-      extractedMsg = userText
-        .replace(/(?:This is [^,\n]+(?:'s)? number[:\s]*)?(?:(?:\+?234)|0)[789][01]\d{8}|\b\d{10,14}\b/gi, "")
-        .replace(/\b(?:help me message|send (?:a )?message to|message|text|tell (?:him|her|them)|pls tell|please tell|that)\b/gi, "")
-        .trim();
-    }
+    if (isValidPhoneNumber(extractedPhone)) {
+      let extractedMsg = "";
+      const msgMatch = userText.match(/(?:tell (?:him|her|them)|saying|that|:)\s*(.*)/i);
+      if (msgMatch && msgMatch[1] && msgMatch[1].trim().length > 2) {
+        extractedMsg = msgMatch[1].trim().replace(/^(?:that|saying|:)\s*/i, "");
+      } else {
+        extractedMsg = userText
+          .replace(/(?:This is [^,\n]+(?:'s)? number[:\s]*)?(?:(?:\+?234)|0)[789][01]\d{8}|\b\d{10,14}\b/gi, "")
+          .replace(/\b(?:help me message|send (?:a )?message to|message|text|tell (?:him|her|them)|pls tell|please tell|that)\b/gi, "")
+          .trim();
+      }
 
-    decision.action = "draft_whatsapp_message";
-    decision.action_params = {
-      recipient_phone: extractedPhone,
-      message_content: extractedMsg || null,
-    };
-    recentPhoneInContext = extractedPhone;
+      decision.action = "draft_whatsapp_message";
+      decision.action_params = {
+        recipient_phone: extractedPhone,
+        message_content: extractedMsg || null,
+      };
+      recentPhoneInContext = extractedPhone;
+    }
   }
 
   const obeyAskedForMessage = !lastTaskAlreadyClosed && /send a message or text to this number|what message would you like me to send|what would you like me to say|who should i send this to|received the contact for/i.test(lastObeyLine);
@@ -573,6 +650,7 @@ Respond ONLY with a valid JSON object matching this schema:
         userInstruction: userText,
         senderName,
         isFemi,
+        senderGender: userFullMemory?.gender,
       });
 
       await dbCreateUserPendingAction({
@@ -606,12 +684,19 @@ Respond ONLY with a valid JSON object matching this schema:
     if (imgRes.success) {
       await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
       if (channel === "whatsapp") {
-        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Artwork:*\n"${imgRes.revisedPrompt}"`);
-        return { reply: "", imageUrl: imgRes.imageUrl };
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Artwork:*\n"${imgRes.revisedPrompt}"`, instanceName);
+        return {
+          reply: cleanWhatsApp(`🎨 *Here is your generated image!* Let me know if you would like me to adjust any colors, lighting, or style.`),
+          imageUrl: imgRes.imageUrl,
+        };
       }
       return {
         reply: cleanWhatsApp(`🎨 *Generated Artwork:*\n"${imgRes.revisedPrompt}"`),
         imageUrl: imgRes.imageUrl,
+      };
+    } else {
+      return {
+        reply: cleanWhatsApp(`I tried generating your artwork for "${prompt}", but encountered a temporary graphics rendering glitch. Could you rephrase your description or try again in a moment?`),
       };
     }
   }
@@ -626,12 +711,19 @@ Respond ONLY with a valid JSON object matching this schema:
     if (imgRes.success) {
       await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
       if (channel === "whatsapp") {
-        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`);
-        return { reply: "", imageUrl: imgRes.imageUrl };
+        await sendWhatsAppImage(imgRes.imageUrl, userIdentifier, `🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`, instanceName);
+        return {
+          reply: cleanWhatsApp(`🎨 *Here is your updated image!* Let me know if you want any further adjustments.`),
+          imageUrl: imgRes.imageUrl,
+        };
       }
       return {
         reply: cleanWhatsApp(`🎨 *Updated Artwork:*\n"${imgRes.revisedPrompt}"`),
         imageUrl: imgRes.imageUrl,
+      };
+    } else {
+      return {
+        reply: cleanWhatsApp(`I attempted to modify your image, but had a temporary visual rendering issue. Could you tell me what specific change you want again?`),
       };
     }
   }

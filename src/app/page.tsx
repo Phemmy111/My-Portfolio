@@ -638,6 +638,10 @@ export default function Home() {
                 <p className="text-[11px] text-zinc-500 mt-1 font-mono">
                   WhatsApp format: +{countryCode}{localPhone || "9074027451"}
                 </p>
+                <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-start gap-2">
+                  <span className="shrink-0 text-sm">💡</span>
+                  <span><strong>Owner Tip:</strong> We recommend using a dedicated business SIM or WhatsApp Business line for Obey so you can message and test the AI directly from your personal phone.</span>
+                </div>
               </div>
             </div>
 

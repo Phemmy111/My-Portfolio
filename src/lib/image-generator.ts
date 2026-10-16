@@ -36,11 +36,17 @@ export async function ensureMemoryTable() {
         last_image_url TEXT,
         last_image_seed INTEGER,
         last_artifact_id TEXT,
+        gender TEXT,
+        user_notes TEXT,
+        user_name TEXT,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
     try {
       await sql`ALTER TABLE obey_user_memory ADD COLUMN IF NOT EXISTS last_image_seed INTEGER;`;
+      await sql`ALTER TABLE obey_user_memory ADD COLUMN IF NOT EXISTS gender TEXT;`;
+      await sql`ALTER TABLE obey_user_memory ADD COLUMN IF NOT EXISTS user_notes TEXT;`;
+      await sql`ALTER TABLE obey_user_memory ADD COLUMN IF NOT EXISTS user_name TEXT;`;
     } catch {}
     memoryTableChecked = true;
   } catch (err) {
@@ -93,6 +99,66 @@ export async function getUserImageMemory(
   } catch (err) {
     console.warn("[Memory] Could not get user image memory:", err);
     return null;
+  }
+}
+
+export async function getUserFullMemory(userIdentifier: string): Promise<{
+  gender?: string;
+  user_notes?: string;
+  user_name?: string;
+  last_image_prompt?: string;
+  last_image_url?: string;
+  last_image_seed?: number;
+} | null> {
+  try {
+    await ensureMemoryTable();
+    const sql = getSql();
+    const rows = await sql`
+      SELECT user_identifier, gender, user_notes, user_name, last_image_prompt, last_image_url, last_image_seed
+      FROM obey_user_memory
+      WHERE user_identifier = ${userIdentifier}
+      LIMIT 1;
+    `;
+    if (rows.length === 0) return null;
+    return {
+      gender: rows[0].gender || undefined,
+      user_notes: rows[0].user_notes || undefined,
+      user_name: rows[0].user_name || undefined,
+      last_image_prompt: rows[0].last_image_prompt || undefined,
+      last_image_url: rows[0].last_image_url || undefined,
+      last_image_seed: rows[0].last_image_seed !== null ? Number(rows[0].last_image_seed) : undefined,
+    };
+  } catch (err) {
+    console.warn("[Memory] Could not get user full memory:", err);
+    return null;
+  }
+}
+
+export async function saveUserPersonalMemory(params: {
+  userIdentifier: string;
+  gender?: string;
+  userNotes?: string;
+  userName?: string;
+}): Promise<void> {
+  try {
+    await ensureMemoryTable();
+    const sql = getSql();
+    const { userIdentifier, gender, userNotes, userName } = params;
+    await sql`
+      INSERT INTO obey_user_memory (user_identifier, gender, user_notes, user_name, updated_at)
+      VALUES (${userIdentifier}, ${gender || null}, ${userNotes || null}, ${userName || null}, NOW())
+      ON CONFLICT (user_identifier) DO UPDATE SET
+        gender = COALESCE(EXCLUDED.gender, obey_user_memory.gender),
+        user_notes = CASE
+          WHEN EXCLUDED.user_notes IS NOT NULL AND obey_user_memory.user_notes IS NOT NULL
+            THEN obey_user_memory.user_notes || E'\n• ' || EXCLUDED.user_notes
+          ELSE COALESCE(EXCLUDED.user_notes, obey_user_memory.user_notes)
+        END,
+        user_name = COALESCE(EXCLUDED.user_name, obey_user_memory.user_name),
+        updated_at = NOW();
+    `;
+  } catch (err) {
+    console.warn("[Memory] Could not save user personal memory:", err);
   }
 }
 

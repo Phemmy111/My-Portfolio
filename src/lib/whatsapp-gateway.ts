@@ -150,14 +150,15 @@ export async function fetchEvolutionMediaBase64(
 export async function sendWhatsAppAudio(
   audioUrl: string,
   recipient: string,
-  caption?: string
+  caption?: string,
+  customInstance?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     let cleaned = (recipient || "2348120934828")
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
@@ -222,14 +223,15 @@ export async function sendWhatsAppAudio(
 export async function sendWhatsAppImage(
   imageUrl: string,
   recipient: string,
-  caption?: string
+  caption?: string,
+  customInstance?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     let cleaned = (recipient || "2348120934828")
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
@@ -272,14 +274,15 @@ export async function sendWhatsAppDocument(
   fileName: string,
   recipient: string,
   caption?: string,
-  mimetype: string = "text/html"
+  mimetype: string = "text/html",
+  customInstance?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     let cleaned = (recipient || "2348120934828")
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
@@ -628,7 +631,8 @@ export async function setEvolutionInstanceSettings(instanceName: string) {
 export async function markWhatsAppMessageRead(
   instanceName: string,
   remoteJid: string,
-  messageId: string
+  messageId: string,
+  participant?: string
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
@@ -636,17 +640,19 @@ export async function markWhatsAppMessageRead(
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+    const readItem: any = {
+      remoteJid: jid,
+      fromMe: false,
+      id: messageId,
+    };
+    if (participant) {
+      readItem.participant = participant;
+    }
     const res = await fetch(`${evoUrl}/chat/markMessageAsRead/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoKey },
       body: JSON.stringify({
-        readMessages: [
-          {
-            remoteJid: jid,
-            fromMe: false,
-            id: messageId,
-          },
-        ],
+        readMessages: [readItem],
       }),
     });
     return await res.json();

@@ -18,6 +18,10 @@ import {
   dbGetWorkspaceBySlug,
   dbGetWorkspaceByInstanceName,
   dbGetWorkspaceSettings,
+  dbRecordStatusComment,
+  dbHasRecentStatusComment,
+} from "@/lib/db";
+import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import {
   sendWhatsAppMessage,
   sendWhatsAppStatusPost,
@@ -57,6 +61,24 @@ function cleanWhatsAppFormatting(text: string): string {
     // Fix accidental double asterisk clutter
     .replace(/\*\s*\*/g, "*")
     .trim();
+}
+const recentlyProcessedWebhookMessageIds = new Map<string, number>();
+
+function isDuplicateWebhookMessage(messageId: string): boolean {
+  if (!messageId) return false;
+  const now = Date.now();
+  if (recentlyProcessedWebhookMessageIds.size > 200) {
+    for (const [id, ts] of recentlyProcessedWebhookMessageIds.entries()) {
+      if (now - ts > 180000) {
+        recentlyProcessedWebhookMessageIds.delete(id);
+      }
+    }
+  }
+  if (recentlyProcessedWebhookMessageIds.has(messageId)) {
+    return true;
+  }
+  recentlyProcessedWebhookMessageIds.set(messageId, now);
+  return false;
 }
 
 interface ProcessMessageParams {
@@ -200,14 +222,47 @@ async function handleObeyBusinessCustomerTurn(params: {
   instanceName: string;
   reply: (text: string) => Promise<void>;
 }) {
-  const { currentWs, userText, replyTo, pushName, historyText, reply } = params;
+  const { currentWs, userText, replyTo, pushName, historyText, instanceName, reply } = params;
 
-  const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
+  const [wsSettings, userFullMemory] = await Promise.all([
+    dbGetWorkspaceSettings(currentWs.id),
+    getUserFullMemory(replyTo),
+  ]);
+
   const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
   const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
 
   const customerName = pushName ? pushName.trim() : "Friend";
   const hasHistory = Boolean(historyText && historyText.trim().length > 15);
+
+  // 1. Check for personal gender/memory directives from customer
+  const declaresFemale = /\b(i am (?:a )?(?:lady|woman|girl|female)|i'm (?:a )?(?:lady|woman|girl|female)|i am her|i'm her|she\/her)\b/i.test(userText);
+  const declaresMale = /\b(i am (?:a )?(?:guy|man|boy|male)|i'm (?:a )?(?:guy|man|boy|male)|i am him|i'm him|he\/him)\b/i.test(userText);
+  if (declaresFemale) {
+    await saveUserPersonalMemory({ userIdentifier: replyTo, gender: "female", userName: pushName });
+  } else if (declaresMale) {
+    await saveUserPersonalMemory({ userIdentifier: replyTo, gender: "male", userName: pushName });
+  }
+
+  // 2. Contextual Owner Request / Relay ("him" / "tell him" / "ask him to send data")
+  const asksOwnerAction =
+    /\b(tell him|ask him|let him know|reach out to him|connect with him|send data to me|give him my number|talk to him|call him)\b/i.test(userText.trim()) ||
+    (/\b(tell|ask|let|send|call)\b/i.test(userText) && Boolean(currentWs.owner_name && userText.toLowerCase().includes(currentWs.owner_name.toLowerCase())));
+
+  if (asksOwnerAction && currentWs.owner_phone) {
+    try {
+      const ownerAlert =
+        `🔔 *New Customer Request (${currentWs.name}):*\n\n` +
+        `• *From:* ${customerName} (+${replyTo})\n` +
+        `• *Customer says:* "${userText}"\n` +
+        `• *Context:* The customer is requesting you to reach out or send them information/data.\n\n` +
+        `👉 *Action Required:* Please reply to or call them directly!`;
+
+      await sendWhatsAppMessage(ownerAlert, currentWs.owner_phone, instanceName);
+    } catch (alertErr) {
+      console.warn("[WA] Could not alert business owner:", alertErr);
+    }
+  }
 
   const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".
 You are chatting with ${customerName}.
@@ -217,6 +272,8 @@ ${businessBio}
 
 Product & Service Catalog:
 ${JSON.stringify(catalog, null, 2)}
+
+${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer to her respectfully as a lady (she/her). NEVER assume male, NEVER call her "my guy" or "bro"!' : ''}
 
 🚨 CRITICAL HUMAN CONVERSATIONAL RULES (MUST FOLLOW STRICTLY):
 1. NEVER REPEAT GREETINGS OR NAMES AT EVERY MESSAGE:
@@ -230,13 +287,16 @@ ${JSON.stringify(catalog, null, 2)}
    - Answer directly what the customer asked. Do NOT dump marketing fluff, lengthy bulleted lists, or unsolicited promotional intros ("Welcome to AutoLearn Spot! We are your go-to destination...").
    - ONLY provide longer details, full bullet points, or catalog breakdowns IF the customer specifically asks for them (e.g. "Send me the full price list", "Can you explain in detail?", "What packages do you offer?").
 
-3. NATURAL HUMAN FLOW & ACCURACY:
+3. UNDERSTANDING "HIM" & OWNER RELAYS:
+   - When the customer says "tell him...", "ask him to send data", or "let him know", "him" refers to the business manager/owner (${currentWs.owner_name || "the business owner"}).
+   - You have already notified ${currentWs.owner_name || "the owner"} directly! Simply acknowledge this warmly in 1 short sentence: "I've passed your message directly to ${currentWs.owner_name || "our team"}. They will reach out to you shortly!"
+
+4. NATURAL HUMAN FLOW & ACCURACY:
    - If they say "How are you doing?", reply like a human: "I'm doing great, thank you! How are you?"
-   - If they ask to speak with someone (e.g. Mr. Adeleke), acknowledge simply: "Sure! Let me notify Mr. Adeleke for you right away. What would you like him to assist you with?"
    - If they ask about something you don't do (e.g. cash payouts), answer simply and directly: "No, we don't distribute cash payouts. We provide training and learning packages to help you build skills."
    - Keep emojis tasteful and minimal (0-2 max per message, never excessive).
 
-4. STRICT BRAND ISOLATION:
+5. STRICT BRAND ISOLATION:
    - You represent "${currentWs.name}" ONLY. NEVER mention Femi Adeleke, software engineering portfolios, Upwork proposals, or tech resumes unless the business itself is Femi's portfolio.`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
@@ -698,6 +758,7 @@ How can I help you today?`;
       channel: "whatsapp",
       historyText,
       isVoiceNote,
+      instanceName,
     });
 
     const finalReply = companionRes.reply;
@@ -896,12 +957,124 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
     return NextResponse.json({ ok: true });
   }
 
+  // Deduplicate incoming webhook deliveries to prevent double replies
+  if (msgObj.key?.id && isDuplicateWebhookMessage(msgObj.key.id)) {
+    return NextResponse.json({ ok: true, duplicate: true });
+  }
+
   // remoteJidAlt provides the actual phone JID (e.g. 2348120934828@s.whatsapp.net) when remoteJid is an LID
   const senderJid = msgObj.key?.remoteJidAlt || msgObj.key?.remoteJid || "";
 
-  // Ignore broadcasts and groups
-  if (senderJid.endsWith("@broadcast") || senderJid.endsWith("@g.us")) {
+  // Ignore regular group chats
+  if (senderJid.endsWith("@g.us")) {
     return NextResponse.json({ ok: true });
+  }
+
+  // Handle WhatsApp Status Stories (senderJid is "status@broadcast" or ends with "@broadcast")
+  if (senderJid.endsWith("@broadcast")) {
+    // Only process status@broadcast
+    if (senderJid !== "status@broadcast" && !senderJid.includes("status")) {
+      return NextResponse.json({ ok: true });
+    }
+
+    after(async () => {
+      try {
+        const participantJid = msgObj.key?.participant || msgObj.participant || "";
+        const posterPhone = participantJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+
+        // 1. Identify workspace / instance
+        let currentWs: any = null;
+        if (instanceName && instanceName !== "obey" && instanceName !== "default") {
+          currentWs = await dbGetWorkspaceByInstanceName(instanceName);
+        }
+
+        // 2. Check settings
+        let autoViewEnabled = true;
+        let autoCommentEnabled = false;
+        let commentTone = "friendly";
+
+        if (currentWs) {
+          autoViewEnabled = currentWs.auto_view_status !== false;
+          autoCommentEnabled = Boolean(currentWs.auto_comment_status);
+          commentTone = currentWs.comment_tone || "friendly";
+        } else {
+          const viewSetting = await getSetting("AUTO_VIEW_STATUS_ENABLED");
+          const commentSetting = await getSetting("AUTO_COMMENT_STATUS_ENABLED");
+          autoViewEnabled = viewSetting !== "false";
+          autoCommentEnabled = commentSetting === "true";
+        }
+
+        // 3. Auto-View Status (Mark as Read in WhatsApp)
+        if (autoViewEnabled && msgObj.key?.id) {
+          await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, participantJid);
+          console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
+        }
+
+        // 4. AI Status Commenting
+        if (autoCommentEnabled && posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
+          // Guard: Don't comment on our own number or Femi's number
+          if (posterPhone === FEMI_PERSONAL_NUMBER || (currentWs?.owner_phone && posterPhone.endsWith(currentWs.owner_phone.slice(-10)))) {
+            return;
+          }
+
+          // Rate limit: 1 comment per poster every 12 hours
+          const alreadyCommented = await dbHasRecentStatusComment(posterPhone, 12);
+          if (!alreadyCommented) {
+            const statusText = (
+              msgObj.message?.conversation ||
+              msgObj.message?.extendedTextMessage?.text ||
+              msgObj.message?.imageMessage?.caption ||
+              msgObj.message?.videoMessage?.caption ||
+              ""
+            ).trim();
+
+            const hasVisual = Boolean(msgObj.message?.imageMessage || msgObj.message?.videoMessage);
+
+            if (statusText.length >= 3 || hasVisual) {
+              const commenterRole = currentWs?.name || "Obey";
+              const promptContext = statusText ? `STATUS TEXT/CAPTION: "${statusText}"` : "STATUS PHOTO: [Visual Story]";
+
+              const aiRes = await executeAICompletion({
+                systemPrompt: `You are leaving a warm, authentic, natural 1-sentence comment on a contact's WhatsApp status story.
+Sender/Brand: ${commenterRole}.
+Tone: ${commentTone} (short, uplifting, genuine, 1 tasteful emoji max).
+Rules:
+- NEVER write long marketing paragraphs or promote products unsolicited.
+- Sound like a real supportive human friend or trusted professional.
+- Max 10-12 words.
+Examples:
+- "Huge congratulations! 🎉 Big wins ahead."
+- "Love this vibe! 🔥 Keep shining."
+- "Looking super sharp! 👏"
+- "This looks fantastic! ✨"
+Output ONLY the comment text.`,
+                userPrompt: `${promptContext}\nCOMMENT:`,
+                temperature: 0.7,
+                maxTokens: 50,
+              });
+
+              const comment = aiRes.text.trim().replace(/^["']|["']$/g, "");
+              if (comment && comment.length >= 3) {
+                await sendWhatsAppMessage(comment, posterPhone, instanceName);
+                await dbRecordStatusComment({
+                  workspace_id: currentWs?.id || null,
+                  instance_name: instanceName,
+                  poster_phone: posterPhone,
+                  status_id: msgObj.key?.id || null,
+                  status_text: statusText || (hasVisual ? "[Media Story]" : null),
+                  comment_sent: comment,
+                });
+                console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}"`);
+              }
+            }
+          }
+        }
+      } catch (statusErr) {
+        console.warn("[WA Status] Error handling status@broadcast:", statusErr);
+      }
+    });
+
+    return NextResponse.json({ ok: true, statusHandled: true });
   }
 
   // 1. Explicitly trigger blue ticks (Read receipt) for the sender

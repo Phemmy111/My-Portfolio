@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendWhatsAppStatusPost } from "@/lib/whatsapp-gateway";
+import { getSetting, setSetting } from "@/lib/settings";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,18 +14,54 @@ export async function GET(req: NextRequest) {
     }
 
     let targetWorkspaceId = workspaceId;
+    let ws: any = null;
 
     if (!targetWorkspaceId && slug) {
       const wsRows = await sql`
-        SELECT id FROM workspaces WHERE LOWER(slug) = ${slug.toLowerCase().trim()} LIMIT 1
+        SELECT * FROM workspaces WHERE LOWER(slug) = ${slug.toLowerCase().trim()} LIMIT 1
       `;
       if (wsRows && wsRows.length > 0) {
-        targetWorkspaceId = wsRows[0].id;
+        ws = wsRows[0];
+        targetWorkspaceId = ws.id;
+      }
+    } else if (targetWorkspaceId) {
+      const wsRows = await sql`
+        SELECT * FROM workspaces WHERE id = ${targetWorkspaceId} LIMIT 1
+      `;
+      if (wsRows && wsRows.length > 0) {
+        ws = wsRows[0];
       }
     }
 
+    // Default settings for Main Obey or Workspace
+    let auto_view_status = true;
+    let auto_comment_status = false;
+    let comment_tone = "friendly";
+    let auto_status_enabled = false;
+    let auto_status_interval = 24;
+
+    if (ws) {
+      auto_view_status = ws.auto_view_status !== false;
+      auto_comment_status = Boolean(ws.auto_comment_status);
+      comment_tone = ws.comment_tone || "friendly";
+      auto_status_enabled = Boolean(ws.auto_status_enabled);
+      auto_status_interval = ws.auto_status_interval || 24;
+    } else {
+      const v = await getSetting("AUTO_VIEW_STATUS_ENABLED");
+      const c = await getSetting("AUTO_COMMENT_STATUS_ENABLED");
+      auto_view_status = v !== "false";
+      auto_comment_status = c === "true";
+    }
+
     if (!targetWorkspaceId) {
-      return NextResponse.json({ error: "workspace_id or slug is required" }, { status: 400 });
+      return NextResponse.json({
+        statuses: [],
+        auto_view_status,
+        auto_comment_status,
+        comment_tone,
+        auto_status_enabled,
+        auto_status_interval,
+      });
     }
 
     const statuses = await sql`
@@ -34,7 +71,14 @@ export async function GET(req: NextRequest) {
       LIMIT 50
     `;
 
-    return NextResponse.json({ statuses: statuses || [] });
+    return NextResponse.json({
+      statuses: statuses || [],
+      auto_view_status,
+      auto_comment_status,
+      comment_tone,
+      auto_status_enabled,
+      auto_status_interval,
+    });
   } catch (err: any) {
     console.error("[Status API] GET error:", err);
     return NextResponse.json({ error: err.message || "Failed to fetch statuses" }, { status: 500 });
@@ -53,35 +97,56 @@ export async function POST(req: NextRequest) {
       auto_post_now = true,
       auto_status_enabled,
       auto_status_interval,
+      auto_view_status,
+      auto_comment_status,
+      comment_tone,
     } = body;
 
     if (!sql) {
       return NextResponse.json({ error: "Database not connected" }, { status: 500 });
     }
 
+    // Check if this is Main Obey settings toggle
+    const isMainObey = slug === "femi" || workspace_id === "femi" || (!slug && !workspace_id);
+
+    if (isMainObey) {
+      if (auto_view_status !== undefined) {
+        await setSetting("AUTO_VIEW_STATUS_ENABLED", String(auto_view_status));
+      }
+      if (auto_comment_status !== undefined) {
+        await setSetting("AUTO_COMMENT_STATUS_ENABLED", String(auto_comment_status));
+      }
+      if (comment_tone) {
+        await setSetting("COMMENT_TONE", String(comment_tone));
+      }
+    }
+
     // Lookup workspace
-    let ws = null;
-    if (workspace_id) {
+    let ws: any = null;
+    if (workspace_id && workspace_id !== "femi") {
       const wsRows = await sql`SELECT * FROM workspaces WHERE id = ${workspace_id} LIMIT 1`;
       if (wsRows && wsRows.length > 0) ws = wsRows[0];
-    } else if (slug) {
+    } else if (slug && slug !== "femi") {
       const wsRows = await sql`SELECT * FROM workspaces WHERE LOWER(slug) = ${slug.toLowerCase().trim()} LIMIT 1`;
       if (wsRows && wsRows.length > 0) ws = wsRows[0];
     }
 
-    if (!ws) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    // If updating automation schedule settings
-    if (auto_status_enabled !== undefined || auto_status_interval !== undefined) {
+    // If updating workspace settings
+    if (ws) {
       await sql`
         UPDATE workspaces
         SET auto_status_enabled = COALESCE(${auto_status_enabled}, auto_status_enabled),
             auto_status_interval = COALESCE(${auto_status_interval}, auto_status_interval),
+            auto_view_status = COALESCE(${auto_view_status}, auto_view_status),
+            auto_comment_status = COALESCE(${auto_comment_status}, auto_comment_status),
+            comment_tone = COALESCE(${comment_tone}, comment_tone),
             updated_at = NOW()
         WHERE id = ${ws.id}
       `;
+    }
+
+    if (!ws && !isMainObey) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // If posting a new status update (either text content or media exists)

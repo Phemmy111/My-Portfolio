@@ -622,6 +622,9 @@ export interface Workspace {
   owner_clerk_id?: string | null;
   whatsapp_instance_name?: string | null;
   whatsapp_status?: string | null;
+  auto_view_status?: boolean;
+  auto_comment_status?: boolean;
+  comment_tone?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -783,8 +786,68 @@ export async function createWorkspaceTables() {
       VALUES ('default', 9500, 22500, 55000, 7)
       ON CONFLICT (id) DO NOTHING
     `;
+
+    // Ensure status auto-view, auto-comment, and tone columns exist in workspaces
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_view_status BOOLEAN DEFAULT TRUE`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_comment_status BOOLEAN DEFAULT FALSE`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_tone TEXT DEFAULT 'friendly'`;
+
+    // Ensure workspace_status_comments table exists for tracking viewed/replied WhatsApp statuses
+    await db`
+      CREATE TABLE IF NOT EXISTS workspace_status_comments (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        instance_name TEXT,
+        poster_phone TEXT NOT NULL,
+        status_id TEXT,
+        status_text TEXT,
+        comment_sent TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await db`CREATE INDEX IF NOT EXISTS idx_status_comments_poster ON workspace_status_comments(poster_phone)`;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
+  }
+}
+
+export async function dbRecordStatusComment(params: {
+  workspace_id?: string | null;
+  instance_name?: string | null;
+  poster_phone: string;
+  status_id?: string | null;
+  status_text?: string | null;
+  comment_sent: string;
+}) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    const id = `stat_cmt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const [row] = await db`
+      INSERT INTO workspace_status_comments (id, workspace_id, instance_name, poster_phone, status_id, status_text, comment_sent)
+      VALUES (${id}, ${params.workspace_id || null}, ${params.instance_name || null}, ${params.poster_phone}, ${params.status_id || null}, ${params.status_text || null}, ${params.comment_sent})
+      RETURNING *
+    `;
+    return row;
+  } catch (e) {
+    console.warn("[Status Comments] dbRecordStatusComment error:", e);
+    return null;
+  }
+}
+
+export async function dbHasRecentStatusComment(posterPhone: string, hours: number = 12): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    const rows = await db`
+      SELECT id FROM workspace_status_comments
+      WHERE poster_phone = ${posterPhone}
+        AND created_at > NOW() - (${hours} || ' hours')::INTERVAL
+      LIMIT 1
+    `;
+    return Boolean(rows && rows.length > 0);
+  } catch {
+    return false;
   }
 }
 
