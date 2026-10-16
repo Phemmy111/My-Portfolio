@@ -588,7 +588,9 @@ function ControlRoomContent() {
               >
                 {workspaces.map((w) => (
                   <option key={w.id} value={w.slug}>
-                    🏢 {w.name} ({w.plan || "Starter"})
+                    {w.slug === "femi-adeleke"
+                      ? "⭐ Main Obey (Permanent Flagship)"
+                      : `🏢 ${w.name} (${w.plan || "Starter"})`}
                   </option>
                 ))}
               </select>
@@ -634,9 +636,14 @@ function ControlRoomContent() {
         {currentWs && (
           <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                  {currentWs.name}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <span>{currentWs.name}</span>
+                  {currentWs.slug === "femi-adeleke" && (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                      ⭐ Main Obey · Permanent Flagship
+                    </span>
+                  )}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 capitalize">
                   {currentWs.plan || "Starter"} Plan
@@ -995,6 +1002,16 @@ function ControlRoomContent() {
                       <MessageSquare className="w-4 h-4" />
                       <span>Send Test WhatsApp Message</span>
                     </a>
+
+                    <button
+                      onClick={handleInitWhatsApp}
+                      disabled={waLoading}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-2 transition border border-slate-700 disabled:opacity-50"
+                      title="Generate a fresh QR code to change your connected phone number"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${waLoading ? "animate-spin" : ""}`} />
+                      <span>{waLoading ? "Generating QR..." : "Rescan / Reconnect Number"}</span>
+                    </button>
                   </div>
                 </div>
               ) : (
