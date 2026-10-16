@@ -181,9 +181,23 @@ function CallInterface() {
 
         vapiRef.current.on("error", (err: any) => {
           console.error("Vapi call error:", err);
-          setErrorMessage(err.message || "Voice connection interrupted.");
+          const rawErr = err?.message || (typeof err === "string" ? err : "");
+          setErrorMessage(rawErr || "Voice connection interrupted. Please check your microphone and try again.");
           setCallStatus("error");
         });
+      }
+
+      // Explicitly prompt and ensure microphone permission before initiating WebRTC
+      try {
+        if (typeof navigator !== "undefined" && navigator?.mediaDevices?.getUserMedia) {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStream.getTracks().forEach((t) => t.stop());
+        }
+      } catch (micErr: any) {
+        console.warn("[Call] Microphone permission denied:", micErr);
+        setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser to speak with Obey.");
+        setCallStatus("error");
+        return;
       }
 
       if (userPhone) {
@@ -194,7 +208,6 @@ function CallInterface() {
       }
 
       await vapiRef.current.start(vapiConfig.assistantId, {
-        customer: userPhone ? { number: userPhone, name: userName } : undefined,
         metadata: {
           userPhone,
           userName,

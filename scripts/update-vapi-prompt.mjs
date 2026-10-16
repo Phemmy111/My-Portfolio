@@ -38,6 +38,7 @@ async function main() {
     firstMessage: "Hey there! I'm Obey! Great to have you on the line! Wetin dey sup today? We fit gist about anything or dive straight into business! How you dey?",
     voicemailMessage: "Hey! You reached Obey, built by Femi Adeleke. Please leave your message or hit Femi up directly on WhatsApp at +234 812 093 4828.",
     endCallMessage: "It was awesome chatting with you! I'm sending your call recording and summary to your WhatsApp right away. Catch you soon!",
+    endCallPhrases: [],
     voice: {
       provider: "cartesia",
       voiceId: "a0e99841-438c-4a64-b679-ae501e7d6091",
