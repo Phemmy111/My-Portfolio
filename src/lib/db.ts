@@ -846,11 +846,14 @@ export async function dbGetWorkspacesByOwnerClerkId(
     const cleanEmail = (email || "").trim().toLowerCase();
     const cleanPhone = (phone || "").trim().replace(/[^0-9]/g, "");
 
+    const isFemi = cleanEmail === "femiadeleke2020@gmail.com" || cleanEmail === "femiadeleke.work@gmail.com";
+
     const rows = await db`
       SELECT * FROM workspaces
       WHERE owner_clerk_id = ${clerkId}
          OR (${cleanEmail} != '' AND LOWER(COALESCE(owner_email, '')) = ${cleanEmail})
          OR (${cleanPhone} != '' AND owner_phone = ${cleanPhone})
+         OR (${isFemi} AND slug = 'femi-adeleke')
       ORDER BY created_at DESC
     `;
 
