@@ -402,11 +402,13 @@ export async function setEvolutionInstanceWebhook(instanceName: string, webhookU
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoKey },
       body: JSON.stringify({
-        enabled: true,
-        url: webhookUrl,
-        webhookByEvents: false,
-        webhookBase64: true,
-        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+        webhook: {
+          enabled: true,
+          url: webhookUrl,
+          byEvents: false,
+          base64: true,
+          events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE", "CONNECTION_UPDATE"],
+        },
       }),
     });
     return await res.json();

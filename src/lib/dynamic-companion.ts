@@ -329,6 +329,36 @@ Respond ONLY with a valid JSON object matching this schema:
     recentPhoneInContext = "234" + recentPhoneInContext.slice(1);
   }
 
+  // DIRECT ONE-SHOT DELEGATION DETECTION:
+  // e.g. "Help me message 07033973727 and tell him that she is a very good girl"
+  // e.g. "This is Isaac's number 0907 196 5770. Tell him that I want to have meeting..."
+  const delegationNumberMatch = userText.match(/(?:(?:\+?234)|0)[789][01]\d{8}|\b234\d{10}\b|\b0\d{10}\b|\b\d{10,14}\b/);
+  const delegationHasVerb = /\b(help me message|send (?:a )?message to|message|text|tell him|tell her|tell them|inform him|inform her)\b/i.test(userText);
+
+  if (delegationNumberMatch && delegationHasVerb && !explicitlyRequestsCall) {
+    let extractedPhone = delegationNumberMatch[0].replace(/\D/g, "");
+    if (extractedPhone.startsWith("0") && extractedPhone.length === 11) {
+      extractedPhone = "234" + extractedPhone.slice(1);
+    }
+    let extractedMsg = "";
+    const msgMatch = userText.match(/(?:tell (?:him|her|them)|saying|that|:)\s*(.*)/i);
+    if (msgMatch && msgMatch[1] && msgMatch[1].trim().length > 2) {
+      extractedMsg = msgMatch[1].trim().replace(/^(?:that|saying|:)\s*/i, "");
+    } else {
+      extractedMsg = userText
+        .replace(/(?:This is [^,\n]+(?:'s)? number[:\s]*)?(?:(?:\+?234)|0)[789][01]\d{8}|\b\d{10,14}\b/gi, "")
+        .replace(/\b(?:help me message|send (?:a )?message to|message|text|tell (?:him|her|them)|pls tell|please tell|that)\b/gi, "")
+        .trim();
+    }
+
+    decision.action = "draft_whatsapp_message";
+    decision.action_params = {
+      recipient_phone: extractedPhone,
+      message_content: extractedMsg || null,
+    };
+    recentPhoneInContext = extractedPhone;
+  }
+
   const obeyAskedForMessage = !lastTaskAlreadyClosed && /send a message or text to this number|what message would you like me to send|what would you like me to say|who should i send this to|received the contact for/i.test(lastObeyLine);
 
   const isAffirmativeShort = /^(yes|yeah|yep|sure|ok|okay|1|do it|go ahead|proceed|fix it|revamp it|update it)\b/i.test(userText.trim());
@@ -412,7 +442,11 @@ Respond ONLY with a valid JSON object matching this schema:
   // 4. EXECUTE AUTONOMOUS DECISION
 
   // Tool: Notify Femi Adeleke of User Suggestion / Feedback
-  if (decision.action === "notify_femi" || (/\b(tell him|tell your boss|tell femi|let him know|suggest to him|pass to femi)\b/i.test(userText) && !isFemi)) {
+  // NEVER trigger notify_femi if the user provided a recipient phone or is delegating a message to someone else!
+  const hasExternalRecipient = Boolean(recentPhoneInContext) || /\b\d{10,14}\b/.test(userText) || decision.action === "draft_whatsapp_message";
+  const explicitFemiFeedback = /\b(tell your boss|tell femi|let femi know|suggest to femi|pass to femi|forward to femi)\b/i.test(userText);
+
+  if (!hasExternalRecipient && (decision.action === "notify_femi" || (explicitFemiFeedback && !isFemi))) {
     try {
       const recentDiscussion = (historyText || "").split("\n").slice(-4).join("\n");
       await sendWhatsAppMessage(

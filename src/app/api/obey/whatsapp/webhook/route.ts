@@ -577,11 +577,24 @@ How can I help you today?`;
 
       for (const rule of rules) {
         if (!rule.is_active) continue;
-        const matched = rule.trigger_keywords.some((kw) =>
-          cleanUserText.includes(kw.toLowerCase().trim())
-        );
+        const matched = rule.trigger_keywords.some((kw) => {
+          const cleanKw = kw.toLowerCase().trim();
+          if (!cleanKw) return false;
+          const escaped = cleanKw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(`(^|\\W)${escaped}($|\\W)`, "i").test(cleanUserText);
+        });
 
         if (matched) {
+          // Guard against negations ("not asking for call", "don't call", etc.)
+          if (/\b(?:not|don'?t|no)\s+(?:want|need|ask(?:ing)?\s+for)?\s*(?:a\s+)?call\b/i.test(cleanUserText)) {
+            continue;
+          }
+
+          // Guard against complex questions, status queries, or delegation commands
+          if (cleanUserText.length > 60 || /\b(help me message|message|send a message|wasbot|status)\b/i.test(cleanUserText)) {
+            continue;
+          }
+
           console.log(`[WA] Triggered Keyword Rule (${currentWs?.name}): "${rule.trigger_keywords.join(", ")}" -> ${rule.action}`);
           await reply(rule.response_text);
 
@@ -744,9 +757,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  console.log("[WA Webhook] Raw event:", JSON.stringify(body).slice(0, 300));
+  const queryInstance = req.nextUrl.searchParams.get("instance");
+  let instanceName = queryInstance || body?.instance || body?.data?.instance || "obey";
 
-  const instanceName = body?.instance || body?.data?.instance || "obey";
+  // Safeguard: Check if event sender or destination matches AutoLearn Spot's connected number (09074027451)
+  const eventSenderClean = (body?.sender || body?.destination || "").replace(/\D/g, "");
+  if (eventSenderClean.endsWith("9074027451")) {
+    instanceName = "obey-autolearn-spot";
+  }
   const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
   if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
 

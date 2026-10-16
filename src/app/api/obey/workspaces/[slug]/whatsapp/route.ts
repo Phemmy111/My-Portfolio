@@ -68,7 +68,7 @@ export async function POST(
 
     const instanceName = `obey-${ws.slug}`;
     const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
-    const webhookUrl = `${origin}/api/obey/whatsapp/webhook`;
+    const webhookUrl = `${origin}/api/obey/whatsapp/webhook?instance=${instanceName}`;
 
     // 1. Create or ensure instance exists
     await createEvolutionInstance(instanceName);
