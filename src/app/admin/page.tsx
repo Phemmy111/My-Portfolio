@@ -37,10 +37,11 @@ import ObeyChatConsole from "@/components/ObeyChatConsole";
 import ObeyFloatingAssistant from "@/components/ObeyFloatingAssistant";
 import AISettingsModal from "@/components/AISettingsModal";
 import AdminOmnichannelInbox from "@/components/AdminOmnichannelInbox";
+import AdminMasterControlRoom from "@/components/AdminMasterControlRoom";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"leads" | "proposals" | "inquiries" | "obey" | "inbox">("inbox");
+  const [activeTab, setActiveTab] = useState<"master" | "inbox" | "leads" | "proposals" | "inquiries" | "obey">("master");
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalTab, setSettingsModalTab] = useState<"brain" | "ai" | "phone" | "integrations">("brain");
@@ -433,6 +434,19 @@ export default function AdminDashboardPage() {
         {/* Tab Navigation with horizontal overflow scrolling */}
         <div className="flex items-center gap-1.5 sm:gap-2 border-b border-zinc-300 dark:border-zinc-800 pb-3 overflow-x-auto no-scrollbar scroll-smooth -mx-3 px-3 sm:mx-0 sm:px-0">
           <button
+            onClick={() => setActiveTab("master")}
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
+              activeTab === "master"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Building2 size={15} />
+            <span>Master Control Room</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </button>
+
+          <button
             onClick={() => setActiveTab("inbox")}
             className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap transition-all ${
               activeTab === "inbox"
@@ -442,7 +456,6 @@ export default function AdminDashboardPage() {
           >
             <MessagesSquare size={15} />
             <span>Omnichannel Inbox</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           </button>
 
           <button
@@ -513,6 +526,28 @@ export default function AdminDashboardPage() {
             <ExternalLink size={12} className="opacity-70" />
           </Link>
         </div>
+
+        {/* ============================================================ */}
+        {/* TAB: MASTER CONTROL ROOM (BUSINESS CLIENTS & PRICING)        */}
+        {/* ============================================================ */}
+        {activeTab === "master" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black tracking-tight flex items-center gap-2">
+                  Obey Platform Master Control Room
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Super Admin
+                  </span>
+                </h2>
+                <p className="text-sm text-zinc-700 dark:text-zinc-400 font-medium">
+                  Global command center to control package pricing, manage client workspaces, manually grant plans &amp; trial extensions, and monitor platform-wide CRM activities.
+                </p>
+              </div>
+            </div>
+            <AdminMasterControlRoom />
+          </div>
+        )}
 
         {/* ============================================================ */}
         {/* TAB 0: OMNICHANNEL INBOX (WHATSAPP, TELEGRAM, WEB)           */}

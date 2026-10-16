@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbGetWorkspaceBySlug } from "@/lib/db";
+import { dbGetWorkspaceBySlug, dbGetPlatformPricing } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
-
-const PLAN_PRICES: Record<string, number> = {
-  starter: 950000, // ₦9,500 in kobo
-  pro: 2250000, // ₦22,500 in kobo
-  enterprise: 5500000, // ₦55,000 in kobo
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,7 +19,14 @@ export async function POST(req: NextRequest) {
     const paystackSecret =
       (await getSetting("PAYSTACK_SECRET_KEY")) || process.env.PAYSTACK_SECRET_KEY;
 
-    const amountInKobo = PLAN_PRICES[plan.toLowerCase()] || 950000;
+    const pricing = await dbGetPlatformPricing();
+    const priceMap: Record<string, number> = {
+      starter: (pricing.starter_price || 9500) * 100,
+      pro: (pricing.pro_price || 22500) * 100,
+      enterprise: (pricing.enterprise_price || 55000) * 100,
+    };
+
+    const amountInKobo = priceMap[plan.toLowerCase()] || 950000;
     const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
 
     if (!paystackSecret) {

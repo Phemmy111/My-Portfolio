@@ -618,6 +618,7 @@ export interface Workspace {
   owner_email?: string | null;
   plan?: string;
   subscription_status?: string;
+  trial_ends_at?: string | null;
   whatsapp_instance_name?: string | null;
   whatsapp_status?: string | null;
   created_at?: string;
@@ -759,6 +760,26 @@ export async function createWorkspaceTables() {
       )
     `;
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_call_logs_ws ON workspace_call_logs(workspace_id)`;
+
+    // Ensure trial_ends_at column exists
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '7 days'`;
+
+    // Ensure platform_pricing table exists
+    await db`
+      CREATE TABLE IF NOT EXISTS platform_pricing (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        starter_price INTEGER DEFAULT 9500,
+        pro_price INTEGER DEFAULT 22500,
+        enterprise_price INTEGER DEFAULT 55000,
+        trial_days INTEGER DEFAULT 7,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await db`
+      INSERT INTO platform_pricing (id, starter_price, pro_price, enterprise_price, trial_days)
+      VALUES ('default', 9500, 22500, 55000, 7)
+      ON CONFLICT (id) DO NOTHING
+    `;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
   }
@@ -776,10 +797,22 @@ export async function dbCreateWorkspace(params: {
   if (!db) return null;
   try {
     await createWorkspaceTables();
+    const pricing = await dbGetPlatformPricing();
+    const trialDays = pricing.trial_days || 7;
     const id = `ws_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const [created] = await db`
-      INSERT INTO workspaces (id, name, slug, owner_name, owner_phone, owner_email, plan, subscription_status)
-      VALUES (${id}, ${params.name}, ${params.slug.toLowerCase().trim()}, ${params.owner_name}, ${params.owner_phone.trim()}, ${params.owner_email || null}, ${params.plan || 'starter'}, 'active')
+      INSERT INTO workspaces (id, name, slug, owner_name, owner_phone, owner_email, plan, subscription_status, trial_ends_at)
+      VALUES (
+        ${id},
+        ${params.name},
+        ${params.slug.toLowerCase().trim()},
+        ${params.owner_name},
+        ${params.owner_phone.trim()},
+        ${params.owner_email || null},
+        ${params.plan || 'pro'},
+        'trial',
+        NOW() + (${trialDays + ' days'})::interval
+      )
       RETURNING *
     `;
     // Create empty default settings
@@ -1102,6 +1135,159 @@ export async function dbGetWorkspaceCallLogs(workspaceId: string): Promise<Works
   } catch (err) {
     console.error("dbGetWorkspaceCallLogs error:", err);
     return [];
+  }
+}
+
+// ==============================================================
+// MASTER ADMIN & PLATFORM CONTROLS
+// ==============================================================
+
+export interface PlatformPricing {
+  starter_price: number;
+  pro_price: number;
+  enterprise_price: number;
+  trial_days: number;
+}
+
+export async function dbGetPlatformPricing(): Promise<PlatformPricing> {
+  const db = getSql();
+  if (!db) return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+  try {
+    await createWorkspaceTables();
+    const rows = await db`SELECT * FROM platform_pricing WHERE id = 'default' LIMIT 1`;
+    if (rows && rows.length > 0) {
+      return {
+        starter_price: Number(rows[0].starter_price) || 9500,
+        pro_price: Number(rows[0].pro_price) || 22500,
+        enterprise_price: Number(rows[0].enterprise_price) || 55000,
+        trial_days: Number(rows[0].trial_days) || 7,
+      };
+    }
+  } catch (e) {
+    console.warn("dbGetPlatformPricing error:", e);
+  }
+  return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+}
+
+export async function dbUpdatePlatformPricing(pricing: Partial<PlatformPricing>): Promise<PlatformPricing> {
+  const db = getSql();
+  if (!db) return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+  try {
+    await createWorkspaceTables();
+    const current = await dbGetPlatformPricing();
+    const updated = { ...current, ...pricing };
+    await db`
+      INSERT INTO platform_pricing (id, starter_price, pro_price, enterprise_price, trial_days, updated_at)
+      VALUES ('default', ${updated.starter_price}, ${updated.pro_price}, ${updated.enterprise_price}, ${updated.trial_days}, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        starter_price = EXCLUDED.starter_price,
+        pro_price = EXCLUDED.pro_price,
+        enterprise_price = EXCLUDED.enterprise_price,
+        trial_days = EXCLUDED.trial_days,
+        updated_at = NOW()
+    `;
+    return updated;
+  } catch (e) {
+    console.error("dbUpdatePlatformPricing error:", e);
+    return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+  }
+}
+
+export interface WorkspaceWithStats extends Workspace {
+  lead_count: number;
+  call_count: number;
+  rule_count: number;
+}
+
+export async function dbGetAllWorkspacesWithStats(): Promise<WorkspaceWithStats[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT 
+        w.*,
+        COALESCE(leads.cnt, 0)::int AS lead_count,
+        COALESCE(calls.cnt, 0)::int AS call_count,
+        COALESCE(rules.cnt, 0)::int AS rule_count
+      FROM workspaces w
+      LEFT JOIN (SELECT workspace_id, COUNT(*) AS cnt FROM workspace_leads GROUP BY workspace_id) leads ON leads.workspace_id = w.id
+      LEFT JOIN (SELECT workspace_id, COUNT(*) AS cnt FROM workspace_call_logs GROUP BY workspace_id) calls ON calls.workspace_id = w.id
+      LEFT JOIN (SELECT workspace_id, COUNT(*) AS cnt FROM workspace_rules GROUP BY workspace_id) rules ON rules.workspace_id = w.id
+      ORDER BY w.created_at DESC
+    `;
+    return rows as WorkspaceWithStats[];
+  } catch (err) {
+    console.error("dbGetAllWorkspacesWithStats error:", err);
+    return [];
+  }
+}
+
+export async function dbUpdateWorkspacePlan(id: string, params: {
+  plan?: string;
+  subscription_status?: string;
+  trial_ends_at?: string | null;
+}): Promise<Workspace | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const [updated] = await db`
+      UPDATE workspaces SET
+        plan = COALESCE(${params.plan || null}, plan),
+        subscription_status = COALESCE(${params.subscription_status || null}, subscription_status),
+        trial_ends_at = ${params.trial_ends_at !== undefined ? params.trial_ends_at : null},
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return (updated || null) as Workspace | null;
+  } catch (err) {
+    console.error("dbUpdateWorkspacePlan error:", err);
+    return null;
+  }
+}
+
+export async function dbDeleteWorkspace(id: string): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await db`DELETE FROM workspaces WHERE id = ${id}`;
+    return true;
+  } catch (err) {
+    console.error("dbDeleteWorkspace error:", err);
+    return false;
+  }
+}
+
+export async function dbGetGlobalActivityFeed(limit = 40): Promise<{
+  leads: any[];
+  calls: any[];
+}> {
+  const db = getSql();
+  if (!db) return { leads: [], calls: [] };
+  try {
+    await createWorkspaceTables();
+    const [leads, calls] = await Promise.all([
+      db`
+        SELECT l.*, w.name AS workspace_name, w.slug AS workspace_slug
+        FROM workspace_leads l
+        JOIN workspaces w ON w.id = l.workspace_id
+        ORDER BY l.updated_at DESC
+        LIMIT ${limit}
+      `,
+      db`
+        SELECT c.*, w.name AS workspace_name, w.slug AS workspace_slug
+        FROM workspace_call_logs c
+        JOIN workspaces w ON w.id = c.workspace_id
+        ORDER BY c.created_at DESC
+        LIMIT ${limit}
+      `
+    ]);
+    return { leads: leads || [], calls: calls || [] };
+  } catch (err) {
+    console.error("dbGetGlobalActivityFeed error:", err);
+    return { leads: [], calls: [] };
   }
 }
 

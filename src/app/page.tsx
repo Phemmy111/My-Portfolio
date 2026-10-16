@@ -27,6 +27,23 @@ import {
 export default function Home() {
   const router = useRouter();
 
+  // Dynamic Platform Pricing & Trial
+  const [platformPricing, setPlatformPricing] = useState({
+    starter_price: 9500,
+    pro_price: 22500,
+    enterprise_price: 55000,
+    trial_days: 7,
+  });
+
+  React.useEffect(() => {
+    fetch("/api/obey/pricing")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.pricing) setPlatformPricing(data.pricing);
+      })
+      .catch(() => {});
+  }, []);
+
   // Onboarding Form State
   const [form, setForm] = useState({
     name: "",
@@ -254,14 +271,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Head-to-Head Comparison: Wasbot vs Obey */}
+      {/* Platform Capabilities Matrix */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 space-y-6">
         <div className="text-center space-y-2">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-            Why Obey Leaves Traditional Bots Behind
+            Enterprise Automation Architecture & Capabilities
           </h2>
           <p className="text-xs sm:text-sm text-slate-400">
-            A head-to-head comparison between Wasbot AI and the Obey Business Automation Platform.
+            A breakdown of how Obey combines instant keyword triggers with contextual LLM reasoning.
           </p>
         </div>
 
@@ -270,8 +287,8 @@ export default function Home() {
             <thead className="bg-slate-850 text-slate-300 border-b border-slate-800">
               <tr>
                 <th className="p-4 font-bold">Feature</th>
-                <th className="p-4 font-bold text-slate-400">Wasbot AI</th>
-                <th className="p-4 font-extrabold text-emerald-400">Obey Business Platform</th>
+                <th className="p-4 font-bold text-slate-400">Traditional Auto-Responders</th>
+                <th className="p-4 font-extrabold text-emerald-400">Obey Autonomous Platform</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -368,7 +385,8 @@ export default function Home() {
             <div className="space-y-3">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Starter</div>
               <div className="text-3xl font-black text-white">
-                ₦9,500 <span className="text-xs text-slate-400 font-normal">/ month</span>
+                ₦{platformPricing.starter_price.toLocaleString()}{" "}
+                <span className="text-xs text-slate-400 font-normal">/ month</span>
               </div>
               <p className="text-xs text-slate-400">
                 Ideal for solo founders and boutique businesses starting with automated customer replies.
@@ -397,7 +415,8 @@ export default function Home() {
             <div className="space-y-3">
               <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Pro Business</div>
               <div className="text-3xl font-black text-white">
-                ₦22,500 <span className="text-xs text-slate-400 font-normal">/ month</span>
+                ₦{platformPricing.pro_price.toLocaleString()}{" "}
+                <span className="text-xs text-slate-400 font-normal">/ month</span>
               </div>
               <p className="text-xs text-slate-300">
                 For established businesses that want full WhatsApp automation, unlimited contacts, and voice calling.
@@ -416,7 +435,7 @@ export default function Home() {
               onClick={() => setForm({ ...form, plan: "pro" })}
               className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black text-center block transition shadow-lg shadow-emerald-500/25"
             >
-              Start Free Trial (Pro)
+              Start {platformPricing.trial_days}-Day Free Trial (Pro)
             </a>
           </div>
 
@@ -425,7 +444,8 @@ export default function Home() {
             <div className="space-y-3">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Enterprise / Founder</div>
               <div className="text-3xl font-black text-white">
-                ₦55,000 <span className="text-xs text-slate-400 font-normal">/ month</span>
+                ₦{platformPricing.enterprise_price.toLocaleString()}{" "}
+                <span className="text-xs text-slate-400 font-normal">/ month</span>
               </div>
               <p className="text-xs text-slate-400">
                 High-volume organizations, schools, or agencies needing unlimited minutes and multi-agent systems.
@@ -551,9 +571,15 @@ export default function Home() {
                 onChange={(e) => setForm({ ...form, plan: e.target.value })}
                 className="w-full bg-slate-850 border border-slate-700 rounded-xl p-3 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="starter">Starter Plan (₦9,500/month)</option>
-                <option value="pro">Pro Business Plan (₦22,500/month) - Recommended</option>
-                <option value="enterprise">Enterprise / Founder Plan (₦55,000/month)</option>
+                <option value="starter">
+                  Starter Plan (₦{platformPricing.starter_price.toLocaleString()}/month)
+                </option>
+                <option value="pro">
+                  Pro Business Plan (₦{platformPricing.pro_price.toLocaleString()}/month) - Recommended
+                </option>
+                <option value="enterprise">
+                  Enterprise / Founder Plan (₦{platformPricing.enterprise_price.toLocaleString()}/month)
+                </option>
               </select>
             </div>
 
@@ -575,7 +601,7 @@ export default function Home() {
             </div>
 
             <p className="text-[11px] text-slate-500 text-center pt-2">
-              🔒 7-day free trial included. No credit card required to begin setup.
+              🔒 {platformPricing.trial_days}-day free trial included. No credit card required to begin setup.
             </p>
           </form>
         </div>

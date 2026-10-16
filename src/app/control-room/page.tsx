@@ -41,6 +41,7 @@ interface Workspace {
   owner_email?: string | null;
   plan?: string;
   subscription_status?: string;
+  trial_ends_at?: string | null;
   whatsapp_instance_name?: string | null;
   whatsapp_status?: string | null;
 }
@@ -557,6 +558,29 @@ function ControlRoomContent() {
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 capitalize">
                   {currentWs.plan || "Starter"} Plan
                 </span>
+                {currentWs.subscription_status === "trial" ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>
+                      7-Day Free Trial (
+                      {currentWs.trial_ends_at
+                        ? `${Math.max(
+                            0,
+                            Math.ceil(
+                              (new Date(currentWs.trial_ends_at).getTime() - Date.now()) /
+                                (1000 * 60 * 60 * 24)
+                            )
+                          )} days left`
+                        : "Active"}
+                      )
+                    </span>
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Active Subscription</span>
+                  </span>
+                )}
                 <span className="flex items-center gap-1 text-xs text-emerald-400">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   Live 24/7
