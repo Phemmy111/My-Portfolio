@@ -436,11 +436,24 @@ export async function sendWhatsAppStatusPost(params: {
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
+    // Clean media URL (ensure clean extension for video/image without query params)
+    let cleanMediaUrl = params.mediaUrl ? params.mediaUrl.trim() : undefined;
+    if (cleanMediaUrl && cleanMediaUrl.includes("?")) {
+      cleanMediaUrl = cleanMediaUrl.split("?")[0];
+    }
+
+    // Pre-warm video transcode cache if it's a video
+    if (cleanMediaUrl && params.mediaType === "video") {
+      try {
+        await fetch(cleanMediaUrl, { method: "HEAD" });
+      } catch {}
+    }
+
     // Build proper Evolution API v2 sendStatus payload
-    const payload = params.mediaUrl
+    const payload = cleanMediaUrl
       ? {
           type: params.mediaType || "image",
-          content: params.mediaUrl,
+          content: cleanMediaUrl,
           caption: cleanWhatsAppFormatting(params.text),
           allContacts: true,
         }

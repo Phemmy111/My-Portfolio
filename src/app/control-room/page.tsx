@@ -162,6 +162,8 @@ function ControlRoomContent() {
   const [trimStart, setTrimStart] = useState<number>(0);
   const [trimEnd, setTrimEnd] = useState<number>(90);
   const videoPlayerRef = useRef<HTMLVideoElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const initialLoadedRef = useRef(false);
 
   const formatSeconds = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -257,10 +259,13 @@ function ControlRoomContent() {
   // Billing state
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // Load workspaces on mount or when Clerk user loads
+  // Load workspaces once on mount when user is authenticated
   useEffect(() => {
-    fetchWorkspaces();
-  }, [user]);
+    if (!initialLoadedRef.current && user?.id) {
+      initialLoadedRef.current = true;
+      fetchWorkspaces();
+    }
+  }, [user?.id]);
 
   async function fetchWorkspaces() {
     setLoading(true);
@@ -351,35 +356,85 @@ function ControlRoomContent() {
 
   const uploadMediaAsset = async (file: File, startOffset: number = 0, endOffset?: number) => {
     if (!file) return;
-    if (file.size > 80 * 1024 * 1024) {
-      setStatusErrorMsg("File is too large. Maximum supported upload size is 80MB.");
-      return;
-    }
 
     setUploadingMedia(true);
+    setUploadProgress(0);
     setStatusErrorMsg("");
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (file.type.startsWith("video/")) {
-        formData.append("start_offset", String(startOffset));
-        if (typeof endOffset === "number") {
-          formData.append("end_offset", String(endOffset));
-        }
-      }
 
-      const res = await fetch("/api/upload", {
+    const isVideo = file.type.startsWith("video/");
+    const safeClipDuration =
+      typeof endOffset === "number" && endOffset > startOffset
+        ? Math.min(endOffset - startOffset, 90)
+        : 90;
+
+    try {
+      // 1. Get signed credentials from our server for direct client-to-Cloudinary upload
+      const signRes = await fetch("/api/upload/sign", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: "obey-status-media",
+          resourceType: isVideo ? "video" : "image",
+        }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to upload file to media cloud");
+      const signData = await signRes.json();
+      if (!signRes.ok || !signData.signature) {
+        throw new Error(signData.error || "Failed to generate upload signature");
       }
 
-      setStatusMediaUrl(data.url);
-      setStatusMediaType(data.resource_type === "video" ? "video" : "image");
+      // 2. Direct browser upload to Cloudinary (bypasses Vercel 4.5MB payload limit completely!)
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("api_key", signData.apiKey);
+      formData.append("timestamp", String(signData.timestamp));
+      formData.append("signature", signData.signature);
+      formData.append("folder", signData.folder);
+
+      const endpoint = `https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`;
+
+      const uploadResult: any = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", endpoint);
+
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable) {
+            const percent = Math.round((evt.loaded / evt.total) * 100);
+            setUploadProgress(percent);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch {
+              reject(new Error("Invalid response from media server"));
+            }
+          } else {
+            try {
+              const errData = JSON.parse(xhr.responseText);
+              reject(new Error(errData?.error?.message || `Upload failed with status ${xhr.status}`));
+            } catch {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Network connection error during media upload"));
+        xhr.send(formData);
+      });
+
+      let finalUrl = uploadResult.secure_url;
+
+      // 3. If video: Apply the user's custom chosen 1:30s trim and WhatsApp compression
+      if (isVideo) {
+        const publicId = uploadResult.public_id;
+        finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/du_${Math.round(safeClipDuration)},q_auto,so_${Math.round(startOffset)},vc_auto/${publicId}.mp4`;
+      }
+
+      setStatusMediaUrl(finalUrl);
+      setStatusMediaType(isVideo ? "video" : "image");
       setMediaFileName(file.name);
       setShowVideoTrimmer(false);
       if (videoPreviewUrl) {
@@ -389,15 +444,17 @@ function ControlRoomContent() {
       setPendingVideoFile(null);
 
       setStatusSuccessMsg(
-        data.resource_type === "video"
-          ? `🎬 Video trimmed & compressed to WhatsApp standards (max 1:30s)! Ready to post.`
+        isVideo
+          ? `🎬 Video trimmed to ${formatSeconds(safeClipDuration)} and compressed for WhatsApp! Ready to post.`
           : `📸 Photo uploaded successfully! Ready to post.`
       );
       setTimeout(() => setStatusSuccessMsg(""), 4000);
     } catch (err: any) {
+      console.error("Direct upload error:", err);
       setStatusErrorMsg(err.message || "Failed to upload media file");
     } finally {
       setUploadingMedia(false);
+      setUploadProgress(null);
     }
   };
 
@@ -1522,7 +1579,9 @@ function ControlRoomContent() {
                             <div className="flex flex-col items-center gap-2 py-2">
                               <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
                               <span className="text-xs font-semibold text-emerald-300">
-                                Uploading & compressing media to WhatsApp standard...
+                                {uploadProgress !== null
+                                  ? `Uploading & compressing media (${uploadProgress}%)...`
+                                  : "Uploading & compressing media to WhatsApp standard..."}
                               </span>
                             </div>
                           ) : (
@@ -1678,6 +1737,50 @@ function ControlRoomContent() {
                                   />
                                 </div>
                               </div>
+
+                              {/* Quick Segment Presets */}
+                              {videoDuration > 90 && (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800 text-[11px]">
+                                  <span className="text-slate-400 font-medium">Quick Pick:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTrimStart(0);
+                                      setTrimEnd(Math.min(videoDuration, 90));
+                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                  >
+                                    First 1:30s
+                                  </button>
+                                  {videoDuration > 150 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const midStart = Math.max(0, Math.floor(videoDuration / 2) - 45);
+                                        setTrimStart(midStart);
+                                        setTrimEnd(Math.min(videoDuration, midStart + 90));
+                                        if (videoPlayerRef.current) videoPlayerRef.current.currentTime = midStart;
+                                      }}
+                                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                    >
+                                      Middle 1:30s
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const endStart = Math.max(0, videoDuration - 90);
+                                      setTrimStart(endStart);
+                                      setTrimEnd(videoDuration);
+                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = endStart;
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                  >
+                                    Last 1:30s
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {/* Action Buttons */}
@@ -1707,7 +1810,11 @@ function ControlRoomContent() {
                                 {uploadingMedia ? (
                                   <>
                                     <RefreshCw className="w-4 h-4 animate-spin" />
-                                    <span>Compressing & Uploading...</span>
+                                    <span>
+                                      {uploadProgress !== null
+                                        ? `Uploading & Compressing (${uploadProgress}%)...`
+                                        : "Compressing & Uploading..."}
+                                    </span>
                                   </>
                                 ) : (
                                   <>
