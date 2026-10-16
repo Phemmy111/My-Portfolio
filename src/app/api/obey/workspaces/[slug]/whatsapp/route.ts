@@ -9,6 +9,7 @@ import {
   getEvolutionInstanceQR,
   getEvolutionConnectionState,
   setEvolutionInstanceWebhook,
+  getEvolutionPairingCode,
 } from "@/lib/whatsapp-gateway";
 
 export async function GET(
@@ -95,10 +96,46 @@ export async function POST(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const action = body.action || "qr";
     const instanceName = `obey-${ws.slug}`;
     const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
     const webhookUrl = `${origin}/api/obey/whatsapp/webhook/${instanceName}`;
 
+    // PLAN B: Pairing Code flow (no QR code / single mobile phone)
+    if (action === "pairing_code") {
+      const phoneNumber = body.phoneNumber || ws.owner_phone || "";
+      const cleaned = phoneNumber.replace(/\D/g, "");
+      if (!cleaned || cleaned.length < 9) {
+        return NextResponse.json(
+          { error: "A valid phone number with country code is required for pairing code generation." },
+          { status: 400 }
+        );
+      }
+
+      // Configure webhook for this instance
+      await setEvolutionInstanceWebhook(instanceName, webhookUrl);
+
+      // Request 8-digit Baileys pairing code from Evolution API
+      const pairRes = await getEvolutionPairingCode(instanceName, cleaned);
+      if (!pairRes.success || !pairRes.pairingCode) {
+        return NextResponse.json(
+          { error: pairRes.error || "Failed to generate 8-digit pairing code" },
+          { status: 500 }
+        );
+      }
+
+      await dbUpdateWorkspaceWhatsAppStatus(ws.id, instanceName, "connecting");
+
+      return NextResponse.json({
+        success: true,
+        instanceName,
+        pairingCode: pairRes.pairingCode,
+        state: "connecting",
+      });
+    }
+
+    // PLAN A: QR Code flow
     // 1. Create or ensure instance exists
     await createEvolutionInstance(instanceName);
 

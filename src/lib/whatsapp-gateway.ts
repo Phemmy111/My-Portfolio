@@ -338,24 +338,47 @@ export async function sendWhatsAppDocument(
 // EVOLUTION API MULTI-DEVICE INSTANCE MANAGEMENT
 // ==============================================================
 
-export async function createEvolutionInstance(instanceName: string) {
+export async function createEvolutionInstance(
+  instanceName: string,
+  options?: { qrcode?: boolean; number?: string }
+) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
     "https://evolution-api-latest-cx3y.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
+    const isNumberMode = Boolean(options?.number);
+    const cleanedNumber = options?.number ? options.number.replace(/\D/g, "") : undefined;
     const res = await fetch(`${evoUrl}/instance/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoKey },
       body: JSON.stringify({
         instanceName,
-        qrcode: true,
+        qrcode: options?.qrcode !== undefined ? options.qrcode : !isNumberMode,
+        number: cleanedNumber,
         integration: "WHATSAPP-BAILEYS",
       }),
     });
     return await res.json();
   } catch (err: any) {
     console.error("[Evolution] createEvolutionInstance error:", err);
+    return { error: err.message };
+  }
+}
+
+export async function deleteEvolutionInstance(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/instance/delete/${instanceName}`, {
+      method: "DELETE",
+      headers: { apikey: evoKey },
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.warn("[Evolution] deleteEvolutionInstance warning:", err);
     return { error: err.message };
   }
 }
@@ -373,6 +396,68 @@ export async function getEvolutionInstanceQR(instanceName: string) {
   } catch (err: any) {
     console.error("[Evolution] getEvolutionInstanceQR error:", err);
     return { error: err.message };
+  }
+}
+
+/**
+ * Requests an 8-digit WhatsApp pairing code from Baileys via Evolution API
+ * Allows linking a device by phone number without scanning a QR code.
+ */
+export async function getEvolutionPairingCode(
+  instanceName: string,
+  phoneNumber: string
+): Promise<{ success: boolean; pairingCode?: string; error?: string }> {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const cleaned = phoneNumber.replace(/\D/g, "");
+    if (!cleaned || cleaned.length < 9) {
+      return { success: false, error: "Please provide a valid phone number with country code" };
+    }
+
+    // 1. Try requesting connect with phone number directly
+    let res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+      headers: { apikey: evoKey },
+    });
+    let data = await res.json();
+
+    let code = data?.pairingCode || (typeof data?.code === "string" && data.code.length <= 12 ? data.code : null);
+
+    // 2. If pairingCode was null (e.g. instance was previously initialized with qrcode: true),
+    // we recreate the instance with qrcode: false and number: cleaned
+    if (!code) {
+      await deleteEvolutionInstance(instanceName);
+      await new Promise((r) => setTimeout(r, 1200));
+      await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // Retry connect with number up to 3 times
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+          headers: { apikey: evoKey },
+        });
+        data = await res.json();
+        code = data?.pairingCode || (typeof data?.code === "string" && data.code.length <= 12 ? data.code : null);
+        if (code && typeof code === "string" && code.length >= 6 && code.length <= 12) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
+
+    if (code && typeof code === "string") {
+      return { success: true, pairingCode: code };
+    }
+
+    return {
+      success: false,
+      error: data?.response?.message || data?.message || data?.error || "Failed to generate pairing code. Please try again.",
+    };
+  } catch (err: any) {
+    console.error("[Evolution] getEvolutionPairingCode error:", err);
+    return { success: false, error: err.message };
   }
 }
 
