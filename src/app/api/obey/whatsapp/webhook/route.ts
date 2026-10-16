@@ -766,7 +766,7 @@ function extractContactCardInfo(msg: any): { name: string; phone: string } | nul
   return null;
 }
 
-export async function POST(req: NextRequest) {
+export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: string) {
   let body: any;
   try {
     body = await req.json();
@@ -774,8 +774,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // 1. URL search params (e.g. ?instance=obey-autolearn-spot)
-  let queryInstance = req.nextUrl?.searchParams?.get("instance") || "";
+  const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
+  if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
+
+  // 1. URL search params or forced instance
+  let queryInstance = forcedInstance || req.nextUrl?.searchParams?.get("instance") || "";
   if (!queryInstance) {
     try {
       const parsedUrl = new URL(req.url);
@@ -790,17 +793,18 @@ export async function POST(req: NextRequest) {
       const destUrl = new URL(body.destination);
       destInstance = destUrl.searchParams.get("instance") || "";
     } catch {}
-    if (!destInstance && body.destination.includes("instance=obey-autolearn-spot")) {
+    if (!destInstance && body.destination.includes("obey-autolearn-spot")) {
       destInstance = "obey-autolearn-spot";
     }
   }
 
-  // 3. Direct instance identifier from Evolution payload
+  // 3. Direct instance identifier from Evolution payload or msgObj
   const bodyInstance =
     (typeof body?.instance === "string" ? body.instance : body?.instance?.name) ||
     (typeof body?.instanceId === "string" ? body.instanceId : "") ||
     (typeof body?.data?.instance === "string" ? body.data.instance : body?.data?.instance?.name) ||
     (typeof body?.data?.instanceId === "string" ? body.data.instanceId : "") ||
+    (typeof msgObj?.instanceId === "string" ? msgObj.instanceId : "") ||
     (Array.isArray(body?.data) && (body.data[0]?.instance || body.data[0]?.instanceId)) ||
     "";
 
@@ -809,27 +813,64 @@ export async function POST(req: NextRequest) {
     body?.sender ||
     body?.owner ||
     body?.data?.owner ||
+    msgObj?.owner ||
     (Array.isArray(body?.data) && body.data[0]?.owner) ||
     ""
   ).replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
 
-  let instanceName = queryInstance || destInstance || bodyInstance || "obey";
+  // 5. Path-based instance check
+  const pathInstance = req.nextUrl.pathname.includes("/obey-autolearn-spot")
+    ? "obey-autolearn-spot"
+    : "";
+
+  let instanceName = forcedInstance || pathInstance || queryInstance || destInstance || bodyInstance || "";
+
+  // 6. Direct Database lookup by Evolution UUID
+  const detectedInstanceId = body?.instanceId || body?.data?.instanceId || msgObj?.instanceId || "";
+  if (!instanceName || instanceName === "obey" || instanceName === "default") {
+    if (detectedInstanceId === "6acca55e-e17a-4116-af24-585cd0d5161b" || connectedOwner.endsWith("9074027451")) {
+      instanceName = "obey-autolearn-spot";
+    } else if (detectedInstanceId && sql) {
+      try {
+        const evoInst = await sql`
+          SELECT name FROM evolution."Instance" WHERE id = ${detectedInstanceId} LIMIT 1
+        `;
+        if (evoInst && evoInst.length > 0 && evoInst[0].name) {
+          instanceName = evoInst[0].name;
+        }
+      } catch {}
+    }
+  }
+
+  if (!instanceName) {
+    instanceName = "obey";
+  }
 
   // Bulletproof mapping: If connected bot number is 09074027451 or instance hints match AutoLearn Spot
   if (
+    detectedInstanceId === "6acca55e-e17a-4116-af24-585cd0d5161b" ||
     connectedOwner.endsWith("9074027451") ||
     instanceName.toLowerCase().includes("autolearn") ||
     instanceName === "6acca55e-e17a-4116-af24-585cd0d5161b"
   ) {
     instanceName = "obey-autolearn-spot";
   } else if (
+    detectedInstanceId === "f3fd36fd-b59c-462d-863d-01eaf4c8c190" ||
     connectedOwner.endsWith("9161488564") ||
     instanceName === "f3fd36fd-b59c-462d-863d-01eaf4c8c190"
   ) {
     instanceName = "obey";
   }
-  const msgObj = Array.isArray(body?.data) ? body.data[0] : (body?.data || body);
-  if (!msgObj || !msgObj.key) return NextResponse.json({ ok: true });
+
+  // Log raw incoming request for telemetry
+  try {
+    if (sql) {
+      await sql`
+        INSERT INTO webhook_raw_logs (id, url, instance_detected, body)
+        VALUES (${'raw_' + Date.now()}, ${req.url}, ${instanceName}, ${JSON.stringify(body)})
+      `;
+    }
+  } catch {}
 
   // Ignore messages the bot itself sent (outgoing echo)
   if (msgObj.key?.fromMe) {
@@ -941,10 +982,14 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+export async function POST(req: NextRequest) {
+  return handleWhatsAppWebhook(req);
+}
+
 export async function GET() {
   return NextResponse.json({
     status: "active",
-    version: "v4-isolated",
+    version: "v5-instanceid-routing",
     service: "Obey WhatsApp Webhook Gateway",
     endpoint: "/api/obey/whatsapp/webhook",
     linkedNumber: "2349161488564",
