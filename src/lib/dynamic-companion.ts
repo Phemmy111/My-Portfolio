@@ -287,11 +287,14 @@ Respond ONLY with a valid JSON object matching this schema:
   // Check if previous delegation task was already completed / closed:
   const lastTaskAlreadyClosed = /\b(successfully sent your message|already delivered your message|message dispatched|action cancelled)\b/i.test(lastObeyLine);
 
-  // HARD SAFETY GUARD & VOICE CALL INTENT DETECTION:
-  const explicitlyRequestsCall = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me|let'?s call|want to call|make a call|get on a call|talk to you.*call|can we call)\b/i.test(userText);
-  if (explicitlyRequestsCall) {
+  // NATIVE AI VOICE CALL REASONING & BROAD INTENT:
+  const naturalCallIntent = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me|let'?s call|want to call|make a call|get on a call|can we call|can we speak|can i call|talk to you on phone|speak to you live|hear your voice|give me a call)\b/i.test(userText);
+  const isShortAffirmation = /^(yes|yeah|sure|ok|okay|1|proceed|do it)\b/i.test(userText.trim());
+
+  if (naturalCallIntent) {
     decision.action = "direct_voice_call";
-  } else if (decision.action === "direct_voice_call") {
+  } else if (decision.action === "direct_voice_call" && isShortAffirmation) {
+    // Only reset if it was an accidental false positive on a generic confirmation word
     decision.action = "none";
   }
 
