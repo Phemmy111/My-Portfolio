@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { UserButton, useUser } from "@clerk/nextjs";
 import {
   Building2,
   Users,
@@ -120,6 +121,8 @@ function ControlRoomContent() {
   >("overview");
   const [copiedLink, setCopiedLink] = useState(false);
 
+  const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
+
   // Modal states
   const [showNewWsModal, setShowNewWsModal] = useState(false);
   const [newWsForm, setNewWsForm] = useState({
@@ -128,10 +131,24 @@ function ControlRoomContent() {
     owner_name: "",
     owner_phone: "",
     owner_email: "",
-    plan: "starter",
+    plan: "trial",
   });
   const [createWsLoading, setCreateWsLoading] = useState(false);
   const [createWsError, setCreateWsError] = useState("");
+
+  useEffect(() => {
+    if (user) {
+      setNewWsForm((prev) => ({
+        ...prev,
+        owner_name: prev.owner_name || user.fullName || user.firstName || "",
+        owner_email: prev.owner_email || user.primaryEmailAddress?.emailAddress || "",
+        owner_phone:
+          prev.owner_phone ||
+          user.primaryPhoneNumber?.phoneNumber?.replace(/[^0-9]/g, "") ||
+          "",
+      }));
+    }
+  }, [user]);
 
   // Rule Form state
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
@@ -163,28 +180,33 @@ function ControlRoomContent() {
   // Billing state
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // Load workspaces on mount
+  // Load workspaces on mount or when Clerk user loads
   useEffect(() => {
     fetchWorkspaces();
-  }, []);
+  }, [user]);
 
   async function fetchWorkspaces() {
     setLoading(true);
     try {
+      if (paramSlug) {
+        const slugRes = await fetch(`/api/obey/workspaces?slug=${encodeURIComponent(paramSlug)}`);
+        const slugData = await slugRes.json();
+        if (slugData.workspace) {
+          setCurrentWs(slugData.workspace);
+          loadWorkspaceDetails(slugData.workspace.slug);
+        }
+      }
+
       const res = await fetch("/api/obey/workspaces");
       const data = await res.json();
       if (data.workspaces && data.workspaces.length > 0) {
         setWorkspaces(data.workspaces);
-        // Find matching or default
-        const match = paramSlug
-          ? data.workspaces.find(
-              (w: Workspace) => w.slug.toLowerCase() === paramSlug.toLowerCase()
-            )
-          : null;
-        const selected = match || data.workspaces[0];
-        setCurrentWs(selected);
-        loadWorkspaceDetails(selected.slug);
-      } else {
+        if (!paramSlug) {
+          const selected = data.workspaces[0];
+          setCurrentWs(selected);
+          loadWorkspaceDetails(selected.slug);
+        }
+      } else if (!paramSlug) {
         setWorkspaces([]);
         setLoading(false);
       }
@@ -299,7 +321,10 @@ function ControlRoomContent() {
       const res = await fetch("/api/obey/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newWsForm),
+        body: JSON.stringify({
+          ...newWsForm,
+          owner_clerk_id: user?.id || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -309,10 +334,10 @@ function ControlRoomContent() {
       setNewWsForm({
         name: "",
         slug: "",
-        owner_name: "",
-        owner_phone: "",
-        owner_email: "",
-        plan: "starter",
+        owner_name: user?.fullName || user?.firstName || "",
+        owner_phone: user?.primaryPhoneNumber?.phoneNumber?.replace(/[^0-9]/g, "") || "",
+        owner_email: user?.primaryEmailAddress?.emailAddress || "",
+        plan: "trial",
       });
       await fetchWorkspaces();
       if (data.workspace) {
@@ -534,14 +559,20 @@ function ControlRoomContent() {
             <span>Add Business</span>
           </button>
 
-          <Link
-            href={hotlineUrl}
-            target="_blank"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs sm:text-sm transition-all border border-slate-700"
-          >
-            <PhoneCall className="w-4 h-4 text-emerald-400" />
-            <span>Open Hotline</span>
-          </Link>
+          {hotlineUrl && (
+            <Link
+              href={hotlineUrl}
+              target="_blank"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs sm:text-sm transition-all border border-slate-700"
+            >
+              <PhoneCall className="w-4 h-4 text-emerald-400" />
+              <span>Open Hotline</span>
+            </Link>
+          )}
+
+          <div className="pl-2 border-l border-slate-800 flex items-center">
+            <UserButton />
+          </div>
         </div>
       </header>
 
@@ -1729,6 +1760,20 @@ function ControlRoomContent() {
                   }
                   className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Selected Package</label>
+                <select
+                  value={newWsForm.plan}
+                  onChange={(e) => setNewWsForm({ ...newWsForm, plan: e.target.value })}
+                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                >
+                  <option value="trial">🎉 7-Day Free Trial (Pro Features — ₦0 Today)</option>
+                  <option value="starter">Starter Plan</option>
+                  <option value="pro">Pro Business Plan</option>
+                  <option value="enterprise">Enterprise Plan</option>
+                </select>
               </div>
 
               <div className="pt-2">

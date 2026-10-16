@@ -760,10 +760,10 @@ export default function AdminMasterControlRoom() {
                   onChange={(e) => setGrantPlan(e.target.value)}
                   className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="starter">Starter Plan</option>
-                  <option value="pro">Pro Business Plan (Recommended)</option>
-                  <option value="enterprise">Enterprise Plan</option>
-                  <option value="lifetime">Lifetime Free VIP</option>
+                  <option value="starter" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Starter Plan</option>
+                  <option value="pro" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Pro Business Plan (Recommended)</option>
+                  <option value="enterprise" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Enterprise Plan</option>
+                  <option value="lifetime" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Lifetime Free VIP</option>
                 </select>
               </div>
 
@@ -776,9 +776,9 @@ export default function AdminMasterControlRoom() {
                   onChange={(e) => setGrantStatus(e.target.value)}
                   className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="active">Paid Active (Full Unlocked Access)</option>
-                  <option value="trial">Free Trial Extension</option>
-                  <option value="expired">Expired / Inactive</option>
+                  <option value="active" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Paid Active (Full Unlocked Access)</option>
+                  <option value="trial" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Free Trial Extension</option>
+                  <option value="expired" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Expired / Inactive</option>
                 </select>
               </div>
 

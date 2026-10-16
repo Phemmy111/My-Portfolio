@@ -619,6 +619,7 @@ export interface Workspace {
   plan?: string;
   subscription_status?: string;
   trial_ends_at?: string | null;
+  owner_clerk_id?: string | null;
   whatsapp_instance_name?: string | null;
   whatsapp_status?: string | null;
   created_at?: string;
@@ -761,8 +762,10 @@ export async function createWorkspaceTables() {
     `;
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_call_logs_ws ON workspace_call_logs(workspace_id)`;
 
-    // Ensure trial_ends_at column exists
+    // Ensure trial_ends_at and owner_clerk_id columns exist
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '7 days'`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_clerk_id TEXT`;
+    await db`CREATE INDEX IF NOT EXISTS idx_workspaces_owner_clerk_id ON workspaces(owner_clerk_id)`;
 
     // Ensure platform_pricing table exists
     await db`
@@ -791,6 +794,7 @@ export async function dbCreateWorkspace(params: {
   owner_name: string;
   owner_phone: string;
   owner_email?: string;
+  owner_clerk_id?: string;
   plan?: string;
 }): Promise<Workspace | null> {
   const db = getSql();
@@ -800,8 +804,9 @@ export async function dbCreateWorkspace(params: {
     const pricing = await dbGetPlatformPricing();
     const trialDays = pricing.trial_days || 7;
     const id = `ws_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const selectedPlan = (params.plan === 'trial' || !params.plan) ? 'pro' : params.plan;
     const [created] = await db`
-      INSERT INTO workspaces (id, name, slug, owner_name, owner_phone, owner_email, plan, subscription_status, trial_ends_at)
+      INSERT INTO workspaces (id, name, slug, owner_name, owner_phone, owner_email, owner_clerk_id, plan, subscription_status, trial_ends_at)
       VALUES (
         ${id},
         ${params.name},
@@ -809,7 +814,8 @@ export async function dbCreateWorkspace(params: {
         ${params.owner_name},
         ${params.owner_phone.trim()},
         ${params.owner_email || null},
-        ${params.plan || 'pro'},
+        ${params.owner_clerk_id || null},
+        ${selectedPlan},
         'trial',
         NOW() + (${trialDays + ' days'})::interval
       )
@@ -824,6 +830,68 @@ export async function dbCreateWorkspace(params: {
     return created as Workspace;
   } catch (err) {
     console.error("dbCreateWorkspace error:", err);
+    return null;
+  }
+}
+
+export async function dbGetWorkspacesByOwnerClerkId(
+  clerkId: string,
+  email?: string,
+  phone?: string
+): Promise<Workspace[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createWorkspaceTables();
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanPhone = (phone || "").trim().replace(/[^0-9]/g, "");
+
+    const rows = await db`
+      SELECT * FROM workspaces
+      WHERE owner_clerk_id = ${clerkId}
+         OR (${cleanEmail} != '' AND LOWER(COALESCE(owner_email, '')) = ${cleanEmail})
+         OR (${cleanPhone} != '' AND owner_phone = ${cleanPhone})
+      ORDER BY created_at DESC
+    `;
+
+    // Auto-backfill owner_clerk_id if matched by email or phone
+    if (rows && rows.length > 0) {
+      for (const ws of rows) {
+        if (!ws.owner_clerk_id) {
+          await db`UPDATE workspaces SET owner_clerk_id = ${clerkId} WHERE id = ${ws.id}`;
+          ws.owner_clerk_id = clerkId;
+        }
+      }
+    }
+
+    return (rows || []) as Workspace[];
+  } catch (err) {
+    console.error("dbGetWorkspacesByOwnerClerkId error:", err);
+    return [];
+  }
+}
+
+export async function dbClaimWorkspaceForClerkUser(
+  slug: string,
+  clerkId: string,
+  email?: string
+): Promise<Workspace | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const cleanSlug = slug.toLowerCase().trim();
+    const rows = await db`
+      UPDATE workspaces
+      SET owner_clerk_id = ${clerkId},
+          owner_email = COALESCE(owner_email, ${email || null})
+      WHERE LOWER(slug) = ${cleanSlug}
+        AND (owner_clerk_id IS NULL OR owner_clerk_id = ${clerkId})
+      RETURNING *
+    `;
+    return rows && rows.length > 0 ? (rows[0] as Workspace) : null;
+  } catch (err) {
+    console.error("dbClaimWorkspaceForClerkUser error:", err);
     return null;
   }
 }
