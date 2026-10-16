@@ -503,6 +503,23 @@ export async function setEvolutionInstanceWebhook(instanceName: string, webhookU
   }
 }
 
+export async function logoutEvolutionInstance(instanceName: string) {
+  const evoUrl =
+    process.env.EVOLUTION_API_URL ||
+    "https://evolution-api-latest-cx3y.onrender.com";
+  const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+  try {
+    const res = await fetch(`${evoUrl}/instance/logout/${instanceName}`, {
+      method: "DELETE",
+      headers: { apikey: evoKey },
+    });
+    return await res.json();
+  } catch (err: any) {
+    console.warn("[Evolution] logoutEvolutionInstance warning:", err);
+    return { error: err.message };
+  }
+}
+
 /**
  * Automates publishing a status update to WhatsApp Status (Stories / status@broadcast)
  */
@@ -527,11 +544,15 @@ export async function sendWhatsAppStatusPost(params: {
       cleanMediaUrl = cleanMediaUrl.split("?")[0];
     }
 
-    // Pre-warm video transcode cache if it's a video
+    // Ensure Cloudinary video transcode is completely ready on CDN before handing off to Evolution API
     if (cleanMediaUrl && params.mediaType === "video") {
-      try {
-        await fetch(cleanMediaUrl, { method: "HEAD" });
-      } catch {}
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const check = await fetch(cleanMediaUrl, { method: "HEAD" });
+          if (check.ok) break;
+        } catch {}
+        await new Promise((r) => setTimeout(r, 1500));
+      }
     }
 
     // Build proper Evolution API v2 sendStatus payload

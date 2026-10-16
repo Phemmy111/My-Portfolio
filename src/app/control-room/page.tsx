@@ -180,6 +180,74 @@ function ControlRoomContent() {
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
+  // Draggable WhatsApp Timeline Trimmer states
+  const timelineTrackRef = useRef<HTMLDivElement>(null);
+  const [activeDrag, setActiveDrag] = useState<"left" | "right" | "window" | null>(null);
+  const dragStartRef = useRef<{ clientX: number; start: number; end: number; duration: number }>({
+    clientX: 0,
+    start: 0,
+    end: 0,
+    duration: 0,
+  });
+
+  const handleTimelinePointerDown = (type: "left" | "right" | "window", e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setActiveDrag(type);
+    dragStartRef.current = {
+      clientX: e.clientX,
+      start: trimStart,
+      end: trimEnd,
+      duration: videoDuration || 90,
+    };
+  };
+
+  const handleTimelinePointerMove = (e: React.PointerEvent) => {
+    if (!activeDrag || !timelineTrackRef.current) return;
+    const trackRect = timelineTrackRef.current.getBoundingClientRect();
+    if (!trackRect.width) return;
+
+    const dx = e.clientX - dragStartRef.current.clientX;
+    const dt = (dx / trackRect.width) * dragStartRef.current.duration;
+    const maxClip = 90;
+
+    if (activeDrag === "window") {
+      const clipLen = dragStartRef.current.end - dragStartRef.current.start;
+      let newStart = dragStartRef.current.start + dt;
+      newStart = Math.max(0, Math.min(dragStartRef.current.duration - clipLen, newStart));
+      const newEnd = newStart + clipLen;
+      setTrimStart(Math.round(newStart));
+      setTrimEnd(Math.round(newEnd));
+      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newStart;
+    } else if (activeDrag === "left") {
+      let newStart = dragStartRef.current.start + dt;
+      newStart = Math.max(0, Math.min(trimEnd - 1, newStart));
+      if (trimEnd - newStart > maxClip) {
+        newStart = trimEnd - maxClip;
+      }
+      setTrimStart(Math.round(newStart));
+      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newStart;
+    } else if (activeDrag === "right") {
+      let newEnd = dragStartRef.current.end + dt;
+      newEnd = Math.max(trimStart + 1, Math.min(dragStartRef.current.duration, newEnd));
+      if (newEnd - trimStart > maxClip) {
+        newEnd = trimStart + maxClip;
+      }
+      setTrimEnd(Math.round(newEnd));
+      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newEnd;
+    }
+  };
+
+  const handleTimelinePointerUp = (e: React.PointerEvent) => {
+    if (activeDrag) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      setActiveDrag(null);
+    }
+  };
+
   const [postingStatus, setPostingStatus] = useState(false);
   const [statusSuccessMsg, setStatusSuccessMsg] = useState("");
   const [statusErrorMsg, setStatusErrorMsg] = useState("");
@@ -440,6 +508,8 @@ function ControlRoomContent() {
       if (isVideo) {
         const publicId = uploadResult.public_id;
         finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/du_${Math.round(safeClipDuration)},q_auto,so_${Math.round(startOffset)},vc_auto/${publicId}.mp4`;
+        // Pre-warm the transformed Cloudinary video cache in background so it's ready instantly
+        fetch(finalUrl, { method: "HEAD" }).catch(() => {});
       }
 
       setStatusMediaUrl(finalUrl);
@@ -648,6 +718,34 @@ function ControlRoomContent() {
       setWaState("connecting");
     } catch (e) {
       console.error("Init WhatsApp error:", e);
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleDisconnectWhatsApp = async (thenMode: "code" | "qr" = "code") => {
+    if (!currentWs) return;
+    if (!confirm("Are you sure you want to disconnect this WhatsApp number? You can reconnect anytime.")) return;
+    setWaLoading(true);
+    try {
+      await fetch(`/api/obey/workspaces/${currentWs.slug}/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disconnect" }),
+      });
+      setWaState("disconnected");
+      setWaQrCode(null);
+      setWaPairingCode(null);
+      setWaConnectedNumber("");
+      setWaProfileName("");
+      setWaConnectMethod(thenMode);
+      if (thenMode === "code") {
+        setWaPhoneNumber(currentWs.owner_phone || "");
+      } else {
+        handleInitWhatsApp();
+      }
+    } catch (e) {
+      console.error("Disconnect WhatsApp error:", e);
     } finally {
       setWaLoading(false);
     }
@@ -1373,7 +1471,7 @@ function ControlRoomContent() {
                     </div>
                   </div>
 
-                  <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                  <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
                     <a
                       href={`https://wa.me/${waConnectedNumber || currentWs.owner_phone}`}
                       target="_blank"
@@ -1381,17 +1479,37 @@ function ControlRoomContent() {
                       className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-500/20"
                     >
                       <MessageSquare className="w-4 h-4" />
-                      <span>Send Test WhatsApp Message</span>
+                      <span>Send Test Message</span>
                     </a>
 
                     <button
-                      onClick={handleInitWhatsApp}
+                      onClick={() => handleDisconnectWhatsApp("code")}
                       disabled={waLoading}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-2 transition border border-slate-700 disabled:opacity-50"
-                      title="Generate a fresh QR code to change your connected phone number"
+                      className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition border border-amber-500/30 disabled:opacity-50"
+                      title="Disconnect and switch to 8-digit Pairing Code (Plan B)"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${waLoading ? "animate-spin" : ""}`} />
-                      <span>{waLoading ? "Generating QR..." : "Rescan / Reconnect Number"}</span>
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Reconnect with 8-Digit Code (Plan B)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDisconnectWhatsApp("qr")}
+                      disabled={waLoading}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-700 disabled:opacity-50"
+                      title="Disconnect and scan a fresh QR code"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Rescan QR (Plan A)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDisconnectWhatsApp("code")}
+                      disabled={waLoading}
+                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-medium text-xs flex items-center gap-1.5 transition border border-rose-500/20 disabled:opacity-50"
+                      title="Unlink and disconnect this WhatsApp instance"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Disconnect</span>
                     </button>
                   </div>
                 </div>
@@ -1930,18 +2048,18 @@ function ControlRoomContent() {
                             </span>
                           </div>
 
-                          <div className="rounded-lg overflow-hidden bg-black/60 border border-slate-800 flex items-center justify-center max-h-56">
+                          <div className="rounded-lg overflow-hidden bg-black/80 border border-slate-800 flex items-center justify-center max-h-40 sm:max-h-44">
                             {statusMediaType === "video" ? (
                               <video
                                 src={statusMediaUrl}
                                 controls
-                                className="max-h-56 w-auto object-contain rounded-lg"
+                                className="max-h-40 sm:max-h-44 w-auto object-contain rounded-lg"
                               />
                             ) : (
                               <img
                                 src={statusMediaUrl}
                                 alt="Status Preview"
-                                className="max-h-56 w-auto object-contain rounded-lg"
+                                className="max-h-40 sm:max-h-44 w-auto object-contain rounded-lg"
                               />
                             )}
                           </div>
@@ -1950,16 +2068,17 @@ function ControlRoomContent() {
 
                       {/* Interactive WhatsApp Video Trimmer & Compressor Modal */}
                       {showVideoTrimmer && pendingVideoFile && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                          <div className="bg-slate-900 border border-slate-750 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl overflow-hidden">
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md">
+                          <div className="bg-slate-900 border border-slate-750 rounded-2xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+                            {/* Modal Header */}
+                            <div className="shrink-0 flex items-center justify-between border-b border-slate-800 p-4">
                               <div className="flex items-center gap-2">
                                 <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                   <Scissors className="w-4 h-4" />
                                 </div>
                                 <div>
-                                  <h4 className="text-sm font-bold text-white">WhatsApp Video Trimmer & Compressor</h4>
-                                  <p className="text-[11px] text-slate-400">Standard Status Limit: 1 minute 30 seconds</p>
+                                  <h4 className="text-sm font-bold text-white">WhatsApp Video Trimmer</h4>
+                                  <p className="text-[11px] text-slate-400">Limit: 1:30s max • Auto-compressed for WhatsApp</p>
                                 </div>
                               </div>
                               <button
@@ -1975,127 +2094,155 @@ function ControlRoomContent() {
                               </button>
                             </div>
 
-                            {/* Video Preview */}
-                            <div className="bg-black/90 rounded-xl overflow-hidden flex items-center justify-center max-h-60 border border-slate-800">
-                              <video
-                                ref={videoPlayerRef}
-                                src={videoPreviewUrl}
-                                controls
-                                className="max-h-60 w-full object-contain"
-                              />
-                            </div>
-
-                            {/* Duration & Trimming Status */}
-                            <div className="space-y-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-slate-400">Original Video Duration:</span>
-                                <span className="font-mono font-bold text-white">{formatSeconds(videoDuration)}</span>
+                            {/* Scrollable Content Body */}
+                            <div className="overflow-y-auto p-4 space-y-3.5 flex-1">
+                              {/* Video Preview */}
+                              <div className="bg-black/95 rounded-xl overflow-hidden flex items-center justify-center max-h-40 sm:max-h-48 border border-slate-800">
+                                <video
+                                  ref={videoPlayerRef}
+                                  src={videoPreviewUrl}
+                                  controls
+                                  className="max-h-40 sm:max-h-48 w-full object-contain"
+                                />
                               </div>
 
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-slate-400">Trimmed Clip Range:</span>
-                                <span className="font-mono font-bold text-emerald-400">
-                                  {formatSeconds(trimStart)} → {formatSeconds(trimEnd)} ({formatSeconds(trimEnd - trimStart)})
-                                </span>
-                              </div>
-
-                              {videoDuration > 90 && (
-                                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed">
-                                  ⚠️ Original video exceeds 1:30s. WhatsApp status standard allows up to 1m 30s. We've preset your clip to the maximum allowed 1:30s window.
+                              {/* WhatsApp-Style Draggable Timeline Scrubber */}
+                              <div className="space-y-2 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                                {/* Header with time & size indicator matching WhatsApp */}
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="flex items-center gap-1.5 font-bold text-emerald-400">
+                                    <span>🔊</span>
+                                    <span>{formatSeconds(Math.max(1, trimEnd - trimStart))}</span>
+                                    <span className="text-slate-500">•</span>
+                                    <span className="text-slate-400 font-mono">
+                                      ~{(((Math.max(1, trimEnd - trimStart)) / 90) * 5.6).toFixed(1)} MB
+                                    </span>
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    Clip: <span className="font-mono text-white font-semibold">{formatSeconds(trimStart)}</span> → <span className="font-mono text-white font-semibold">{formatSeconds(trimEnd)}</span> <span className="text-slate-500 font-mono">(Total: {formatSeconds(videoDuration)})</span>
+                                  </span>
                                 </div>
-                              )}
 
-                              {/* Sliders */}
-                              <div className="space-y-2 pt-1">
-                                <div>
-                                  <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                                    <span>Start Point: {formatSeconds(trimStart)}</span>
+                                {/* Draggable Filmstrip Track */}
+                                <div
+                                  ref={timelineTrackRef}
+                                  onPointerMove={handleTimelinePointerMove}
+                                  onPointerUp={handleTimelinePointerUp}
+                                  className="relative h-14 sm:h-16 w-full rounded-xl bg-slate-900 border border-slate-700/80 overflow-hidden select-none touch-none cursor-pointer"
+                                >
+                                  {/* Background Filmstrip Simulation */}
+                                  <div className="absolute inset-0 flex items-center justify-between px-1 pointer-events-none opacity-30">
+                                    {Array.from({ length: 10 }).map((_, i) => (
+                                      <div key={i} className="h-10 w-8 sm:w-10 rounded border border-slate-600 bg-slate-800/60 flex items-center justify-center">
+                                        <span className="text-[8px] text-slate-500">▶</span>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <input
-                                    type="range"
-                                    min={0}
-                                    max={Math.max(0, videoDuration - 1)}
-                                    value={trimStart}
-                                    onChange={(e) => {
-                                      const newStart = Number(e.target.value);
-                                      setTrimStart(newStart);
-                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newStart;
-                                      if (trimEnd <= newStart) {
-                                        setTrimEnd(Math.min(videoDuration, newStart + 90));
-                                      } else if (trimEnd - newStart > 90) {
-                                        setTrimEnd(newStart + 90);
-                                      }
-                                    }}
-                                    className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
-                                  />
-                                </div>
 
-                                <div>
-                                  <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                                    <span>End Point: {formatSeconds(trimEnd)} (Max +90s from start)</span>
-                                  </div>
-                                  <input
-                                    type="range"
-                                    min={trimStart + 1}
-                                    max={Math.min(videoDuration, trimStart + 90)}
-                                    value={trimEnd}
-                                    onChange={(e) => {
-                                      const newEnd = Number(e.target.value);
-                                      setTrimEnd(newEnd);
-                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = newEnd;
+                                  {/* Left Dimmed Area */}
+                                  <div
+                                    className="absolute top-0 bottom-0 left-0 bg-black/80 z-10 pointer-events-none"
+                                    style={{
+                                      width: `${videoDuration > 0 ? (trimStart / videoDuration) * 100 : 0}%`,
                                     }}
-                                    className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
                                   />
-                                </div>
-                              </div>
 
-                              {/* Quick Segment Presets */}
-                              {videoDuration > 90 && (
-                                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800 text-[11px]">
-                                  <span className="text-slate-400 font-medium">Quick Pick:</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setTrimStart(0);
-                                      setTrimEnd(Math.min(videoDuration, 90));
-                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
+                                  {/* Right Dimmed Area */}
+                                  <div
+                                    className="absolute top-0 bottom-0 right-0 bg-black/80 z-10 pointer-events-none"
+                                    style={{
+                                      width: `${videoDuration > 0 ? Math.max(0, 100 - ((trimEnd / videoDuration) * 100)) : 0}%`,
                                     }}
-                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                  />
+
+                                  {/* Draggable Selection Window */}
+                                  <div
+                                    onPointerDown={(e) => handleTimelinePointerDown("window", e)}
+                                    className="absolute top-0 bottom-0 z-20 border-y-[3px] border-emerald-400 bg-emerald-400/15 cursor-grab active:cursor-grabbing flex items-stretch justify-between shadow-lg"
+                                    style={{
+                                      left: `${videoDuration > 0 ? (trimStart / videoDuration) * 100 : 0}%`,
+                                      width: `${videoDuration > 0 ? (Math.max(1, trimEnd - trimStart) / videoDuration) * 100 : 100}%`,
+                                    }}
                                   >
-                                    First 1:30s
-                                  </button>
-                                  {videoDuration > 150 && (
+                                    {/* Left Drag Handle */}
+                                    <div
+                                      onPointerDown={(e) => handleTimelinePointerDown("left", e)}
+                                      className="w-5 sm:w-6 bg-emerald-400 hover:bg-emerald-300 text-slate-950 flex flex-col items-center justify-center cursor-ew-resize shrink-0 rounded-l select-none transition shadow-md"
+                                      title="Drag to adjust start"
+                                    >
+                                      <div className="w-1 h-4 bg-slate-900/60 rounded-full" />
+                                    </div>
+
+                                    {/* Center Window Label / Drag hint */}
+                                    <div className="flex-1 flex items-center justify-center pointer-events-none select-none">
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-950/80 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                                        {formatSeconds(trimEnd - trimStart)}
+                                      </span>
+                                    </div>
+
+                                    {/* Right Drag Handle */}
+                                    <div
+                                      onPointerDown={(e) => handleTimelinePointerDown("right", e)}
+                                      className="w-5 sm:w-6 bg-emerald-400 hover:bg-emerald-300 text-slate-950 flex flex-col items-center justify-center cursor-ew-resize shrink-0 rounded-r select-none transition shadow-md"
+                                      title="Drag to adjust end"
+                                    >
+                                      <div className="w-1 h-4 bg-slate-900/60 rounded-full" />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <p className="text-[10px] text-slate-400 text-center">
+                                  Drag center window to slide anywhere across video • Drag handles to shorten clip (max 1:30s).
+                                </p>
+
+                                {/* Quick Segment Presets */}
+                                {videoDuration > 90 && (
+                                  <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 border-t border-slate-800 text-[11px]">
+                                    <span className="text-slate-400 font-medium">Quick Pick:</span>
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const midStart = Math.max(0, Math.floor(videoDuration / 2) - 45);
-                                        setTrimStart(midStart);
-                                        setTrimEnd(Math.min(videoDuration, midStart + 90));
-                                        if (videoPlayerRef.current) videoPlayerRef.current.currentTime = midStart;
+                                        setTrimStart(0);
+                                        setTrimEnd(Math.min(videoDuration, 90));
+                                        if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
                                       }}
-                                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                      className="px-2.5 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
                                     >
-                                      Middle 1:30s
+                                      First 1:30s
                                     </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const endStart = Math.max(0, videoDuration - 90);
-                                      setTrimStart(endStart);
-                                      setTrimEnd(videoDuration);
-                                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = endStart;
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
-                                  >
-                                    Last 1:30s
-                                  </button>
-                                </div>
-                              )}
+                                    {videoDuration > 150 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const midStart = Math.max(0, Math.floor(videoDuration / 2) - 45);
+                                          setTrimStart(midStart);
+                                          setTrimEnd(Math.min(videoDuration, midStart + 90));
+                                          if (videoPlayerRef.current) videoPlayerRef.current.currentTime = midStart;
+                                        }}
+                                        className="px-2.5 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                      >
+                                        Middle 1:30s
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const endStart = Math.max(0, videoDuration - 90);
+                                        setTrimStart(endStart);
+                                        setTrimEnd(videoDuration);
+                                        if (videoPlayerRef.current) videoPlayerRef.current.currentTime = endStart;
+                                      }}
+                                      className="px-2.5 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium"
+                                    >
+                                      Last 1:30s
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            {/* Action Buttons */}
-                            <div className="flex items-center gap-3 pt-2">
+                            {/* Modal Footer Actions */}
+                            <div className="shrink-0 flex items-center gap-3 p-3.5 bg-slate-950 border-t border-slate-800">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2130,7 +2277,7 @@ function ControlRoomContent() {
                                 ) : (
                                   <>
                                     <Scissors className="w-4 h-4" />
-                                    <span>✂️ Trim to {formatSeconds(trimEnd - trimStart)} & Upload</span>
+                                    <span>✂️ Use Selected {formatSeconds(trimEnd - trimStart)}</span>
                                   </>
                                 )}
                               </button>

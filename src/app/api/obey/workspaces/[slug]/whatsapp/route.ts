@@ -10,6 +10,7 @@ import {
   getEvolutionConnectionState,
   setEvolutionInstanceWebhook,
   getEvolutionPairingCode,
+  logoutEvolutionInstance,
 } from "@/lib/whatsapp-gateway";
 
 export async function GET(
@@ -101,6 +102,17 @@ export async function POST(
     const instanceName = `obey-${ws.slug}`;
     const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
     const webhookUrl = `${origin}/api/obey/whatsapp/webhook/${instanceName}`;
+
+    // DISCONNECT / UNLINK FLOW
+    if (action === "disconnect") {
+      await logoutEvolutionInstance(instanceName);
+      await dbUpdateWorkspaceWhatsAppStatus(ws.id, instanceName, "disconnected");
+      return NextResponse.json({
+        success: true,
+        status: "disconnected",
+        instanceName,
+      });
+    }
 
     // PLAN B: Pairing Code flow (no QR code / single mobile phone)
     if (action === "pairing_code") {
