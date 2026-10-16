@@ -169,5 +169,39 @@ export async function sendProactiveBriefingEmail(params: {
   });
 }
 
+export async function sendOtpEmail(params: {
+  to: string;
+  code: string;
+  purpose?: string;
+}) {
+  const { to, code, purpose = "login" } = params;
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || `"Obey Business" <${process.env.SMTP_USER}>`,
+    to,
+    subject: `🔐 Your Obey Verification Code: ${code}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 32px 24px; background: #0c0d0e; color: #f4f4f5; border-radius: 20px; border: 1px solid #27272a;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="font-size: 22px; font-weight: 900; color: #ffffff; margin: 0; letter-spacing: -0.5px;">Obey Business AI</h1>
+          <p style="color: #10b981; font-size: 12px; font-weight: 700; text-transform: uppercase; margin: 6px 0 0; letter-spacing: 1px;">Security Verification</p>
+        </div>
+        
+        <div style="background: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 24px; text-align: center; margin-bottom: 20px;">
+          <p style="color: #a1a1aa; font-size: 13px; margin: 0 0 14px;">Your 6-digit authentication passcode for your Business Control Room is:</p>
+          <div style="font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #10b981; font-family: monospace; padding: 12px 0;">
+            ${code}
+          </div>
+          <p style="color: #71717a; font-size: 11px; margin: 12px 0 0;">Valid for 10 minutes. Never share this code with anyone.</p>
+        </div>
+        
+        <p style="color: #52525b; font-size: 11px; text-align: center; margin: 0;">
+          If you did not request this verification code, you can safely ignore this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
 export { transporter };
+
 

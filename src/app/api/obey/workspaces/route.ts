@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { getAuthSession } from "@/lib/auth-session";
 import {
   dbListWorkspaces,
   dbCreateWorkspace,
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
     const slug = searchParams.get("slug");
     const phone = searchParams.get("phone");
     const { userId } = await auth();
+    const obeySession = await getAuthSession();
 
     if (slug) {
       if (userId) {
@@ -38,13 +40,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ workspace: ws });
     }
 
-    // Authenticated user: return only their owned workspaces for security
+    // Authenticated user via Clerk
     if (userId) {
       const user = await currentUser();
       const primaryEmail = user?.emailAddresses?.[0]?.emailAddress;
       const primaryPhone = user?.phoneNumbers?.[0]?.phoneNumber?.replace(/[^0-9]/g, "");
 
       const workspaces = await dbGetWorkspacesByOwnerClerkId(userId, primaryEmail, primaryPhone);
+      return NextResponse.json({ workspaces });
+    }
+
+    // Authenticated user via Direct Obey OTP Session
+    if (obeySession) {
+      const primaryEmail = obeySession.email;
+      const primaryPhone = obeySession.phone;
+      const userKey = "session_" + (primaryPhone || primaryEmail);
+      const workspaces = await dbGetWorkspacesByOwnerClerkId(userKey, primaryEmail, primaryPhone);
+
+      // If Femi's flagship account
+      if (
+        workspaces.length === 0 &&
+        (obeySession.workspaceSlug === "femi-adeleke" ||
+          primaryPhone === "2348120934828" ||
+          primaryEmail?.includes("femiadeleke"))
+      ) {
+        const flagship = await dbGetWorkspaceBySlug("femi-adeleke");
+        if (flagship) return NextResponse.json({ workspaces: [flagship] });
+      }
+
       return NextResponse.json({ workspaces });
     }
 

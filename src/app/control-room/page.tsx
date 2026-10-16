@@ -33,6 +33,7 @@ import {
   Save,
   HelpCircle,
   Send,
+  LogOut,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -547,6 +548,13 @@ function ControlRoomContent() {
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    router.push("/sign-in");
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Top Header */}
@@ -624,8 +632,16 @@ function ControlRoomContent() {
             </Link>
           )}
 
-          <div className="pl-2 border-l border-slate-800 flex items-center">
+          <div className="pl-2 border-l border-slate-800 flex items-center gap-2">
             <UserButton />
+            <button
+              onClick={handleLogout}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
+              title="Log out of Control Room"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">Log Out</span>
+            </button>
           </div>
         </div>
       </header>

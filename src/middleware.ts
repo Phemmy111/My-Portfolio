@@ -6,14 +6,26 @@ const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
 const isControlRoomRoute = createRouteMatcher(["/control-room(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Protect all /admin and /control-room routes — redirect to sign-in if not authenticated
+  // Check if authenticated via direct Obey OTP session cookie
+  const obeySession = req.cookies.get("obey_auth_session")?.value;
+  if (obeySession) {
+    return NextResponse.next();
+  }
+
+  // Fallback: Check if authenticated via Clerk
   if (isAdminRoute(req) || isControlRoomRoute(req)) {
-    const { userId } = await auth();
-    if (!userId) {
-      const signInUrl = new URL("/sign-in", req.url);
-      signInUrl.searchParams.set("redirect_url", req.url);
-      return NextResponse.redirect(signInUrl);
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        return NextResponse.next();
+      }
+    } catch {
+      // Ignore Clerk auth errors in middleware
     }
+
+    const signInUrl = new URL("/sign-in", req.url);
+    signInUrl.searchParams.set("redirect_url", req.url);
+    return NextResponse.redirect(signInUrl);
   }
 });
 
