@@ -289,6 +289,7 @@ Respond ONLY with a valid JSON object matching this schema:
 
   // NATIVE AI VOICE CALL REASONING & BROAD INTENT:
   const naturalCallIntent = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me|let'?s call|want to call|make a call|get on a call|can we call|can we speak|can i call|talk to you on phone|speak to you live|hear your voice|give me a call)\b/i.test(userText);
+  const explicitlyRequestsCall = naturalCallIntent;
   const isShortAffirmation = /^(yes|yeah|sure|ok|okay|1|proceed|do it)\b/i.test(userText.trim());
 
   if (naturalCallIntent) {
