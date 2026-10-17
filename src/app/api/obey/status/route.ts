@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/db";
-import { sendWhatsAppStatusPost, setEvolutionInstanceSettings } from "@/lib/whatsapp-gateway";
+import {
+  sql,
+  dbGetWorkspaceStatuses,
+  dbGetScheduledStatusesCount,
+  getPlanScheduledPostLimit,
+  dbDeleteStatusPost,
+} from "@/lib/db";
+import {
+  sendWhatsAppStatusPost,
+  deleteWhatsAppStatusPost,
+  setEvolutionInstanceSettings,
+} from "@/lib/whatsapp-gateway";
 import { getSetting, setSetting } from "@/lib/settings";
 
 export async function GET(req: NextRequest) {
@@ -10,8 +20,14 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get("workspace_id");
 
     if (!sql) {
-      return NextResponse.json({ statuses: [] });
+      return NextResponse.json({ statuses: [], scheduledCount: 0, scheduledLimit: 3 });
     }
+
+    // Passively run due scheduled status check to ensure near real-time posting
+    try {
+      const { dispatchDueScheduledStatuses } = await import("@/lib/status-scheduler");
+      dispatchDueScheduledStatuses().catch(() => {});
+    } catch {}
 
     let targetWorkspaceId = workspaceId;
     let ws: any = null;
@@ -44,7 +60,13 @@ export async function GET(req: NextRequest) {
       engagementActive = Boolean(ws.auto_comment_status && ws.auto_view_status !== false);
       comment_tone = ws.comment_tone || "friendly";
       const plan = (ws.plan || "starter").toLowerCase();
-      comment_rate_limit = ws.comment_rate_limit || (plan === "enterprise" || plan === "founder" || plan === "lifetime" ? "unlimited" : plan === "pro" ? "8h" : "24h");
+      comment_rate_limit =
+        ws.comment_rate_limit ||
+        (plan === "enterprise" || plan === "founder" || plan === "lifetime"
+          ? "unlimited"
+          : plan === "pro"
+          ? "8h"
+          : "24h");
       auto_status_enabled = Boolean(ws.auto_status_enabled);
       auto_status_interval = ws.auto_status_interval || 24;
     } else {
@@ -61,6 +83,8 @@ export async function GET(req: NextRequest) {
     if (!targetWorkspaceId) {
       return NextResponse.json({
         statuses: [],
+        scheduledCount: 0,
+        scheduledLimit: 3,
         auto_view_status,
         auto_comment_status,
         comment_tone,
@@ -70,15 +94,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const statuses = await sql`
-      SELECT * FROM workspace_statuses
-      WHERE workspace_id = ${targetWorkspaceId}
-      ORDER BY created_at DESC
-      LIMIT 50
-    `;
+    const statuses = await dbGetWorkspaceStatuses(targetWorkspaceId, 50);
+    const scheduledCount = await dbGetScheduledStatusesCount(targetWorkspaceId);
+    const scheduledLimit = getPlanScheduledPostLimit(ws?.plan);
 
     return NextResponse.json({
       statuses: statuses || [],
+      scheduledCount,
+      scheduledLimit,
       auto_view_status,
       auto_comment_status,
       comment_tone,
@@ -101,6 +124,10 @@ export async function POST(req: NextRequest) {
       content,
       media_url,
       media_type = "text",
+      mode = "post_now", // "post_now" | "schedule"
+      scheduled_at,
+      background_color = "#075E54",
+      font = 1,
       auto_post_now = true,
       auto_status_enabled,
       auto_status_interval,
@@ -193,54 +220,133 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    // If posting a new status update (either text content or media exists)
+    // If publishing or scheduling a new status update
     const hasText = Boolean(content && content.trim());
     const hasMedia = Boolean(media_url && media_url.trim());
 
     if (hasText || hasMedia) {
-      const instanceName = ws.whatsapp_instance_name || `obey-${ws.slug}`;
+      const instanceName = ws ? (ws.whatsapp_instance_name || `obey-${ws.slug}`) : "obey";
+      const targetWsId = ws ? ws.id : "ws_femi_default";
       const statusId = `stat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+      const isScheduled = mode === "schedule";
+
+      // If scheduling, check plan limit and validate schedule time within next 24 hours
+      let scheduledIso: string | null = null;
+      if (isScheduled) {
+        const planLimit = getPlanScheduledPostLimit(ws?.plan);
+        const currentCount = await dbGetScheduledStatusesCount(targetWsId);
+
+        if (currentCount >= planLimit) {
+          return NextResponse.json(
+            {
+              error: `You have reached your plan limit of ${planLimit} scheduled post${
+                planLimit > 1 ? "s" : ""
+              }. Upgrade your plan to schedule more.`,
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!scheduled_at) {
+          return NextResponse.json(
+            { error: "Please select a scheduled time within the next 24 hours." },
+            { status: 400 }
+          );
+        }
+
+        const schedDate = new Date(scheduled_at);
+        const now = new Date();
+        const maxTime = new Date(now.getTime() + 24 * 60 * 60 * 1000 + 5 * 60 * 1000); // 24h + 5m buffer
+
+        if (isNaN(schedDate.getTime())) {
+          return NextResponse.json({ error: "Invalid scheduled time format." }, { status: 400 });
+        }
+        if (schedDate.getTime() <= now.getTime()) {
+          return NextResponse.json(
+            { error: "Scheduled time must be in the future." },
+            { status: 400 }
+          );
+        }
+        if (schedDate.getTime() > maxTime.getTime()) {
+          return NextResponse.json(
+            { error: "Status posts can only be scheduled within the next 24 hours." },
+            { status: 400 }
+          );
+        }
+
+        scheduledIso = schedDate.toISOString();
+      }
 
       let postSuccess = false;
       let errorMsg: string | null = null;
+      let messageId: string | null = null;
 
       const normalizedMediaType: "image" | "video" | undefined =
         media_type === "video" ? "video" : (media_type === "image" || hasMedia ? "image" : undefined);
 
-      if (auto_post_now) {
+      if (!isScheduled && auto_post_now) {
         const dispatchRes = await sendWhatsAppStatusPost({
           text: (content || "").trim(),
           mediaUrl: media_url ? media_url.trim() : undefined,
           mediaType: normalizedMediaType,
           instanceName,
+          backgroundColor: background_color || "#075E54",
+          font: typeof font === "number" ? font : 1,
         });
 
         postSuccess = dispatchRes.success;
+        messageId = dispatchRes.messageId || null;
         if (!dispatchRes.success) {
           errorMsg = dispatchRes.error || "Evolution API broadcast failed";
         }
       }
 
+      const initialStatus = isScheduled ? "scheduled" : postSuccess ? "posted" : "failed";
+
       await sql`
         INSERT INTO workspace_statuses (
-          id, workspace_id, content, media_url, media_type, status, error_message, posted_at
+          id,
+          workspace_id,
+          content,
+          media_url,
+          media_type,
+          background_color,
+          font,
+          message_id,
+          status,
+          error_message,
+          scheduled_at,
+          posted_at,
+          view_count,
+          created_at,
+          updated_at
         ) VALUES (
           ${statusId},
-          ${ws.id},
+          ${targetWsId},
           ${(content || "").trim()},
           ${media_url || null},
           ${media_type || (hasMedia ? "image" : "text")},
-          ${postSuccess ? "posted" : auto_post_now ? "failed" : "scheduled"},
+          ${background_color || "#075E54"},
+          ${font || 1},
+          ${messageId},
+          ${initialStatus},
           ${errorMsg},
-          ${postSuccess ? new Date().toISOString() : null}
+          ${scheduledIso},
+          ${postSuccess ? new Date().toISOString() : null},
+          0,
+          NOW(),
+          NOW()
         )
       `;
 
       return NextResponse.json({
-        success: postSuccess,
+        success: isScheduled || postSuccess,
         statusId,
-        message: postSuccess
-          ? "Status successfully published to WhatsApp Broadcast!"
+        message: isScheduled
+          ? `Status scheduled for ${new Date(scheduledIso!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}!`
+          : postSuccess
+          ? "Status successfully published to WhatsApp Broadcast & synced to My Status!"
           : errorMsg || "Status saved",
       });
     }
@@ -249,5 +355,73 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("[Status API] POST error:", err);
     return NextResponse.json({ error: err.message || "Failed to process status" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const statusId = searchParams.get("id");
+    const workspaceId = searchParams.get("workspace_id");
+    const slug = searchParams.get("slug");
+
+    if (!sql) {
+      return NextResponse.json({ error: "Database not connected" }, { status: 500 });
+    }
+
+    if (!statusId) {
+      return NextResponse.json({ error: "Missing status ID" }, { status: 400 });
+    }
+
+    let targetWorkspaceId = workspaceId;
+    let ws: any = null;
+
+    if (!targetWorkspaceId && slug) {
+      const wsRows = await sql`
+        SELECT * FROM workspaces WHERE LOWER(slug) = ${slug.toLowerCase().trim()} LIMIT 1
+      `;
+      if (wsRows && wsRows.length > 0) {
+        ws = wsRows[0];
+        targetWorkspaceId = ws.id;
+      }
+    } else if (targetWorkspaceId) {
+      const wsRows = await sql`SELECT * FROM workspaces WHERE id = ${targetWorkspaceId} LIMIT 1`;
+      if (wsRows && wsRows.length > 0) ws = wsRows[0];
+    }
+
+    // Find the status record
+    const statusRows = await sql`
+      SELECT * FROM workspace_statuses WHERE id = ${statusId} LIMIT 1
+    `;
+
+    if (!statusRows || statusRows.length === 0) {
+      return NextResponse.json({ error: "Status record not found" }, { status: 404 });
+    }
+
+    const statusRow = statusRows[0];
+    const instanceName = ws ? (ws.whatsapp_instance_name || `obey-${ws.slug}`) : "obey";
+
+    // If live on WhatsApp with a messageId, call deleteWhatsAppStatusPost
+    if (statusRow.status === "posted" && statusRow.message_id) {
+      try {
+        await deleteWhatsAppStatusPost({
+          instanceName,
+          messageId: statusRow.message_id,
+        });
+      } catch (delErr) {
+        console.warn("[Status API] WhatsApp remote delete warning:", delErr);
+      }
+    }
+
+    // Update in database to 'deleted'
+    await dbDeleteStatusPost(statusId, targetWorkspaceId || "all");
+
+    return NextResponse.json({
+      success: true,
+      message: "Status successfully deleted from WhatsApp and Control Room.",
+    });
+  } catch (err: any) {
+    console.error("[Status API] DELETE error:", err);
+    return NextResponse.json({ error: err.message || "Failed to delete status" }, { status: 500 });
   }
 }

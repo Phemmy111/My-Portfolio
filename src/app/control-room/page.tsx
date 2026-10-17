@@ -56,7 +56,27 @@ import {
   Square,
   ToggleLeft,
   ToggleRight,
+  Calendar,
 } from "lucide-react";
+
+const WHATSAPP_STATUS_COLORS = [
+  { name: "Teal", hex: "#075E54", bg: "#075E54" },
+  { name: "Emerald", hex: "#059669", bg: "#059669" },
+  { name: "Navy", hex: "#1E3A8A", bg: "#1E3A8A" },
+  { name: "Purple", hex: "#6D28D9", bg: "#6D28D9" },
+  { name: "Crimson", hex: "#991B1B", bg: "#991B1B" },
+  { name: "Amber", hex: "#D97706", bg: "#D97706" },
+  { name: "Charcoal", hex: "#1F2937", bg: "#1F2937" },
+  { name: "Magenta", hex: "#BE185D", bg: "#BE185D" },
+];
+
+const WHATSAPP_STATUS_FONTS = [
+  { id: 1, name: "Sans", fontClass: "font-sans", label: "Sans" },
+  { id: 2, name: "Serif", fontClass: "font-serif", label: "Serif" },
+  { id: 3, name: "Cursive", fontClass: "italic font-serif", label: "Cursive" },
+  { id: 4, name: "Marker", fontClass: "font-black tracking-wide", label: "Marker" },
+  { id: 5, name: "Mono", fontClass: "font-mono tracking-tight", label: "Mono" },
+];
 
 const COUNTRY_CODES = [
   { code: "234", flag: "🇳🇬", label: "NIG (+234)" },
@@ -179,6 +199,14 @@ function ControlRoomContent() {
   const [mediaFileName, setMediaFileName] = useState("");
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedStatusColor, setSelectedStatusColor] = useState("#075E54");
+  const [selectedStatusFont, setSelectedStatusFont] = useState(1);
+  const [statusPostMode, setStatusPostMode] = useState<"post_now" | "schedule">("post_now");
+  const [statusScheduledAt, setStatusScheduledAt] = useState("");
+  const [scheduledCount, setScheduledCount] = useState(0);
+  const [scheduledLimit, setScheduledLimit] = useState(3);
+  const [aiTopicInput, setAiTopicInput] = useState("");
+  const [deletingStatusId, setDeletingStatusId] = useState<string | null>(null);
 
   // Video Trimmer states (Max 1:30s WhatsApp Standard)
   const [showVideoTrimmer, setShowVideoTrimmer] = useState(false);
@@ -269,7 +297,9 @@ function ControlRoomContent() {
   const [statusSuccessMsg, setStatusSuccessMsg] = useState("");
   const [statusErrorMsg, setStatusErrorMsg] = useState("");
   const [generatingStatus, setGeneratingStatus] = useState(false);
-  const [aiVariations, setAiVariations] = useState<{ type: string; content: string }[]>([]);
+  const [aiVariations, setAiVariations] = useState<
+    { type: string; content: string; recommended_bg?: string; recommended_font?: number }[]
+  >([]);
   const [autoStatusEnabled, setAutoStatusEnabled] = useState(false);
   const [autoStatusInterval, setAutoStatusInterval] = useState("daily_morning");
   const [savingStatusSchedule, setSavingStatusSchedule] = useState(false);
@@ -493,6 +523,12 @@ function ControlRoomContent() {
       fetchContacts(currentWs.slug, contactTab);
     }
   }, [activeTab, contactTab, currentWs?.slug]);
+
+  useEffect(() => {
+    if (activeTab === "status" && currentWs?.id) {
+      fetchStatuses(currentWs.id);
+    }
+  }, [activeTab, currentWs?.id]);
 
   const handleSaveAllUnsaved = async () => {
     if (!currentWs) return;
@@ -735,6 +771,53 @@ function ControlRoomContent() {
     }
   };
 
+  const fetchStatuses = async (wsId?: string) => {
+    const targetId = wsId || currentWs?.id;
+    if (!targetId) return;
+    try {
+      const res = await fetch(`/api/obey/status?workspace_id=${targetId}`);
+      const data = await res.json();
+      if (data.statuses) setStatuses(data.statuses);
+      if (data.scheduledCount !== undefined) setScheduledCount(data.scheduledCount);
+      if (data.scheduledLimit !== undefined) setScheduledLimit(data.scheduledLimit);
+    } catch (err) {
+      console.warn("fetchStatuses error:", err);
+    }
+  };
+
+  const setPresetSchedule = (hoursAhead: number) => {
+    const target = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
+    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setStatusScheduledAt(localIso);
+    setStatusPostMode("schedule");
+  };
+
+  const setTonightSchedule = () => {
+    const target = new Date();
+    target.setHours(20, 0, 0, 0);
+    if (target.getTime() <= Date.now()) {
+      target.setDate(target.getDate() + 1);
+    }
+    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setStatusScheduledAt(localIso);
+    setStatusPostMode("schedule");
+  };
+
+  const setTomorrowSchedule = () => {
+    const target = new Date();
+    target.setDate(target.getDate() + 1);
+    target.setHours(9, 0, 0, 0);
+    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setStatusScheduledAt(localIso);
+    setStatusPostMode("schedule");
+  };
+
   const handlePostStatus = async (customContent?: string, customMedia?: string, customType?: "image" | "video") => {
     if (!currentWs) return;
     const textToPost = customContent !== undefined ? customContent : statusContent;
@@ -744,6 +827,29 @@ function ControlRoomContent() {
     if (!textToPost.trim() && !mediaToPost.trim()) {
       setStatusErrorMsg("Please write some text or upload an image/video for your WhatsApp status story.");
       return;
+    }
+
+    if (statusPostMode === "schedule") {
+      if (!statusScheduledAt) {
+        setStatusErrorMsg("Please choose a scheduled time within the next 24 hours.");
+        return;
+      }
+      const schedTime = new Date(statusScheduledAt).getTime();
+      const now = Date.now();
+      if (schedTime <= now) {
+        setStatusErrorMsg("Scheduled time must be in the future.");
+        return;
+      }
+      if (schedTime > now + 24 * 60 * 60 * 1000 + 5 * 60 * 1000) {
+        setStatusErrorMsg("Scheduled post must be within the next 24 hours.");
+        return;
+      }
+      if (scheduledCount >= scheduledLimit) {
+        setStatusErrorMsg(
+          `You have reached the scheduled posts limit (${scheduledLimit}) for your plan. Please upgrade to schedule more.`
+        );
+        return;
+      }
     }
 
     setPostingStatus(true);
@@ -760,22 +866,30 @@ function ControlRoomContent() {
           content: textToPost.trim(),
           media_url: mediaToPost.trim() || undefined,
           media_type: mediaToPost.trim() ? typeToPost : "text",
-          auto_post_now: true,
+          mode: statusPostMode,
+          scheduled_at: statusPostMode === "schedule" ? statusScheduledAt : undefined,
+          background_color: selectedStatusColor,
+          font: selectedStatusFont,
+          auto_post_now: statusPostMode === "post_now",
         }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error || "Failed to post status to WhatsApp");
+        throw new Error(data.message || data.error || "Failed to process status");
       }
 
-      setStatusSuccessMsg("🚀 Boom! Your status was published directly to your WhatsApp Status Broadcast!");
+      setStatusSuccessMsg(
+        statusPostMode === "schedule"
+          ? `⏱️ Boom! Status scheduled for ${new Date(statusScheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}!`
+          : "🚀 Boom! Your status was published directly to your WhatsApp Status Broadcast & synced to My Status!"
+      );
       setStatusContent("");
       setStatusMediaUrl("");
       setMediaFileName("");
-      const refRes = await fetch(`/api/obey/status?workspace_id=${currentWs.id}`);
-      const refData = await refRes.json();
-      if (refData.statuses) setStatuses(refData.statuses);
+      setStatusScheduledAt("");
+      setStatusPostMode("post_now");
+      await fetchStatuses(currentWs.id);
     } catch (err: any) {
       setStatusErrorMsg(err.message || "Failed to post status to WhatsApp");
     } finally {
@@ -783,10 +897,41 @@ function ControlRoomContent() {
     }
   };
 
-  const handleGenerateAiStatus = async (topic?: string) => {
+  const handleDeleteStatus = async (statusId: string) => {
+    if (!currentWs) return;
+    if (
+      !confirm(
+        "Are you sure you want to delete this status? It will be removed from WhatsApp Status broadcast for everyone and deleted from your Control Room."
+      )
+    ) {
+      return;
+    }
+
+    setDeletingStatusId(statusId);
+    setStatusErrorMsg("");
+    try {
+      const res = await fetch(
+        `/api/obey/status?id=${statusId}&workspace_id=${currentWs.id}&slug=${currentWs.slug}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || "Failed to delete status");
+      }
+      setStatusSuccessMsg("🗑️ Status successfully removed from WhatsApp and Control Room.");
+      await fetchStatuses(currentWs.id);
+    } catch (err: any) {
+      setStatusErrorMsg(err.message || "Failed to delete status");
+    } finally {
+      setDeletingStatusId(null);
+    }
+  };
+
+  const handleGenerateAiStatus = async (customTopic?: string) => {
     if (!currentWs) return;
     setGeneratingStatus(true);
     setStatusErrorMsg("");
+    const topicToUse = customTopic !== undefined ? customTopic : aiTopicInput;
     try {
       const res = await fetch("/api/obey/status/generate", {
         method: "POST",
@@ -794,7 +939,7 @@ function ControlRoomContent() {
         body: JSON.stringify({
           workspace_id: currentWs.id,
           slug: currentWs.slug,
-          topic,
+          topic: topicToUse,
         }),
       });
       const data = await res.json();
@@ -2463,19 +2608,37 @@ function ControlRoomContent() {
               {/* Left Column: Instant Status Composer & AI Generator (7 cols) */}
               <div className="lg:col-span-7 space-y-6">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                      <Send className="w-4 h-4 text-emerald-400" />
-                      Post WhatsApp Status Story
-                    </h3>
-                    <button
-                      onClick={() => handleGenerateAiStatus()}
-                      disabled={generatingStatus}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
-                    >
-                      <Sparkles className={`w-3.5 h-3.5 ${generatingStatus ? "animate-spin" : ""}`} />
-                      <span>{generatingStatus ? "Thinking..." : "✨ AI Generate"}</span>
-                    </button>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                    <div>
+                      <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                        <Send className="w-4 h-4 text-emerald-400" />
+                        Post WhatsApp Status Story
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Published to contacts &amp; synced directly to &quot;My status&quot; on your phone
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <input
+                        type="text"
+                        value={aiTopicInput}
+                        onChange={(e) => setAiTopicInput(e.target.value)}
+                        placeholder="AI topic e.g. Weekend Flash Sale..."
+                        className="w-full sm:w-56 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleGenerateAiStatus();
+                        }}
+                      />
+                      <button
+                        onClick={() => handleGenerateAiStatus()}
+                        disabled={generatingStatus}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${generatingStatus ? "animate-spin" : ""}`} />
+                        <span>{generatingStatus ? "Generating..." : "✨ AI Generate"}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-3">
@@ -2490,6 +2653,53 @@ function ControlRoomContent() {
                         placeholder={`e.g. 🔥 Flash Friday Promo at ${currentWs.name}!\n\nGet 20% off our bestsellers today only. Send us a message to lock in your spot now! 🚀`}
                         className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none transition font-sans"
                       />
+                    </div>
+
+                    {/* WhatsApp Background Color Palette & Font Style Selector */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+                          Story Background Color
+                        </label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {WHATSAPP_STATUS_COLORS.map((c) => (
+                            <button
+                              key={c.hex}
+                              type="button"
+                              onClick={() => setSelectedStatusColor(c.hex)}
+                              title={c.name}
+                              style={{ backgroundColor: c.hex }}
+                              className={`w-6 h-6 rounded-full transition transform hover:scale-110 shrink-0 ${
+                                selectedStatusColor.toLowerCase() === c.hex.toLowerCase()
+                                  ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md"
+                                  : "border border-white/20 opacity-80 hover:opacity-100"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+                          Story Typography Font
+                        </label>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {WHATSAPP_STATUS_FONTS.map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setSelectedStatusFont(f.id)}
+                              className={`px-2.5 py-1 rounded-md text-xs transition ${f.fontClass} ${
+                                selectedStatusFont === f.id
+                                  ? "bg-emerald-500 text-slate-950 font-bold shadow"
+                                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -2828,31 +3038,243 @@ function ControlRoomContent() {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => handlePostStatus()}
-                      disabled={postingStatus || uploadingMedia || (!statusContent.trim() && !statusMediaUrl.trim())}
-                      className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {postingStatus ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Publishing to WhatsApp Status...</span>
-                        </>
-                      ) : uploadingMedia ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Uploading Media File...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Radio className="w-4 h-4" />
-                          <span>🚀 Post to WhatsApp Status Stories Now</span>
-                        </>
+                    {/* Interactive WhatsApp Story Live Phone Preview */}
+                    <div className="border border-slate-800 rounded-2xl p-4 bg-slate-950/60 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span className="font-semibold flex items-center gap-1.5 text-slate-300">
+                          <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                          Live WhatsApp Story Preview
+                        </span>
+                        <span className="text-[10px] text-slate-500">Live Mobile Canvas</span>
+                      </div>
+
+                      <div className="relative mx-auto max-w-[260px] rounded-[24px] overflow-hidden border-2 border-slate-700 bg-slate-900 shadow-2xl aspect-[9/16] flex flex-col justify-between p-3 select-none">
+                        {/* Top Story Status Bar */}
+                        <div className="relative z-10 space-y-1.5">
+                          <div className="h-0.5 w-full bg-white/30 rounded-full overflow-hidden">
+                            <div className="h-full bg-white w-2/3 rounded-full animate-pulse" />
+                          </div>
+                          <div className="flex items-center justify-between text-white">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-bold text-white shadow">
+                                {(currentWs.name || "O")[0]?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold leading-tight truncate max-w-[140px]">
+                                  {currentWs.name}
+                                </p>
+                                <p className="text-[8px] text-white/80">Just now • status@broadcast</p>
+                              </div>
+                            </div>
+                            <span className="text-white/80 text-[10px]">•••</span>
+                          </div>
+                        </div>
+
+                        {/* Story Body Display */}
+                        <div
+                          className="absolute inset-0 flex items-center justify-center p-4 text-center overflow-hidden transition-colors duration-300"
+                          style={{
+                            backgroundColor: statusMediaUrl ? "#000000" : selectedStatusColor,
+                          }}
+                        >
+                          {statusMediaUrl ? (
+                            statusMediaType === "video" ? (
+                              <video src={statusMediaUrl} className="w-full h-full object-contain" />
+                            ) : (
+                              <img src={statusMediaUrl} alt="Preview" className="w-full h-full object-contain" />
+                            )
+                          ) : (
+                            <p
+                              className={`text-white text-xs sm:text-sm leading-relaxed whitespace-pre-line ${
+                                WHATSAPP_STATUS_FONTS.find((f) => f.id === selectedStatusFont)?.fontClass || "font-sans"
+                              }`}
+                            >
+                              {statusContent || "Type your status above or click AI Generate to preview your story here..."}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Caption Overlay if Media attached */}
+                        {statusMediaUrl && statusContent && (
+                          <div className="relative z-10 bg-black/60 backdrop-blur-sm p-2 rounded-lg text-white text-[10px] leading-snug line-clamp-2">
+                            {statusContent}
+                          </div>
+                        )}
+
+                        {/* Bottom Reply Bar */}
+                        <div className="relative z-10 flex items-center gap-2 pt-1">
+                          <div className="flex-1 bg-white/20 backdrop-blur-md rounded-full px-2.5 py-1 text-[9px] text-white/90 flex items-center gap-1">
+                            <ChevronDown className="w-2.5 h-2.5 text-white/60" />
+                            <span>Reply</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white/90 text-[10px]">
+                            ❤️
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Post Mode Selector: Immediate vs Scheduled */}
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setStatusPostMode("post_now")}
+                          className={`py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                            statusPostMode === "post_now"
+                              ? "bg-emerald-500 text-slate-950 shadow"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <Radio className="w-3.5 h-3.5" />
+                          <span>Post Immediately</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStatusPostMode("schedule")}
+                          className={`py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                            statusPostMode === "schedule"
+                              ? "bg-emerald-500 text-slate-950 shadow"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Schedule Post (Next 24h)</span>
+                        </button>
+                      </div>
+
+                      {/* Scheduled Options Container */}
+                      {statusPostMode === "schedule" && (
+                        <div className="p-4 bg-slate-950 border border-emerald-500/30 rounded-xl space-y-3 animate-fadeIn">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-white flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                              Select Broadcast Time:
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono">
+                              Queue: {scheduledCount} / {scheduledLimit === 999999 ? "∞" : scheduledLimit} slots
+                            </span>
+                          </div>
+
+                          {/* Quick Presets */}
+                          <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                            <span className="text-[10px] text-slate-400">Presets:</span>
+                            <button
+                              type="button"
+                              onClick={() => setPresetSchedule(1)}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200"
+                            >
+                              +1h
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPresetSchedule(3)}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200"
+                            >
+                              +3h
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPresetSchedule(6)}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200"
+                            >
+                              +6h
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTonightSchedule()}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200"
+                            >
+                              Tonight (8 PM)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTomorrowSchedule()}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200"
+                            >
+                              Tomorrow (9 AM)
+                            </button>
+                          </div>
+
+                          {/* Datetime Input */}
+                          <div>
+                            <input
+                              type="datetime-local"
+                              value={statusScheduledAt}
+                              onChange={(e) => setStatusScheduledAt(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg p-2 text-xs text-white [color-scheme:dark]"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Obey will automatically post this status to WhatsApp Status stories at the exact moment.
+                            </p>
+                          </div>
+
+                          {/* Queue Limit Warning if reached */}
+                          {scheduledCount >= scheduledLimit && (
+                            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+                              <span>Queue limit ({scheduledLimit} posts) reached for your plan.</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCheckoutPlan("pro")}
+                                className="font-bold underline hover:text-amber-200"
+                              >
+                                Upgrade &rarr;
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </button>
+
+                      {/* Action Submit Button */}
+                      <button
+                        onClick={() => handlePostStatus()}
+                        disabled={
+                          postingStatus ||
+                          uploadingMedia ||
+                          (!statusContent.trim() && !statusMediaUrl.trim()) ||
+                          (statusPostMode === "schedule" && (!statusScheduledAt || scheduledCount >= scheduledLimit))
+                        }
+                        className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {postingStatus ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>
+                              {statusPostMode === "schedule"
+                                ? "Scheduling Status Story..."
+                                : "Publishing to WhatsApp Status..."}
+                            </span>
+                          </>
+                        ) : uploadingMedia ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Uploading Media File...</span>
+                          </>
+                        ) : statusPostMode === "schedule" ? (
+                          <>
+                            <Clock className="w-4 h-4" />
+                            <span>
+                              ⏱️ Schedule Status Story (
+                              {statusScheduledAt
+                                ? new Date(statusScheduledAt).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "Select Time"}
+                              )
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Radio className="w-4 h-4" />
+                            <span>🚀 Post to WhatsApp Status Stories Now</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* AI Generated Variations */}
+                  {/* Upgraded AI Generated Variations */}
                   {aiVariations.length > 0 && (
                     <div className="pt-4 border-t border-slate-800 space-y-3">
                       <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
@@ -2866,13 +3288,29 @@ function ControlRoomContent() {
                             className="bg-slate-950 border border-slate-800 hover:border-slate-700 p-3.5 rounded-xl space-y-2 transition"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {v.type}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                {v.recommended_bg && (
+                                  <span
+                                    className="w-3 h-3 rounded-full border border-white/20 shrink-0"
+                                    style={{ backgroundColor: v.recommended_bg }}
+                                    title={`Color: ${v.recommended_bg}`}
+                                  />
+                                )}
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  {v.type}
+                                </span>
+                                {v.recommended_font && (
+                                  <span className="text-[9px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                                    {WHATSAPP_STATUS_FONTS.find((f) => f.id === v.recommended_font)?.label || "Sans"}
+                                  </span>
+                                )}
+                              </div>
                               <button
                                 onClick={() => {
                                   setStatusContent(v.content);
-                                  setStatusSuccessMsg(`Variation "${v.type}" copied to composer!`);
+                                  if (v.recommended_bg) setSelectedStatusColor(v.recommended_bg);
+                                  if (v.recommended_font) setSelectedStatusFont(v.recommended_font);
+                                  setStatusSuccessMsg(`Variation "${v.type}" and style template applied!`);
                                   setTimeout(() => setStatusSuccessMsg(""), 3000);
                                 }}
                                 className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
@@ -3212,26 +3650,64 @@ function ControlRoomContent() {
                     </div>
                   ) : (
                     <div className="divide-y divide-zinc-800/60 max-h-96 overflow-y-auto pr-1">
-                      {statuses.slice(0, 15).map((st, i) => (
+                      {statuses.slice(0, 25).map((st, i) => (
                         <div
                           key={st.id || i}
                           className="py-3 px-2 sm:px-3 hover:bg-zinc-900/40 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                         >
-                          <div className="space-y-1 min-w-0 flex-1">
+                          <div className="space-y-1.5 min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs">
-                                <span className={`w-2 h-2 rounded-full ${st.status === "failed" ? "bg-rose-500" : "bg-emerald-400 animate-pulse"}`} />
-                                {st.status === "failed" ? (
-                                  <span className="text-rose-400">Failed</span>
-                                ) : (
-                                  <span>Published</span>
-                                )}
+                              {st.status === "scheduled" ? (
+                                <span className="flex items-center gap-1.5 text-amber-400 font-semibold text-xs bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                  <Clock className="w-3 h-3 animate-pulse text-amber-400" />
+                                  <span>
+                                    Scheduled:{" "}
+                                    {st.scheduled_at
+                                      ? new Date(st.scheduled_at).toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "Within 24h"}
+                                  </span>
+                                </span>
+                              ) : st.status === "failed" ? (
+                                <span className="flex items-center gap-1.5 text-rose-400 font-semibold text-xs bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                  <span>Failed</span>
+                                </span>
+                              ) : st.status === "deleted" ? (
+                                <span className="flex items-center gap-1.5 text-zinc-400 font-semibold text-xs bg-zinc-800/60 px-2 py-0.5 rounded-full">
+                                  <Trash2 className="w-3 h-3 text-zinc-500" />
+                                  <span>Deleted</span>
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>Published Story</span>
+                                </span>
+                              )}
+
+                              {/* WhatsApp Views Count Badge */}
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-bold text-[10px] flex items-center gap-1">
+                                <Eye className="w-3 h-3 text-emerald-400" />
+                                <span>{st.view_count || 0} views</span>
                               </span>
-                              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[10px] tracking-wide uppercase">
-                                Production
-                              </span>
-                              <span className="font-mono text-[11px] text-zinc-500">
-                                -o- {(st.id || "").slice(-7) || "live"}
+
+                              {/* Color and Font Indicator */}
+                              {st.background_color && (
+                                <span className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: st.background_color }}
+                                  />
+                                  <span>
+                                    {WHATSAPP_STATUS_FONTS.find((f) => f.id === st.font)?.label || "Sans"}
+                                  </span>
+                                </span>
+                              )}
+
+                              <span className="font-mono text-[10px] text-zinc-500">
+                                #{(st.id || "").slice(-6)}
                               </span>
                             </div>
 
@@ -3250,13 +3726,37 @@ function ControlRoomContent() {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-3 shrink-0 text-zinc-500 text-[11px] justify-between sm:justify-end">
-                            <span className="font-mono">
-                              {st.posted_at ? new Date(st.posted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
+                          <div className="flex items-center gap-2 shrink-0 text-zinc-500 text-[11px] justify-between sm:justify-end">
+                            <span className="font-mono text-[11px] text-zinc-400">
+                              {st.posted_at
+                                ? new Date(st.posted_at).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : st.scheduled_at
+                                ? new Date(st.scheduled_at).toLocaleDateString([], {
+                                    month: "short",
+                                    day: "numeric",
+                                  })
+                                : "Just now"}
                             </span>
-                            <span className="text-zinc-600 font-mono text-[10px] bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
-                              main
-                            </span>
+
+                            {/* Delete Status Button */}
+                            {st.status !== "deleted" && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStatus(st.id)}
+                                disabled={deletingStatusId === st.id}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition border border-transparent hover:border-rose-500/20"
+                                title="Delete status from WhatsApp and Control Room"
+                              >
+                                {deletingStatusId === st.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}

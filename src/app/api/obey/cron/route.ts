@@ -28,6 +28,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Automatically dispatch any due scheduled statuses
+    try {
+      const { dispatchDueScheduledStatuses } = await import("@/lib/status-scheduler");
+      await dispatchDueScheduledStatuses();
+    } catch {}
+
     if (type === "evening") {
       const res = await dispatchEveningWrapup();
       return NextResponse.json({ ok: true, type: "evening", result: res });

@@ -820,8 +820,137 @@ export async function createWorkspaceTables() {
       )
     `;
     await db`CREATE INDEX IF NOT EXISTS idx_status_comments_poster ON workspace_status_comments(poster_phone)`;
+
+    // Ensure workspace_statuses table exists for publishing and scheduling WhatsApp Status stories
+    await db`
+      CREATE TABLE IF NOT EXISTS workspace_statuses (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        content TEXT,
+        media_url TEXT,
+        media_type TEXT DEFAULT 'text',
+        background_color TEXT DEFAULT '#075E54',
+        font INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'posted',
+        error_message TEXT,
+        message_id TEXT,
+        view_count INTEGER DEFAULT 0,
+        scheduled_at TIMESTAMPTZ,
+        posted_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await db`CREATE INDEX IF NOT EXISTS idx_workspace_statuses_ws ON workspace_statuses(workspace_id)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_workspace_statuses_sched ON workspace_statuses(status, scheduled_at)`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS background_color TEXT DEFAULT '#075E54'`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS font INTEGER DEFAULT 1`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS message_id TEXT`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
+  }
+}
+
+export function getPlanScheduledPostLimit(plan?: string): number {
+  const p = (plan || "starter").toLowerCase();
+  if (p === "enterprise" || p === "founder" || p === "lifetime") return 999999;
+  if (p === "pro") return 10;
+  return 3;
+}
+
+export async function dbGetWorkspaceStatuses(workspaceId: string, limit: number = 50) {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT * FROM workspace_statuses
+      WHERE workspace_id = ${workspaceId}
+      ORDER BY 
+        CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END,
+        COALESCE(scheduled_at, posted_at, created_at) DESC
+      LIMIT ${limit}
+    `;
+    return rows || [];
+  } catch (err) {
+    console.error("dbGetWorkspaceStatuses error:", err);
+    return [];
+  }
+}
+
+export async function dbGetScheduledStatusesCount(workspaceId: string): Promise<number> {
+  const db = getSql();
+  if (!db) return 0;
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT COUNT(*)::int as count FROM workspace_statuses
+      WHERE workspace_id = ${workspaceId} AND status = 'scheduled'
+    `;
+    return rows?.[0]?.count || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function dbGetDueScheduledStatuses(): Promise<any[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT s.*, w.whatsapp_instance_name, w.slug as workspace_slug, w.name as workspace_name, w.owner_phone
+      FROM workspace_statuses s
+      JOIN workspaces w ON s.workspace_id = w.id
+      WHERE s.status = 'scheduled'
+        AND s.scheduled_at IS NOT NULL
+        AND s.scheduled_at <= NOW()
+      ORDER BY s.scheduled_at ASC
+      LIMIT 15
+    `;
+    return rows || [];
+  } catch (err) {
+    console.error("dbGetDueScheduledStatuses error:", err);
+    return [];
+  }
+}
+
+export async function dbMarkStatusPosted(statusId: string, messageId?: string) {
+  const db = getSql();
+  if (!db) return;
+  try {
+    await db`
+      UPDATE workspace_statuses
+      SET status = 'posted',
+          posted_at = NOW(),
+          message_id = COALESCE(${messageId || null}, message_id),
+          updated_at = NOW()
+      WHERE id = ${statusId}
+    `;
+  } catch (err) {
+    console.error("dbMarkStatusPosted error:", err);
+  }
+}
+
+export async function dbDeleteStatusPost(statusId: string, workspaceId: string) {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const [row] = await db`
+      UPDATE workspace_statuses
+      SET status = 'deleted',
+          updated_at = NOW()
+      WHERE id = ${statusId} AND (workspace_id = ${workspaceId} OR ${workspaceId} = 'all')
+      RETURNING *
+    `;
+    return row;
+  } catch (err) {
+    console.error("dbDeleteStatusPost error:", err);
+    return null;
   }
 }
 

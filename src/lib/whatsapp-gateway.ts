@@ -1,3 +1,5 @@
+import { sql } from "./db";
+
 /**
  * Dispatches a WhatsApp message via the self-hosted Evolution API on Render.
  *
@@ -588,6 +590,7 @@ export async function sendWhatsAppStatusPost(params: {
   instanceName?: string;
   backgroundColor?: string;
   font?: number;
+  statusJidList?: string[];
 }): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     const evoUrl =
@@ -613,13 +616,62 @@ export async function sendWhatsAppStatusPost(params: {
       }
     }
 
+    // Build recipient statusJidList so that status is delivered and synced to phone ("My Status")
+    let jidList = params.statusJidList ? [...params.statusJidList] : [];
+    if (jidList.length === 0) {
+      try {
+        const contactsRes = await fetch(`${evoUrl}/chat/findContacts/${encodeURIComponent(instance)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: evoKey },
+          body: JSON.stringify({}),
+        });
+        if (contactsRes.ok) {
+          const contacts = await contactsRes.json();
+          if (Array.isArray(contacts)) {
+            for (const c of contacts) {
+              const rawJid = c.remoteJid || c.id || "";
+              if (rawJid && !rawJid.includes("@g.us") && !rawJid.includes("@broadcast") && !rawJid.includes("status")) {
+                const clean = rawJid.replace(/[^0-9]/g, "");
+                if (clean && clean.length >= 8) {
+                  jidList.push(`${clean}@s.whatsapp.net`);
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[WhatsApp Status] Contact fetch warning:", e);
+      }
+
+      // Add instance owner JID to ensure primary device syncs under "My Status"
+      try {
+        if (sql) {
+          const instRows = await sql`
+            SELECT "ownerJid" FROM evolution."Instance" WHERE name = ${instance} LIMIT 1
+          `;
+          if (instRows && instRows[0]?.ownerJid) {
+            const cleanOwner = instRows[0].ownerJid.replace(/[^0-9]/g, "");
+            if (cleanOwner) {
+              jidList.push(`${cleanOwner}@s.whatsapp.net`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[WhatsApp Status] Instance owner JID query warning:", e);
+      }
+    }
+
+    // Deduplicate JIDs
+    jidList = Array.from(new Set(jidList));
+
     // Build proper Evolution API v2 sendStatus payload
-    const payload = cleanMediaUrl
+    const payload: any = cleanMediaUrl
       ? {
           type: params.mediaType || "image",
           content: cleanMediaUrl,
           caption: cleanWhatsAppFormatting(params.text),
           allContacts: true,
+          ...(jidList.length > 0 ? { statusJidList: jidList } : {}),
         }
       : {
           type: "text",
@@ -627,9 +679,10 @@ export async function sendWhatsAppStatusPost(params: {
           backgroundColor: params.backgroundColor || "#075E54",
           font: params.font || 1,
           allContacts: true,
+          ...(jidList.length > 0 ? { statusJidList: jidList } : {}),
         };
 
-    const statusRes = await fetch(`${evoUrl}/message/sendStatus/${instance}`, {
+    const statusRes = await fetch(`${evoUrl}/message/sendStatus/${encodeURIComponent(instance)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -640,7 +693,8 @@ export async function sendWhatsAppStatusPost(params: {
 
     if (statusRes.ok) {
       const data = await statusRes.json();
-      return { success: true, messageId: data?.key?.id || data?.id };
+      const messageId = data?.key?.id || data?.id || (Array.isArray(data) && data[0]?.key?.id);
+      return { success: true, messageId };
     }
 
     const err = await statusRes.text();
@@ -648,6 +702,45 @@ export async function sendWhatsAppStatusPost(params: {
     return { success: false, error: `Evolution status error (${statusRes.status}): ${err}` };
   } catch (err: any) {
     console.error("[WhatsApp Status] sendWhatsAppStatusPost error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Deletes a status broadcast post from WhatsApp servers for everyone.
+ */
+export async function deleteWhatsAppStatusPost(params: {
+  instanceName: string;
+  messageId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instance = params.instanceName || "obey";
+
+    const res = await fetch(`${evoUrl}/chat/deleteMessageForEveryone/${encodeURIComponent(instance)}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        id: params.messageId,
+        remoteJid: "status@broadcast",
+        fromMe: true,
+      }),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+    const err = await res.text();
+    console.warn("[Evolution] deleteWhatsAppStatusPost error:", res.status, err);
+    return { success: false, error: err };
+  } catch (err: any) {
+    console.error("[Evolution] deleteWhatsAppStatusPost error:", err);
     return { success: false, error: err.message };
   }
 }

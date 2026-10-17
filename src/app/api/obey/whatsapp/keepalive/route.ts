@@ -104,10 +104,20 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 4. Automatically check & dispatch any due scheduled WhatsApp status stories
+    let scheduledReport = null;
+    try {
+      const { dispatchDueScheduledStatuses } = await import("@/lib/status-scheduler");
+      scheduledReport = await dispatchDueScheduledStatuses();
+    } catch (schedErr) {
+      console.warn("[WA Keepalive] Scheduled status dispatcher warning:", schedErr);
+    }
+
     return NextResponse.json({
       success: true,
       instancesChecked: report.length,
       report,
+      scheduledStatusDispatched: scheduledReport,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
