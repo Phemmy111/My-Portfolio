@@ -1807,7 +1807,7 @@ function ControlRoomContent() {
   );
 
   return (
-    <div className="min-h-screen control-room-root bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0 transition-colors duration-200">
+    <div className="min-h-screen control-room-root bg-[#f1f5f9] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
       <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-slate-800/80 bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
@@ -2069,11 +2069,15 @@ function ControlRoomContent() {
         {/* Desktop Top Sub-header Bar (Breadcrumbs + Actions) */}
         <div className="hidden md:flex items-center justify-between px-6 py-3 border-b border-slate-800/80 bg-[#060d1a]/60 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-400 font-medium">Obey Business</span>
-            <span className="text-slate-600">/</span>
-            <span className="text-white font-bold">{currentWs?.name || "Workspace"}</span>
-            <span className="text-slate-600">/</span>
-            <span className="text-emerald-400 font-bold capitalize">
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Obey Business</span>
+            <span className="text-slate-400 dark:text-slate-600">/</span>
+            {currentWs?.name && currentWs.name !== "Obey Business" && (
+              <>
+                <span className="text-slate-900 dark:text-white font-bold">{currentWs.name}</span>
+                <span className="text-slate-400 dark:text-slate-600">/</span>
+              </>
+            )}
+            <span className="text-emerald-700 dark:text-emerald-400 font-bold capitalize">
               {activeTab === "leads" ? "Contacts & Auto-Saver" : activeTab}
             </span>
           </div>

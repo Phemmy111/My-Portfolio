@@ -21,29 +21,65 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark") {
-      setDark(true);
+    let initialDark = false;
+    try {
+      const saved = localStorage.getItem("theme") || localStorage.getItem("obey_theme");
+      if (saved === "dark" || (!saved && document.documentElement.classList.contains("dark"))) {
+        initialDark = true;
+      }
+    } catch {
+      if (document.documentElement.classList.contains("dark")) {
+        initialDark = true;
+      }
+    }
+
+    setDark(initialDark);
+    if (initialDark) {
       document.documentElement.classList.add("dark");
     } else {
-      setDark(false);
       document.documentElement.classList.remove("dark");
     }
 
+    const onThemeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      const isD =
+        customEvent.detail === "dark"
+          ? true
+          : customEvent.detail === "light"
+          ? false
+          : document.documentElement.classList.contains("dark");
+      setDark(isD);
+    };
+
+    window.addEventListener("theme-change", onThemeChange);
+
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("theme-change", onThemeChange);
+    };
   }, []);
 
   const toggleTheme = () => {
     setDark((prev) => {
       const next = !prev;
+      const themeVal = next ? "dark" : "light";
+      try {
+        localStorage.setItem("theme", themeVal);
+        localStorage.setItem("obey_theme", themeVal);
+        document.cookie = `theme=${themeVal}; path=/; max-age=31536000; SameSite=Lax`;
+        document.cookie = `obey_theme=${themeVal}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch {}
+
       if (next) {
         document.documentElement.classList.add("dark");
-        localStorage.setItem("theme", "dark");
       } else {
         document.documentElement.classList.remove("dark");
-        localStorage.setItem("theme", "light");
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("theme-change", { detail: themeVal }));
       }
       return next;
     });

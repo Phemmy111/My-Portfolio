@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -56,16 +57,20 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const savedCookieTheme = cookieStore.get("theme")?.value || cookieStore.get("obey_theme")?.value;
+  const isDark = savedCookieTheme === "dark";
+
   return (
     <ClerkProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased ${isDark ? "dark" : ""}`}
         suppressHydrationWarning
       >
         <head>
@@ -77,7 +82,7 @@ export default function RootLayout({
                     var saved = localStorage.getItem('theme') || localStorage.getItem('obey_theme');
                     if (saved === 'dark') {
                       document.documentElement.classList.add('dark');
-                    } else {
+                    } else if (saved === 'light') {
                       document.documentElement.classList.remove('dark');
                     }
                   } catch (e) {}
@@ -86,7 +91,7 @@ export default function RootLayout({
             }}
           />
         </head>
-        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">{children}</body>
+        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#f1f5f9] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">{children}</body>
       </html>
     </ClerkProvider>
   );
