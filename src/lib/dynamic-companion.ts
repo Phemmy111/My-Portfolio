@@ -329,9 +329,8 @@ AVAILABLE TOOLS & ACTIONS:
 7. "create_document_file": Use when the user asks to turn an idea, pitch, chat, summary, notes, plan, proposal, contract, guide, or story into a document, doc, Word doc, Google Doc, PDF, text file, or markdown file.
    - Look back across prior conversation turns to identify EXACTLY what topic, pitch, or concept they want turned into a document (e.g. Havilah Farms agricultural pitch, meeting notes, project proposal).
    - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
-8. "generate_n8n_workflow": Use when the user asks to build, create, design, or generate a ready-made n8n workflow, automation pipeline, webhook automation, or JSON workflow that can be imported into n8n.
-   - If user asks for "any simple workflow" or doesn't specify nodes, autonomously architect a complete, high-value, production-ready workflow (such as AI Lead Qualification & Multi-Channel Alert).
-   - If user asks for specific nodes (e.g. Webhook, OpenAI, Supabase, Gmail, WhatsApp), include all of them properly wired.
+8. "generate_n8n_workflow": Use ONLY when the user has described the specific process or specified tools/services to automate (e.g. "workflow to transcribe whatsapp voice notes with openai whisper and save to airtable", "webhook to supabase for leads").
+   - STRICT RULE: NEVER choose "generate_n8n_workflow" if the user only gives a broad, initial, or conversational intent like "Let's generate another AI Automation workflow", "I want to create a workflow", "let's build an automation", without describing the actual process. In that case, choose "none" and ask what specific workflow/problem they want to automate!
    - Parameters: "workflow_title" (e.g. "AI Lead Qualification & WhatsApp Dispatcher"), "workflow_description" (what it automates), "workflow_nodes_summary" (key nodes).
 9. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
@@ -350,13 +349,13 @@ REASONING GUIDELINES:
   If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
 - AUTONOMOUS N8N WORKFLOW CREATION (INTENT VS. EXECUTION):
   When the user mentions an n8n workflow, automation pipeline, or asks about building one:
-  1. IF THE USER ONLY STATES A BROAD OR INITIAL INTENT (e.g. "I want to quickly generate AI Automation workflow first", "let's build an automation", "can you help me with an n8n workflow?"):
-     DO NOT immediately fabricate an arbitrary 4-node pipeline! Choose "none" and ask conversational clarifying questions to understand what they actually want to automate:
+  1. IF THE USER ONLY STATES A BROAD OR INITIAL INTENT (e.g. "Let's generate another AI Automation workflow", "I want to quickly generate AI Automation workflow first", "let's build an automation", "can you help me with an n8n workflow?"):
+     ABSOLUTELY NEVER select "generate_n8n_workflow"! DO NOT fabricate a random or generic pipeline!
+     Select "none" and ask conversational clarifying questions to understand what they actually want to automate:
      - What triggers the workflow? (e.g. Webhook, Schedule, Google Sheet, Form, WhatsApp)
      - What AI or business logic is needed?
      - Where should the final data/notification go? (e.g. Supabase, CRM, Email, WhatsApp)
-  2. IF THE USER SPECIFIES THE WORKFLOW DETAILS, PROCESS, OR SAYS "surprise me" / "create any workflow you like" / "build a lead qualification workflow with webhook and supabase":
-     Select "generate_n8n_workflow"!
+  2. ONLY select "generate_n8n_workflow" when the user has explicitly described the actual business process, named the services/nodes, or explicitly commands: "build me a lead qualification workflow with webhook and supabase" or "surprise me with a complete customer support workflow".
      Set "workflow_title", "workflow_description", and "workflow_nodes_summary".
 - STRICT NEGATIVE RULE (NO ARTIFACTS FOR CREATIVE PROMPTS, SCRIPTS, OR SCENE PROMPTS):
   NEVER select "create_website_artifact" or "modify_website_artifact" when the user is asking for:
@@ -440,6 +439,25 @@ Respond ONLY with a valid JSON object matching this schema:
   } else if (decision.action === "direct_voice_call" && isShortAffirmation) {
     // Only reset if it was an accidental false positive on a generic confirmation word
     decision.action = "none";
+  }
+
+  // DETERMINISTIC GUARD: Prevent jumping prematurely into generating a generic n8n workflow
+  // when the user only expresses an initial intent without describing the actual process.
+  const isWorkflowIntentOnly =
+    /^\s*(?:let'?s|i want to|can you|help me|please|okay|ok)?\s*(?:generate|create|build|make|design|set up)?\s*(?:another|a|an|the|my)?\s*(?:ai)?\s*(?:automation)?\s*(?:workflow|pipeline|n8n workflow|n8n)(?:\s*(?:first|now|next|again|together|please))?\s*[.!?]*\s*$/i.test(userText.trim());
+
+  const specifiesWorkflowDetails =
+    /\b(webhook|http|api|supabase|gmail|email|google\s*sheet|sheets|whatsapp|telegram|instagram|database|postgres|airtable|notion|stripe|paystack|crm|hubspot|slack|discord|transcrib|whisper|summariz|lead|invoice|order|cart|payment|qualif|filter|cron|schedule|interval|scraper|scraping|csv|excel|pdf)\b/i.test(userText) ||
+    /\b(?:for|that|which|when|to)\s+[a-z]{3,}\s+[a-z]{3,}/i.test(userText) ||
+    userText.trim().split(/\s+/).length > 12;
+
+  if (decision.action === "generate_n8n_workflow" && (isWorkflowIntentOnly || !specifiesWorkflowDetails)) {
+    decision.action = "none";
+    return {
+      reply: cleanWhatsApp(
+        `I'm ready, Boss! ⚡ What specific automation are we cooking up this time? Tell me:\n\n1. *Trigger:* (e.g. Webhook, Schedule/Cron, Form Submission, WhatsApp message, Google Sheets row)\n2. *AI/Core Logic:* (e.g. OpenAI extraction, Gemini scoring, summarization, conditional filter)\n3. *Destination:* (e.g. Supabase, Google Sheets, WhatsApp alert, Email, CRM)\n\nGive me the brief or specific tools you want wired, and I'll architect the exact production-ready n8n canvas for you!`
+      ),
+    };
   }
 
   // Contact card parsing from userText
