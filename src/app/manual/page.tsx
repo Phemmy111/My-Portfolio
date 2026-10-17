@@ -418,12 +418,12 @@ export default function ManualPage() {
                 <div
                   key={sec.id}
                   id={sec.id}
-                  className="bg-white dark:bg-slate-900/90 border border-zinc-300 dark:border-slate-800 hover:border-zinc-400 dark:hover:border-slate-700 rounded-2xl overflow-hidden transition shadow-sm"
+                  className="bg-white dark:bg-[#0b1424] border border-zinc-300 dark:border-slate-800 hover:border-zinc-400 dark:hover:border-slate-700 rounded-2xl overflow-hidden transition shadow-sm"
                 >
                   {/* Card Header (Click to toggle) */}
                   <button
                     onClick={() => setExpandedSection(isExpanded ? null : sec.id)}
-                    className="w-full p-5 sm:p-6 text-left flex items-start justify-between gap-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-slate-850/50 transition"
+                    className="w-full p-5 sm:p-6 text-left flex items-start justify-between gap-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-slate-800/40 transition"
                   >
                     <div className="space-y-1.5 flex-1">
                       <div className="flex flex-wrap items-center gap-2">

@@ -342,7 +342,7 @@ export default function AdminDashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
+    <div className="min-h-screen admin-root bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
       <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-300 dark:border-slate-800 bg-[#ebedf0] dark:bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
@@ -387,7 +387,7 @@ export default function AdminDashboardPage() {
               value={navFilter}
               onChange={(e) => setNavFilter(e.target.value)}
               placeholder="Find section or tool..."
-              className="w-full bg-white dark:bg-[#121212] text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 pl-8 pr-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-800 focus:outline-none focus:border-emerald-500 transition shadow-2xs"
+              className="w-full bg-white dark:bg-[#0b1424] text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 pl-8 pr-3 py-1.5 rounded-lg border border-zinc-300 dark:border-slate-800 focus:outline-none focus:border-emerald-500 transition shadow-2xs"
             />
           </div>
 

@@ -231,7 +231,7 @@ export default function AdminMasterControlRoom() {
     <div className="space-y-8">
       {/* Platform Overview KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Clients</span>
             <Building2 className="w-4 h-4 text-emerald-500" />
@@ -242,7 +242,7 @@ export default function AdminMasterControlRoom() {
           <p className="text-[10px] text-zinc-500 font-medium">Registered businesses</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Paid Active</span>
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
@@ -253,7 +253,7 @@ export default function AdminMasterControlRoom() {
           <p className="text-[10px] text-zinc-500 font-medium">Full paid subscribers</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Free Trials</span>
             <Sparkles className="w-4 h-4 text-amber-500" />
@@ -264,7 +264,7 @@ export default function AdminMasterControlRoom() {
           <p className="text-[10px] text-zinc-500 font-medium">7-Day trial enjoying Pro</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Est. MRR</span>
             <DollarSign className="w-4 h-4 text-emerald-500" />
@@ -275,7 +275,7 @@ export default function AdminMasterControlRoom() {
           <p className="text-[10px] text-zinc-500 font-medium">Monthly recurring</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Total Leads</span>
             <Users className="w-4 h-4 text-teal-500" />
@@ -286,7 +286,7 @@ export default function AdminMasterControlRoom() {
           <p className="text-[10px] text-zinc-500 font-medium">Captured into CRM</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-zinc-500 text-xs font-bold uppercase tracking-wider">
             <span>Voice Calls</span>
             <PhoneCall className="w-4 h-4 text-teal-400" />
@@ -299,8 +299,8 @@ export default function AdminMasterControlRoom() {
       </div>
 
       {/* Package Pricing Controller */}
-      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4">
+      <div className="bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-4">
           <div>
             <h2 className="text-base font-black text-zinc-900 dark:text-white flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-500" />
@@ -324,7 +324,7 @@ export default function AdminMasterControlRoom() {
             <label className="font-bold text-zinc-700 dark:text-zinc-300">
               Starter Plan Price (₦)
             </label>
-            <div className="flex items-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
+            <div className="flex items-center bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
               <span className="text-zinc-500 font-bold">₦</span>
               <input
                 type="number"
@@ -344,7 +344,7 @@ export default function AdminMasterControlRoom() {
             <label className="font-bold text-zinc-700 dark:text-zinc-300">
               Pro Business Plan Price (₦)
             </label>
-            <div className="flex items-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
+            <div className="flex items-center bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
               <span className="text-zinc-500 font-bold">₦</span>
               <input
                 type="number"
@@ -364,7 +364,7 @@ export default function AdminMasterControlRoom() {
             <label className="font-bold text-zinc-700 dark:text-zinc-300">
               Enterprise Plan Price (₦)
             </label>
-            <div className="flex items-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
+            <div className="flex items-center bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
               <span className="text-zinc-500 font-bold">₦</span>
               <input
                 type="number"
@@ -384,7 +384,7 @@ export default function AdminMasterControlRoom() {
             <label className="font-bold text-zinc-700 dark:text-zinc-300">
               Free Trial Duration (Days)
             </label>
-            <div className="flex items-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
+            <div className="flex items-center bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 focus-within:ring-2 focus-within:ring-emerald-500">
               <span className="text-zinc-500 font-bold">Days</span>
               <input
                 type="number"
@@ -423,8 +423,8 @@ export default function AdminMasterControlRoom() {
       </div>
 
       {/* Client Workspaces Management */}
-      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4">
+      <div className="bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-4">
           <div>
             <h2 className="text-base font-black text-zinc-900 dark:text-white flex items-center gap-2">
               <Building2 className="w-4 h-4 text-emerald-500" />
@@ -437,7 +437,7 @@ export default function AdminMasterControlRoom() {
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
-            <div className="flex items-center bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-zinc-900 dark:text-white w-56">
+            <div className="flex items-center bg-zinc-100 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-zinc-900 dark:text-white w-56">
               <Search className="w-3.5 h-3.5 text-zinc-400 mr-2 shrink-0" />
               <input
                 type="text"
@@ -452,7 +452,7 @@ export default function AdminMasterControlRoom() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-zinc-900 dark:text-white outline-none cursor-pointer font-medium"
+              className="bg-zinc-100 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-zinc-900 dark:text-white outline-none cursor-pointer font-medium"
             >
               <option value="all">All Clients ({workspaces.length})</option>
               <option value="paid">Paid Active</option>
@@ -462,7 +462,7 @@ export default function AdminMasterControlRoom() {
 
             <button
               onClick={fetchMasterData}
-              className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition cursor-pointer"
+              className="p-2 rounded-xl bg-zinc-100 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition cursor-pointer"
               title="Refresh"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -473,7 +473,7 @@ export default function AdminMasterControlRoom() {
         {/* Workspaces Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800">
+            <thead className="bg-zinc-100 dark:bg-slate-900 text-zinc-600 dark:text-zinc-400 border-b border-zinc-200 dark:border-slate-800">
               <tr>
                 <th className="p-3.5 font-bold">Business & Handle</th>
                 <th className="p-3.5 font-bold">Owner Details</th>
@@ -529,7 +529,7 @@ export default function AdminMasterControlRoom() {
                       {/* Plan & Status */}
                       <td className="p-3.5 space-y-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-slate-700">
                             {ws.plan || "Starter"}
                           </span>
                         </div>
@@ -592,7 +592,7 @@ export default function AdminMasterControlRoom() {
                         <Link
                           href={`/control-room?biz=${ws.slug}`}
                           target="_blank"
-                          className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-semibold border border-zinc-300 dark:border-zinc-700 transition text-[11px] inline-flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-semibold border border-zinc-300 dark:border-slate-700 transition text-[11px] inline-flex items-center gap-1"
                           title="Open Client Dashboard"
                         >
                           <span>Open</span>
@@ -617,8 +617,8 @@ export default function AdminMasterControlRoom() {
       </div>
 
       {/* Global Activity Feed */}
-      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+      <div className="bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-emerald-500" />
             <h2 className="text-base font-black text-zinc-900 dark:text-white">
@@ -626,7 +626,7 @@ export default function AdminMasterControlRoom() {
             </h2>
           </div>
 
-          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-bold">
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-slate-900 p-1 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs font-bold">
             <button
               onClick={() => setActivityTab("leads")}
               className={`px-3 py-1 rounded-lg transition ${
@@ -658,7 +658,7 @@ export default function AdminMasterControlRoom() {
               activityFeed.leads.map((lead: any) => (
                 <div
                   key={lead.id}
-                  className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  className="p-3 rounded-xl bg-zinc-50 dark:bg-slate-900/50 border border-zinc-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                 >
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -694,7 +694,7 @@ export default function AdminMasterControlRoom() {
               activityFeed.calls.map((call: any) => (
                 <div
                   key={call.id}
-                  className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800/80 space-y-1.5"
+                  className="p-3 rounded-xl bg-zinc-50 dark:bg-slate-900/50 border border-zinc-200 dark:border-slate-800/80 space-y-1.5"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -730,8 +730,8 @@ export default function AdminMasterControlRoom() {
       {/* Manual Plan Grant Modal */}
       {grantModalWs && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-300 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+          <div className="bg-white dark:bg-[#0b1424] border border-zinc-300 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-3">
               <h3 className="font-black text-zinc-900 dark:text-white text-base flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-500" />
                 Manual Plan & Trial Override
@@ -744,7 +744,7 @@ export default function AdminMasterControlRoom() {
               </button>
             </div>
 
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-900 rounded-xl space-y-0.5 text-xs">
+            <div className="p-3 bg-zinc-100 dark:bg-slate-900 rounded-xl space-y-0.5 text-xs">
               <span className="text-zinc-500 block">Target Business:</span>
               <strong className="text-zinc-900 dark:text-white text-sm">{grantModalWs.name}</strong>
               <span className="text-zinc-400 block font-mono text-[11px]">Slug: {grantModalWs.slug} • Phone: +{grantModalWs.owner_phone}</span>
@@ -758,12 +758,12 @@ export default function AdminMasterControlRoom() {
                 <select
                   value={grantPlan}
                   onChange={(e) => setGrantPlan(e.target.value)}
-                  className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  className="w-full bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="starter" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Starter Plan</option>
-                  <option value="pro" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Pro Business Plan (Recommended)</option>
-                  <option value="enterprise" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Enterprise Plan</option>
-                  <option value="lifetime" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Lifetime Free VIP</option>
+                  <option value="starter" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Starter Plan</option>
+                  <option value="pro" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Pro Business Plan (Recommended)</option>
+                  <option value="enterprise" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Enterprise Plan</option>
+                  <option value="lifetime" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Lifetime Free VIP</option>
                 </select>
               </div>
 
@@ -774,11 +774,11 @@ export default function AdminMasterControlRoom() {
                 <select
                   value={grantStatus}
                   onChange={(e) => setGrantStatus(e.target.value)}
-                  className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  className="w-full bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="active" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Paid Active (Full Unlocked Access)</option>
-                  <option value="trial" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Free Trial Extension</option>
-                  <option value="expired" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white">Expired / Inactive</option>
+                  <option value="active" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Paid Active (Full Unlocked Access)</option>
+                  <option value="trial" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Free Trial Extension</option>
+                  <option value="expired" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Expired / Inactive</option>
                 </select>
               </div>
 
@@ -793,7 +793,7 @@ export default function AdminMasterControlRoom() {
                     max="180"
                     value={extendTrialDays}
                     onChange={(e) => setExtendTrialDays(e.target.value)}
-                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2.5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="text-[10px] text-zinc-400 mt-0.5">
                     Sets new expiration date counting from today.
