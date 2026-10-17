@@ -312,6 +312,18 @@ function ControlRoomContent() {
   const [commentTone, setCommentTone] = useState("friendly");
   const [commentRateLimit, setCommentRateLimit] = useState("unlimited");
 
+  // Status Commenting Exclusion List State
+  const [statusExcludedPhones, setStatusExcludedPhones] = useState<
+    Array<{ phone: string; name?: string; reason?: string; excluded_at?: string }>
+  >([]);
+  const [showAddExclusionModal, setShowAddExclusionModal] = useState(false);
+  const [newExclusionPhone, setNewExclusionPhone] = useState("");
+  const [newExclusionName, setNewExclusionName] = useState("");
+  const [newExclusionReason, setNewExclusionReason] = useState("Contact requested opt-out");
+  const [exclusionSearch, setExclusionSearch] = useState("");
+  const [contactToExcludeSearch, setContactToExcludeSearch] = useState("");
+  const [savingExclusion, setSavingExclusion] = useState(false);
+
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
 
   // Modal states
@@ -509,6 +521,9 @@ function ControlRoomContent() {
         setAutoCommentStatus(isEngagementActive);
         setCommentTone(data.workspace.comment_tone || "friendly");
         setCommentRateLimit(data.workspace.comment_rate_limit || (data.workspace.slug === "femi" ? "unlimited" : "plan_based"));
+        if (data.workspace.status_excluded_phones) {
+          setStatusExcludedPhones(data.workspace.status_excluded_phones);
+        }
         if (data.workspace.whatsapp_status) {
           setWaState(data.workspace.whatsapp_status);
         }
@@ -658,10 +673,10 @@ function ControlRoomContent() {
   }, [activeTab, contactTab, currentWs?.slug]);
 
   useEffect(() => {
-    if ((showBroadcastModal || showSaveAsBucketModal) && currentWs?.slug && contacts.length === 0) {
+    if ((showBroadcastModal || showSaveAsBucketModal || showAddExclusionModal) && currentWs?.slug && contacts.length === 0) {
       fetchContacts(currentWs.slug, "all");
     }
-  }, [showBroadcastModal, showSaveAsBucketModal, currentWs?.slug, contacts.length]);
+  }, [showBroadcastModal, showSaveAsBucketModal, showAddExclusionModal, currentWs?.slug, contacts.length]);
 
   useEffect(() => {
     if (activeTab === "status" && currentWs?.id) {
@@ -919,6 +934,7 @@ function ControlRoomContent() {
       if (data.statuses) setStatuses(data.statuses);
       if (data.scheduledCount !== undefined) setScheduledCount(data.scheduledCount);
       if (data.scheduledLimit !== undefined) setScheduledLimit(data.scheduledLimit);
+      if (data.status_excluded_phones) setStatusExcludedPhones(data.status_excluded_phones);
     } catch (err) {
       console.warn("fetchStatuses error:", err);
     }
@@ -1197,6 +1213,87 @@ function ControlRoomContent() {
       console.warn("Update comment rate limit error:", e);
     }
   };
+
+  const handleAddStatusExclusion = async (phone: string, name?: string, reason?: string) => {
+    if (!currentWs || !phone) return;
+    setSavingExclusion(true);
+    try {
+      const res = await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          action: "add_exclusion",
+          phone: phone.trim(),
+          name: name?.trim() || undefined,
+          reason: reason?.trim() || "Owner excluded manually",
+        }),
+      });
+      const data = await res.json();
+      if (data.status_excluded_phones) {
+        setStatusExcludedPhones(data.status_excluded_phones);
+        setStatusSuccessMsg(`🚫 ${phone} added to status comment exclusion list!`);
+        setTimeout(() => setStatusSuccessMsg(""), 3500);
+        setShowAddExclusionModal(false);
+        setNewExclusionPhone("");
+        setNewExclusionName("");
+      }
+    } catch (e) {
+      console.warn("handleAddStatusExclusion error:", e);
+    } finally {
+      setSavingExclusion(false);
+    }
+  };
+
+  const handleRemoveStatusExclusion = async (phone: string) => {
+    if (!currentWs || !phone) return;
+    try {
+      const res = await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          action: "remove_exclusion",
+          phone: phone.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.status_excluded_phones) {
+        setStatusExcludedPhones(data.status_excluded_phones);
+        setStatusSuccessMsg(`✅ ${phone} re-allowed for status engagement!`);
+        setTimeout(() => setStatusSuccessMsg(""), 3500);
+      }
+    } catch (e) {
+      console.warn("handleRemoveStatusExclusion error:", e);
+    }
+  };
+
+  const isPhoneExcludedFromStatus = (phone: string) => {
+    const clean = phone.replace(/\D/g, "");
+    if (!clean) return false;
+    return statusExcludedPhones.some((ex) => {
+      const exClean = ex.phone.replace(/\D/g, "");
+      return exClean === clean || (exClean.length >= 10 && clean.length >= 10 && exClean.slice(-10) === clean.slice(-10));
+    });
+  };
+
+  const filteredStatusExcludedPhones = statusExcludedPhones.filter((item) => {
+    if (!exclusionSearch) return true;
+    const q = exclusionSearch.toLowerCase().trim();
+    return (
+      item.phone.toLowerCase().includes(q) ||
+      (item.name && item.name.toLowerCase().includes(q)) ||
+      (item.reason && item.reason.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredContactsToExclude = contacts.filter((c) => {
+    if (!contactToExcludeSearch) return true;
+    const q = contactToExcludeSearch.toLowerCase().trim();
+    return c.phone.toLowerCase().includes(q) || (c.name && c.name.toLowerCase().includes(q));
+  });
 
   const checkWhatsAppStatus = async () => {
     if (!currentWs) return;
@@ -3811,6 +3908,117 @@ function ControlRoomContent() {
                   </div>
                 </div>
 
+                {/* Status Commenting Exclusion List (Opt-Outs) */}
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <UserX className="w-4 h-4 text-rose-400" />
+                        <h3 className="font-bold text-white text-sm sm:text-base">
+                          Status Comment Exclusion List
+                        </h3>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20">
+                          {statusExcludedPhones.length} Opted Out
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1 max-w-xl leading-relaxed">
+                        Contacts who asked not to have their status updates commented on. Obey will strictly skip commenting on their status stories. Contacts can also auto-exclude themselves anytime by texting &ldquo;Stop commenting on my status&rdquo;.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentWs?.slug && contacts.length === 0) {
+                          fetchContacts(currentWs.slug, "all");
+                        }
+                        setContactToExcludeSearch("");
+                        setNewExclusionPhone("");
+                        setNewExclusionName("");
+                        setNewExclusionReason("Contact requested opt-out");
+                        setShowAddExclusionModal(true);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs transition shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <UserX className="w-3.5 h-3.5" />
+                      <span>+ Exclude Contact</span>
+                    </button>
+                  </div>
+
+                  {/* Search filter for exclusions if more than 3 */}
+                  {statusExcludedPhones.length > 3 && (
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={exclusionSearch}
+                        onChange={(e) => setExclusionSearch(e.target.value)}
+                        placeholder="Search excluded names or phone numbers..."
+                        className="w-full pl-9 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  )}
+
+                  {/* Exclusion List Items */}
+                  {statusExcludedPhones.length === 0 ? (
+                    <div className="p-6 text-center text-zinc-500 text-xs space-y-1.5 border border-dashed border-zinc-800/80 rounded-xl bg-zinc-900/20">
+                      <UserCheck className="w-7 h-7 mx-auto text-zinc-600" />
+                      <p className="font-semibold text-zinc-400">No excluded contacts</p>
+                      <p className="text-[11px] text-zinc-500">
+                        All contacts posting WhatsApp status stories are currently eligible for automated comments.
+                      </p>
+                    </div>
+                  ) : filteredStatusExcludedPhones.length === 0 ? (
+                    <div className="p-4 text-center text-zinc-500 text-xs border border-zinc-800 rounded-xl">
+                      No excluded contacts match your search.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {filteredStatusExcludedPhones.map((ex, idx) => (
+                        <div
+                          key={ex.phone || idx}
+                          className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center font-bold text-xs text-rose-400 shrink-0">
+                              <UserX className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-white truncate">
+                                  {ex.name || `Contact ${ex.phone.slice(-4)}`}
+                                </span>
+                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                                  +{ex.phone}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-zinc-400 flex items-center gap-2 mt-0.5">
+                                <span className="text-rose-400/90 font-medium">{ex.reason || "Opt-out"}</span>
+                                {ex.excluded_at && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{new Date(ex.excluded_at).toLocaleDateString()}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStatusExclusion(ex.phone)}
+                            className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-emerald-950/40 text-zinc-400 hover:text-emerald-400 text-[11px] font-semibold border border-zinc-700 hover:border-emerald-600/40 transition shrink-0 flex items-center gap-1 cursor-pointer"
+                            title="Re-allow Obey to comment on their status updates"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Re-allow Comments</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Published Stories Log - Vercel Deployments Style */}
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
@@ -4970,8 +5178,13 @@ function ControlRoomContent() {
                                   </div>
                                 )}
                                 <div>
-                                  <div className="font-bold text-slate-200">
-                                    {contact.name || `Contact ${contact.phone.slice(-4)}`}
+                                  <div className="font-bold text-slate-200 flex items-center gap-1.5 flex-wrap">
+                                    <span>{contact.name || `Contact ${contact.phone.slice(-4)}`}</span>
+                                    {isPhoneExcludedFromStatus(contact.phone) && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                        🚫 No Status Comments
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[10px] text-slate-500">
                                     via {contact.source || "WhatsApp"}
@@ -5050,6 +5263,25 @@ function ControlRoomContent() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-center justify-end gap-1.5">
+                                {isPhoneExcludedFromStatus(contact.phone) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveStatusExclusion(contact.phone)}
+                                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-emerald-950/40 text-zinc-400 hover:text-emerald-400 font-semibold text-[10px] border border-zinc-700 hover:border-emerald-700/50 transition cursor-pointer"
+                                    title="Re-allow Obey to comment on their status"
+                                  >
+                                    Re-allow Status
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddStatusExclusion(contact.phone, contact.name, "Owner excluded manually")}
+                                    className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-semibold text-[10px] border border-rose-500/20 transition cursor-pointer"
+                                    title="Prevent Obey from commenting on their status"
+                                  >
+                                    Exclude Status
+                                  </button>
+                                )}
                                 {!contact.is_saved && (
                                   <button
                                     type="button"
@@ -5765,6 +5997,165 @@ function ControlRoomContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: EXCLUDE CONTACT FROM STATUS COMMENTS */}
+      {/* ============================================================== */}
+      {showAddExclusionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowAddExclusionModal(false)}
+        >
+          <div
+            className="bg-zinc-950 border border-zinc-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl relative animate-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                  <UserX className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Exclude from Status Comments</h3>
+                  <p className="text-[11px] text-zinc-400">Obey will strictly skip commenting on their status stories.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddExclusionModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs font-bold transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {/* Quick Pick from Existing Contacts */}
+              {contacts.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-zinc-300">
+                    Quick Pick from Contacts ({contacts.length}):
+                  </label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={contactToExcludeSearch}
+                      onChange={(e) => setContactToExcludeSearch(e.target.value)}
+                      placeholder="Search name or phone number..."
+                      className="w-full pl-9 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-500"
+                    />
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1 border border-zinc-800/80 rounded-xl p-1 bg-zinc-900/40">
+                    {filteredContactsToExclude.length === 0 ? (
+                      <div className="p-3 text-center text-zinc-500 text-xs">
+                        No contacts found matching search.
+                      </div>
+                    ) : (
+                      filteredContactsToExclude.slice(0, 30).map((c) => {
+                        const already = isPhoneExcludedFromStatus(c.phone);
+                        const isSelected = newExclusionPhone === c.phone;
+                        return (
+                          <div
+                            key={c.phone}
+                            onClick={() => {
+                              if (!already) {
+                                setNewExclusionPhone(c.phone);
+                                setNewExclusionName(c.name || `Contact ${c.phone.slice(-4)}`);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-2 rounded-lg text-xs transition cursor-pointer ${
+                              already
+                                ? "opacity-50 cursor-not-allowed bg-zinc-900"
+                                : isSelected
+                                ? "bg-rose-950/40 border border-rose-600/40 text-white"
+                                : "hover:bg-zinc-800 text-zinc-300"
+                            }`}
+                          >
+                            <div className="truncate">
+                              <span className="font-bold">{c.name || `Contact ${c.phone.slice(-4)}`}</span>
+                              <span className="text-[10px] text-zinc-500 font-mono ml-2">+{c.phone}</span>
+                            </div>
+                            {already ? (
+                              <span className="text-[10px] text-rose-400 font-semibold">Already Excluded</span>
+                            ) : isSelected ? (
+                              <span className="text-[10px] text-rose-300 font-bold">Selected ✓</span>
+                            ) : (
+                              <span className="text-[10px] text-zinc-500 hover:text-white">Select</span>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Phone & Details */}
+              <div className="space-y-3 pt-2 border-t border-zinc-800/80">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-300 mb-1">
+                      Phone Number <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newExclusionPhone}
+                      onChange={(e) => setNewExclusionPhone(e.target.value)}
+                      placeholder="e.g. 2348012345678"
+                      className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-300 mb-1">Contact Name (Optional)</label>
+                    <input
+                      type="text"
+                      value={newExclusionName}
+                      onChange={(e) => setNewExclusionName(e.target.value)}
+                      placeholder="e.g. Uncle Mike"
+                      className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-300 mb-1">Reason for Exclusion</label>
+                  <select
+                    value={newExclusionReason}
+                    onChange={(e) => setNewExclusionReason(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="Contact requested opt-out">Contact requested opt-out</option>
+                    <option value="Complained about status comments">Complained about status comments</option>
+                    <option value="Family / Personal contact">Family / Personal contact</option>
+                    <option value="Competitor / Sensitive account">Competitor / Sensitive account</option>
+                    <option value="Owner excluded manually">Owner excluded manually</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAddExclusionModal(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-semibold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!newExclusionPhone.trim() || savingExclusion}
+                onClick={() => handleAddStatusExclusion(newExclusionPhone, newExclusionName, newExclusionReason)}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-md shadow-rose-600/20 cursor-pointer flex items-center gap-1.5"
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>{savingExclusion ? "Saving..." : "Confirm Exclusion"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

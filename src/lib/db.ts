@@ -627,8 +627,16 @@ export interface Workspace {
   comment_tone?: string;
   comment_rate_limit?: string;
   auto_save_contacts?: boolean;
+  status_excluded_phones?: StatusExcludedContact[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface StatusExcludedContact {
+  phone: string;
+  name?: string;
+  reason?: string;
+  excluded_at?: string;
 }
 
 export interface WorkspaceSettings {
@@ -800,6 +808,7 @@ export async function createWorkspaceTables() {
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_tone TEXT DEFAULT 'friendly'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_rate_limit TEXT DEFAULT 'plan_based'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_save_contacts BOOLEAN DEFAULT TRUE`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS status_excluded_phones JSONB DEFAULT '[]'`;
 
     // Ensure contact auto-save and phone status columns exist in workspace_leads
     await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS is_saved BOOLEAN DEFAULT FALSE`;
@@ -2039,5 +2048,173 @@ export async function dbGetGlobalActivityFeed(limit = 40): Promise<{
     return { leads: [], calls: [] };
   }
 }
+
+// ==========================================
+// STATUS COMMENTING EXCLUSIONS (OPT-OUTS)
+// ==========================================
+
+export function normalizePhoneForMatch(phone: string): string {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 11) {
+    return "234" + digits.slice(1);
+  }
+  return digits;
+}
+
+export function phonesMatch(phoneA: string, phoneB: string): boolean {
+  const a = normalizePhoneForMatch(phoneA);
+  const b = normalizePhoneForMatch(phoneB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= 10 && b.length >= 10 && a.slice(-10) === b.slice(-10)) return true;
+  return false;
+}
+
+export async function dbGetStatusExclusions(workspaceId: string): Promise<StatusExcludedContact[]> {
+  const db = getSql();
+  if (!db || !workspaceId) return [];
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT status_excluded_phones FROM workspaces 
+      WHERE id = ${workspaceId} OR LOWER(slug) = ${workspaceId.toLowerCase().trim()} 
+      LIMIT 1
+    `;
+    if (!rows || rows.length === 0) return [];
+    const raw = rows[0].status_excluded_phones;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  } catch (err) {
+    console.error("dbGetStatusExclusions error:", err);
+    return [];
+  }
+}
+
+export async function dbIsPhoneExcludedFromStatusComments(
+  workspaceId: string | null | undefined,
+  phone: string
+): Promise<boolean> {
+  const db = getSql();
+  if (!phone) return false;
+  const cleanPhone = normalizePhoneForMatch(phone);
+
+  try {
+    // 1. Check workspace specific exclusions
+    if (workspaceId && db) {
+      const exclusions = await dbGetStatusExclusions(workspaceId);
+      if (exclusions.some((ex) => phonesMatch(ex.phone, cleanPhone))) {
+        return true;
+      }
+    }
+
+    // 2. Also check global / Main Obey setting if applicable
+    const { getSetting } = await import("@/lib/settings");
+    const globalRaw = await getSetting("STATUS_EXCLUDED_PHONES");
+    if (globalRaw) {
+      try {
+        const parsed: (StatusExcludedContact | string)[] = JSON.parse(globalRaw);
+        if (Array.isArray(parsed)) {
+          const match = parsed.some((item) => {
+            const p = typeof item === "string" ? item : item.phone;
+            return phonesMatch(p, cleanPhone);
+          });
+          if (match) return true;
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn("dbIsPhoneExcludedFromStatusComments error:", err);
+  }
+  return false;
+}
+
+export async function dbAddStatusExclusion(
+  workspaceId: string,
+  phone: string,
+  name?: string,
+  reason: string = "Contact requested opt-out"
+): Promise<StatusExcludedContact[]> {
+  const db = getSql();
+  if (!db || !workspaceId || !phone) return [];
+  try {
+    await createWorkspaceTables();
+    const cleanPhone = normalizePhoneForMatch(phone);
+    const current = await dbGetStatusExclusions(workspaceId);
+
+    const filtered = current.filter((item) => !phonesMatch(item.phone, cleanPhone));
+    const newEntry: StatusExcludedContact = {
+      phone: cleanPhone,
+      name: name?.trim() || `Contact ${cleanPhone.slice(-4)}`,
+      reason: reason.trim(),
+      excluded_at: new Date().toISOString(),
+    };
+    const updated = [newEntry, ...filtered];
+
+    await db`
+      UPDATE workspaces 
+      SET status_excluded_phones = ${JSON.stringify(updated)}::jsonb,
+          updated_at = NOW()
+      WHERE id = ${workspaceId} OR LOWER(slug) = ${workspaceId.toLowerCase().trim()}
+    `;
+
+    if (
+      workspaceId === "ws_femi_default" ||
+      workspaceId === "femi" ||
+      workspaceId.toLowerCase() === "femi-adeleke"
+    ) {
+      const { setSetting } = await import("@/lib/settings");
+      await setSetting("STATUS_EXCLUDED_PHONES", JSON.stringify(updated));
+    }
+
+    return updated;
+  } catch (err) {
+    console.error("dbAddStatusExclusion error:", err);
+    return [];
+  }
+}
+
+export async function dbRemoveStatusExclusion(
+  workspaceId: string,
+  phone: string
+): Promise<StatusExcludedContact[]> {
+  const db = getSql();
+  if (!db || !workspaceId || !phone) return [];
+  try {
+    await createWorkspaceTables();
+    const cleanPhone = normalizePhoneForMatch(phone);
+    const current = await dbGetStatusExclusions(workspaceId);
+    const updated = current.filter((item) => !phonesMatch(item.phone, cleanPhone));
+
+    await db`
+      UPDATE workspaces 
+      SET status_excluded_phones = ${JSON.stringify(updated)}::jsonb,
+          updated_at = NOW()
+      WHERE id = ${workspaceId} OR LOWER(slug) = ${workspaceId.toLowerCase().trim()}
+    `;
+
+    if (
+      workspaceId === "ws_femi_default" ||
+      workspaceId === "femi" ||
+      workspaceId.toLowerCase() === "femi-adeleke"
+    ) {
+      const { setSetting } = await import("@/lib/settings");
+      await setSetting("STATUS_EXCLUDED_PHONES", JSON.stringify(updated));
+    }
+
+    return updated;
+  } catch (err) {
+    console.error("dbRemoveStatusExclusion error:", err);
+    return [];
+  }
+}
+
 
 

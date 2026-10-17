@@ -5,6 +5,9 @@ import {
   dbGetScheduledStatusesCount,
   getPlanScheduledPostLimit,
   dbDeleteStatusPost,
+  dbGetStatusExclusions,
+  dbAddStatusExclusion,
+  dbRemoveStatusExclusion,
 } from "@/lib/db";
 import {
   sendWhatsAppStatusPost,
@@ -80,6 +83,10 @@ export async function GET(req: NextRequest) {
     const auto_view_status = engagementActive;
     const auto_comment_status = engagementActive;
 
+    const status_excluded_phones = targetWorkspaceId
+      ? await dbGetStatusExclusions(targetWorkspaceId)
+      : await dbGetStatusExclusions("ws_femi_default");
+
     if (!targetWorkspaceId) {
       return NextResponse.json({
         statuses: [],
@@ -91,6 +98,7 @@ export async function GET(req: NextRequest) {
         comment_rate_limit,
         auto_status_enabled,
         auto_status_interval,
+        status_excluded_phones,
       });
     }
 
@@ -108,6 +116,7 @@ export async function GET(req: NextRequest) {
       comment_rate_limit,
       auto_status_enabled,
       auto_status_interval,
+      status_excluded_phones,
     });
   } catch (err: any) {
     console.error("[Status API] GET error:", err);
@@ -218,6 +227,37 @@ export async function POST(req: NextRequest) {
 
     if (!ws && !isMainObey) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    // Handle status comment exclusion actions
+    const action = body.action;
+    if (action === "add_exclusion") {
+      const { phone, name, reason } = body;
+      if (!phone) {
+        return NextResponse.json({ error: "Phone number is required." }, { status: 400 });
+      }
+      const targetId = ws ? ws.id : "ws_femi_default";
+      const updated = await dbAddStatusExclusion(targetId, phone, name, reason);
+      return NextResponse.json({ success: true, status_excluded_phones: updated });
+    }
+
+    if (action === "remove_exclusion") {
+      const { phone } = body;
+      if (!phone) {
+        return NextResponse.json({ error: "Phone number is required." }, { status: 400 });
+      }
+      const targetId = ws ? ws.id : "ws_femi_default";
+      const updated = await dbRemoveStatusExclusion(targetId, phone);
+      return NextResponse.json({ success: true, status_excluded_phones: updated });
+    }
+
+    if (Array.isArray(body.status_excluded_phones) && ws) {
+      await sql`
+        UPDATE workspaces
+        SET status_excluded_phones = ${JSON.stringify(body.status_excluded_phones)}::jsonb,
+            updated_at = NOW()
+        WHERE id = ${ws.id}
+      `;
     }
 
     // If publishing or scheduling a new status update

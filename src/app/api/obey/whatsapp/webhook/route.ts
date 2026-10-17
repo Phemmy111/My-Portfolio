@@ -22,6 +22,10 @@ import {
   dbRecordStatusComment,
   dbHasRecentStatusComment,
   dbGetStatusCommentsTodayCount,
+  dbIsPhoneExcludedFromStatusComments,
+  dbAddStatusExclusion,
+  dbRemoveStatusExclusion,
+  dbGetStatusExclusions,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -166,6 +170,34 @@ async function handleObeyBusinessOwnerTurn(params: {
       const leadList = wsLeads.slice(0, 5).map((l, i) => `${i + 1}. *${l.name || "Customer"}* (+${l.phone})\n   • Note: ${l.intent_summary || l.last_message || "Inquiry"}`).join("\n\n");
       await reply(`📊 *Latest ${Math.min(5, wsLeads.length)} Leads for ${currentWs.name}:*\n\n${leadList}\n\n💡 You can also manage all leads in your Control Room.`);
     }
+    return;
+  }
+
+  // 3.4. Owner Status Exclusion Management Command
+  if (/\b(status\s+exclusion|excluded\s+from\s+status|status\s+blacklist|status\s+opt-out)\b/i.test(lower)) {
+    const exclusions = await dbGetStatusExclusions(currentWs.id);
+    if (!exclusions || exclusions.length === 0) {
+      await reply(`🚫 *Status Comment Exclusion List for ${currentWs.name}:*\n\nNo contacts are currently excluded. All contacts with status stories will be viewed and engaged.\n\n💡 *To exclude someone, say:* "Exclude 08012345678 from status comments"`);
+    } else {
+      const list = exclusions.map((ex, i) => `${i + 1}. *${ex.name || ex.phone}* (+${ex.phone})\n   • Reason: ${ex.reason || "Opt-out"}`).join("\n\n");
+      await reply(`🚫 *Status Comment Exclusion List (${exclusions.length} contacts):*\n\n${list}\n\n💡 *To remove someone, say:* "Remove +${exclusions[0]?.phone} from status exclusion"`);
+    }
+    return;
+  }
+
+  const excludeMatch = userText.match(/\b(?:exclude|block|blacklist)\s+([+0-9\s-]{10,16})\s+(?:from|on)\s+(?:status|status\s+commenting|status\s+comments)\b/i);
+  if (excludeMatch && excludeMatch[1]) {
+    const rawNumber = excludeMatch[1].replace(/\D/g, "");
+    await dbAddStatusExclusion(currentWs.id, rawNumber, `Contact ${rawNumber.slice(-4)}`, "Owner excluded via WhatsApp");
+    await reply(`✅ *Contact Excluded!*, Boss.\n\n+${rawNumber} has been added to your status comment exclusion list. Obey will never comment on their status stories.`);
+    return;
+  }
+
+  const removeExcludeMatch = userText.match(/\b(?:remove|unblock|re-allow)\s+([+0-9\s-]{10,16})\s+(?:from)\s+(?:status\s+exclusion|status\s+blacklist)\b/i);
+  if (removeExcludeMatch && removeExcludeMatch[1]) {
+    const rawNumber = removeExcludeMatch[1].replace(/\D/g, "");
+    await dbRemoveStatusExclusion(currentWs.id, rawNumber);
+    await reply(`✅ *Contact Re-allowed!*, Boss.\n\n+${rawNumber} has been removed from the exclusion list. Obey will resume normal status engagement for them.`);
     return;
   }
 
@@ -540,6 +572,30 @@ async function processMessage(params: ProcessMessageParams) {
     } catch (leadErr) {
       console.warn("[WA] Auto-save contact lead capture error:", leadErr);
     }
+  }
+
+  // 1b. Check if contact is complaining or requesting to stop status comments
+  const isStatusComplaint =
+    /\b(stop|don'?t|never|quit|cease|remove\s+me\s+from|exclude\s+me\s+from)\b.*\b(comment|commenting|reply|replying|react|reacting)\b.*\b(status|statuses|story|stories)\b/i.test(lower) ||
+    /\bwhy\s+(are\s+you|u|do\s+you)\s+(always\s+)?(comment|commenting|reply|replying)\b.*\b(status|story|stories)\b/i.test(lower) ||
+    /\b(stop|don'?t)\s+(comment|commenting|reply|replying)\s+(on\s+)?(my\s+)?(status|story|stories)\b/i.test(lower) ||
+    /\b(remove|exclude)\s+(my\s+number|me)\s+from\s+status\b/i.test(lower);
+
+  if (isStatusComplaint && !isOwner) {
+    const contactName = pushName || `User ${replyTo.slice(-4)}`;
+    await dbAddStatusExclusion(wsId, replyTo, contactName, "Contact requested opt-out via WhatsApp");
+    const optOutReply = `I am truly sorry for disturbing you! 🙏 I have immediately added your number to our status comment exclusion list. I will never comment on your WhatsApp status updates again. Have a wonderful day ahead!`;
+    await reply(optOutReply);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-optout-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs?.name || "Obey",
+        role: "assistant",
+        content: optOutReply,
+      });
+    } catch {}
+    return;
   }
 
   // Asynchronously extract and commit personal memory facts to DB in background
@@ -1194,6 +1250,13 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
         if (posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
           // Guard: Don't comment on the bot's own posted status
           if (msgObj.key?.fromMe) {
+            return;
+          }
+
+          // Guard: Don't comment if contact is in the status comment exclusion list
+          const isExcluded = await dbIsPhoneExcludedFromStatusComments(currentWs?.id, posterPhone);
+          if (isExcluded) {
+            console.log(`[WA Status] Skipping status comment for ${posterPhone}: Contact is in the status comment exclusion list.`);
             return;
           }
 

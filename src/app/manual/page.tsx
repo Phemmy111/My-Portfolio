@@ -178,10 +178,13 @@ export default function ManualPage() {
         "Delete Status from Control Room: Every status you post appears in the 'Live Status History' feed. You can review view counts and click the red trash icon to delete it from WhatsApp immediately.",
         "Automatic Viewing & AI Commenting: Switch on the 'Auto View & AI Comment' toggle. Obey will autonomously view incoming status updates from your contacts and leave warm, witty, context-aware comments directly under their posts!",
         "Continuity Guarantee: When a contact replies to Obey's status comment, Obey remembers the exact status story and comment, replying seamlessly without treating them like a stranger.",
+        "Status Comment Exclusion List (Opt-Outs): If any contact requests not to receive automated status comments, Obey automatically detects this and adds them to your Exclusion List when they text 'Stop commenting on my status' or 'Don't comment on my story'. You can also manually add numbers or exclude contacts from the Control Room with 1 click.",
+        "Re-allowing Status Engagement: You can unblock or re-allow any contact anytime by clicking 'Re-allow Comments' in the Status tab Exclusion card, or directly on their row in the Leads & Contacts directory.",
       ],
       tips: [
         "Choose your AI comment tone ('friendly', 'professional', 'authentic_naija', or 'direct') in the settings card.",
         "Obey automatically avoids commenting on automated bot posts to prevent endless reply loops.",
+        "Status Exclusion Safety: Excluded contacts still receive full customer support when they text your business, but Obey will NEVER leave automated comments on their WhatsApp stories.",
       ],
     },
     {
