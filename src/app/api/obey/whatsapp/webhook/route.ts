@@ -1025,8 +1025,35 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
           phoneJid = rawAlt || rawPart;
         }
 
-        const posterPhone = phoneJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+        let posterPhone = phoneJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
         const readParticipant = rawPart || rawAlt || phoneJid;
+
+        // Bulletproof LID Resolution: Map WhatsApp internal 14/15-digit LIDs to actual phone numbers
+        if (posterPhone.length > 13 && sql) {
+          try {
+            const resolvedRows = await sql`
+              SELECT key->>'remoteJidAlt' as alt
+              FROM evolution."Message"
+              WHERE (key->>'participant' LIKE ${`%${posterPhone}%`} OR key->>'remoteJid' LIKE ${`%${posterPhone}%`})
+                AND key->>'remoteJidAlt' LIKE '%@s.whatsapp.net'
+              LIMIT 1
+            `;
+            if (resolvedRows && resolvedRows.length > 0 && resolvedRows[0].alt) {
+              phoneJid = resolvedRows[0].alt;
+              posterPhone = phoneJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
+            }
+          } catch {}
+        }
+
+        // Hard-pinned known mappings for Femi Adeleke and AutoLearn Spot
+        if (posterPhone === "164213964194040" || posterPhone.includes("164213964194040")) {
+          posterPhone = "2348120934828";
+          phoneJid = "2348120934828@s.whatsapp.net";
+        }
+        if (posterPhone === "94270824419528" || posterPhone.includes("94270824419528")) {
+          posterPhone = "2349074027451";
+          phoneJid = "2349074027451@s.whatsapp.net";
+        }
 
         // 1. Identify workspace / instance
         let currentWs: any = null;
@@ -1064,6 +1091,12 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
         if (msgObj.key?.id) {
           await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, readParticipant, phoneJid);
           console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
+
+          // If the status is from Femi Adeleke (the Boss), ensure Main Obey also marks it as viewed!
+          if (instanceName !== "obey" && (posterPhone === "2348120934828" || phoneJid.includes("8120934828"))) {
+            await markWhatsAppMessageRead("obey", "status@broadcast", msgObj.key.id, readParticipant, phoneJid);
+            console.log(`[WA Status] Main Obey marked Boss ${posterPhone}'s status as viewed!`);
+          }
         }
 
         // 4. AI Status Commenting
@@ -1140,7 +1173,7 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
 
             const hasVisual = Boolean(msgObj.message?.imageMessage || msgObj.message?.videoMessage);
 
-            if (statusText.length >= 3 || hasVisual) {
+            if (statusText.length >= 2 || hasVisual) {
               const commenterRole = currentWs?.name || "Obey";
               const promptContext = statusText ? `STATUS TEXT/CAPTION: "${statusText}"` : "STATUS PHOTO: [Visual Story]";
 
@@ -1164,7 +1197,7 @@ Output ONLY the comment text.`,
               });
 
               const comment = aiRes.text.trim().replace(/^["']|["']$/g, "");
-              if (comment && comment.length >= 3) {
+              if (comment && comment.length >= 2) {
                 // Construct quoted status story so comment appears directly attached under the status story in WhatsApp
                 const quotedStatus = {
                   key: {
@@ -1185,6 +1218,13 @@ Output ONLY the comment text.`,
                   comment_sent: comment,
                 });
                 console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}" (quoted reply)`);
+
+                // If Boss posted, also dispatch a personalized Chief-of-Staff salute from Main Obey!
+                if (instanceName !== "obey" && (posterPhone === "2348120934828" || phoneJid.includes("8120934828"))) {
+                  const bossSalute = "Boss! Love this update. 🔥 Obey is right behind you!";
+                  await sendWhatsAppMessage(bossSalute, posterPhone, "obey", quotedStatus);
+                  console.log(`[WA Status] Main Obey sent direct Boss comment to ${posterPhone}`);
+                }
               }
             }
           }

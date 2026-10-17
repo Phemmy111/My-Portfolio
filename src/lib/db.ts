@@ -637,6 +637,8 @@ export interface WorkspaceSettings {
   voice_greeting?: string | null;
   whatsapp_welcome?: string | null;
   fallback_action?: string | null;
+  voice_id?: string | null;
+  voice_personality?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -1132,7 +1134,7 @@ export async function dbUpsertWorkspaceSettings(
   try {
     await createWorkspaceTables();
     const [row] = await db`
-      INSERT INTO workspace_settings (workspace_id, business_bio, catalog_summary, voice_greeting, whatsapp_welcome, fallback_action, updated_at)
+      INSERT INTO workspace_settings (workspace_id, business_bio, catalog_summary, voice_greeting, whatsapp_welcome, fallback_action, voice_id, voice_personality, updated_at)
       VALUES (
         ${workspaceId},
         ${settings.business_bio ?? null},
@@ -1140,6 +1142,8 @@ export async function dbUpsertWorkspaceSettings(
         ${settings.voice_greeting ?? null},
         ${settings.whatsapp_welcome ?? null},
         ${settings.fallback_action ?? 'ai_reply'},
+        ${settings.voice_id ?? 'nigerian_male'},
+        ${settings.voice_personality ?? 'professional'},
         NOW()
       )
       ON CONFLICT (workspace_id) DO UPDATE SET
@@ -1148,6 +1152,8 @@ export async function dbUpsertWorkspaceSettings(
         voice_greeting = COALESCE(EXCLUDED.voice_greeting, workspace_settings.voice_greeting),
         whatsapp_welcome = COALESCE(EXCLUDED.whatsapp_welcome, workspace_settings.whatsapp_welcome),
         fallback_action = COALESCE(EXCLUDED.fallback_action, workspace_settings.fallback_action),
+        voice_id = COALESCE(EXCLUDED.voice_id, workspace_settings.voice_id),
+        voice_personality = COALESCE(EXCLUDED.voice_personality, workspace_settings.voice_personality),
         updated_at = NOW()
       RETURNING *
     `;

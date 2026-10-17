@@ -83,6 +83,8 @@ interface WorkspaceSettings {
   voice_greeting?: string | null;
   whatsapp_welcome?: string | null;
   fallback_action?: string | null;
+  voice_id?: string | null;
+  voice_personality?: string | null;
 }
 
 interface WorkspaceRule {
@@ -3221,16 +3223,16 @@ function ControlRoomContent() {
                 />
               </div>
 
-              {/* Card 3: WebRTC Voice Call Greeting */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
+              {/* Card 3: WebRTC Voice Call Hotline Settings */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
                   <div>
                     <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
                       <PhoneCall className="w-4 h-4 text-teal-400" />
-                      3. WebRTC Voice Call Hotline Greeting
+                      3. WebRTC Voice Call Hotline & AI Voice Profile
                     </h3>
                     <p className="text-[11px] text-zinc-400 mt-0.5">
-                      The first spoken sentence uttered out loud by Obey when a customer calls your WebRTC voice link.
+                      Configure Obey&apos;s spoken voice accent, gender, personality style, and opening greeting for your live WebRTC phone link.
                     </p>
                   </div>
                   {hotlineUrl && (
@@ -3244,13 +3246,91 @@ function ControlRoomContent() {
                   )}
                 </div>
 
-                <textarea
-                  rows={3}
-                  value={settings.voice_greeting || ""}
-                  onChange={(e) => setSettings({ ...settings, voice_greeting: e.target.value })}
-                  className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
-                  placeholder="Hello! You have reached Havilah Touch. How can I assist you with our agricultural packages today?"
-                />
+                {/* Voice Accent & Gender Selection */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                    🎙️ Voice Accent & Gender
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: "nigerian_male", flag: "🇳🇬", label: "Nigerian Male (Default)", desc: "Warm Executive Brother" },
+                      { id: "nigerian_female", flag: "🇳🇬", label: "Nigerian Female", desc: "Warm Sister / Lady" },
+                      { id: "british_male", flag: "🇬🇧", label: "British Male", desc: "Crisp & Executive" },
+                      { id: "british_female", flag: "🇬🇧", label: "British Female", desc: "Polished & Refined" },
+                      { id: "american_male", flag: "🇺🇸", label: "American Male", desc: "Silicon Valley Tech" },
+                      { id: "american_female", flag: "🇺🇸", label: "American Female", desc: "Friendly & Dynamic" },
+                    ].map((v) => {
+                      const isSelected = (settings.voice_id || "nigerian_male") === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, voice_id: v.id })}
+                          className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                            isSelected
+                              ? "bg-teal-500/10 border-teal-500/80 ring-1 ring-teal-500/50"
+                              : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-100">
+                            <span>{v.flag}</span>
+                            <span>{v.label}</span>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{v.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Personality & Speaking Tone */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                    🧠 Personality & Speaking Tone
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: "professional", emoji: "💼", label: "Professional", desc: "Articulate Executive" },
+                      { id: "friendly", emoji: "🤝", label: "Warm Brotherly", desc: "Supportive Friend" },
+                      { id: "nigerian_pidgin", emoji: "⚡", label: "Authentic Naija", desc: "Pidgin & Sharp-sharp" },
+                      { id: "direct", emoji: "🎯", label: "Direct & Concise", desc: "Zero fluff, punchy" },
+                    ].map((p) => {
+                      const isSelected = (settings.voice_personality || "professional") === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, voice_personality: p.id })}
+                          className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                            isSelected
+                              ? "bg-purple-500/10 border-purple-500/80 ring-1 ring-purple-500/50"
+                              : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-100">
+                            <span>{p.emoji}</span>
+                            <span>{p.label}</span>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{p.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Spoken Hotline Opening Greeting */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                    📢 Spoken Opening Greeting
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={settings.voice_greeting || ""}
+                    onChange={(e) => setSettings({ ...settings, voice_greeting: e.target.value })}
+                    className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 text-xs sm:text-sm text-zinc-200 focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 outline-none leading-relaxed transition"
+                    placeholder="Hello! You have reached Havilah Touch. How can I assist you with our agricultural packages today?"
+                  />
+                </div>
               </div>
 
               {/* Card 4: WhatsApp Initial Welcome Greeting */}

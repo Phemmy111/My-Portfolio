@@ -37,6 +37,8 @@ export async function GET(
         voice_greeting: "",
         whatsapp_welcome: "",
         fallback_action: "ai_reply",
+        voice_id: "nigerian_male",
+        voice_personality: "professional",
       },
       rules: rules || [],
       leads: leads || [],
@@ -69,6 +71,8 @@ export async function PATCH(
       voice_greeting,
       whatsapp_welcome,
       fallback_action,
+      voice_id,
+      voice_personality,
     } = body;
 
     const updated = await dbUpsertWorkspaceSettings(ws.id, {
@@ -77,6 +81,8 @@ export async function PATCH(
       voice_greeting,
       whatsapp_welcome,
       fallback_action,
+      voice_id,
+      voice_personality,
     });
 
     return NextResponse.json({ success: true, settings: updated });

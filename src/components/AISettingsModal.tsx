@@ -89,6 +89,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     PROACTIVE_MORNING_BRIEF_ENABLED: "true",
     PROACTIVE_EVENING_CHECKIN_ENABLED: "true",
     PROACTIVE_INSTANT_ALERTS_ENABLED: "true",
+    VOICE_ID: "nigerian_male",
+    VOICE_PERSONALITY: "friendly",
+    VOICE_HOTLINE_GREETING: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -1457,9 +1460,127 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
               </div>
             )}
 
-              {/* TAB: 📞 AI Voice Calling (Vapi Pool) */}
+              {/* TAB: 📞 AI Voice Calling */}
               {activeTab === "voice" && (
                 <div className="space-y-6">
+                  {/* Native 100% Free WebRTC Voice Engine Card */}
+                  <div className="p-4 sm:p-5 rounded-2xl border border-emerald-500/30 bg-emerald-950/10 dark:bg-emerald-950/20 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/30">
+                          <PhoneCall size={18} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-black text-zinc-950 dark:text-white">
+                              Obey 100% Free Voice Hotline Engine
+                            </h4>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                              ₦0 / $0 Forever
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            Zero third-party credits required. Native Web Speech API with Gemini/Groq intelligence & automatic WhatsApp executive summaries.
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href="/call"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 underline underline-offset-4"
+                      >
+                        Launch Voice Call &rarr;
+                      </a>
+                    </div>
+
+                    {/* Main Obey Voice Accent & Gender */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                        🎙️ Main Obey Voice Accent & Gender
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { id: "nigerian_male", flag: "🇳🇬", label: "Nigerian Male (Default)", desc: "Warm Executive Brother" },
+                          { id: "nigerian_female", flag: "🇳🇬", label: "Nigerian Female", desc: "Warm Sister / Lady" },
+                          { id: "british_male", flag: "🇬🇧", label: "British Male", desc: "Crisp & Executive" },
+                          { id: "british_female", flag: "🇬🇧", label: "British Female", desc: "Polished & Refined" },
+                          { id: "american_male", flag: "🇺🇸", label: "American Male", desc: "Silicon Valley Tech" },
+                          { id: "american_female", flag: "🇺🇸", label: "American Female", desc: "Friendly & Dynamic" },
+                        ].map((v) => {
+                          const isSelected = (generalKeys.VOICE_ID || "nigerian_male") === v.id;
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => setGeneralKeys((prev) => ({ ...prev, VOICE_ID: v.id }))}
+                              className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                                isSelected
+                                  ? "bg-emerald-500/15 border-emerald-500/80 ring-1 ring-emerald-500/50"
+                                  : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-950 dark:text-white">
+                                <span>{v.flag}</span>
+                                <span>{v.label}</span>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{v.desc}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Main Obey Personality & Speaking Tone */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                        🧠 Main Obey Personality & Speaking Tone
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: "professional", emoji: "💼", label: "Professional", desc: "Articulate Executive" },
+                          { id: "friendly", emoji: "🤝", label: "Warm Brotherly", desc: "Supportive Friend" },
+                          { id: "nigerian_pidgin", emoji: "⚡", label: "Authentic Naija", desc: "Pidgin & Sharp-sharp" },
+                          { id: "direct", emoji: "🎯", label: "Direct & Concise", desc: "Zero fluff, punchy" },
+                        ].map((p) => {
+                          const isSelected = (generalKeys.VOICE_PERSONALITY || "friendly") === p.id;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => setGeneralKeys((prev) => ({ ...prev, VOICE_PERSONALITY: p.id }))}
+                              className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                                isSelected
+                                  ? "bg-purple-500/15 border-purple-500/80 ring-1 ring-purple-500/50"
+                                  : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-950 dark:text-white">
+                                <span>{p.emoji}</span>
+                                <span>{p.label}</span>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{p.desc}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Opening Spoken Greeting */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
+                        📢 Opening Voice Call Greeting
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={generalKeys.VOICE_HOTLINE_GREETING || ""}
+                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, VOICE_HOTLINE_GREETING: e.target.value }))}
+                        className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-900 dark:text-zinc-200 focus:border-zinc-400 outline-none leading-relaxed transition"
+                        placeholder="Hello Friend! Great to connect with you today! I am Obey, personal executive AI companion to Femi Adeleke. How can I assist you today?"
+                      />
+                    </div>
+                  </div>
+
                   {/* Strategy & Webhook Banner */}
                   <div className="p-4 sm:p-5 rounded-2xl border border-rose-500/30 bg-rose-950/10 dark:bg-rose-950/20 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">

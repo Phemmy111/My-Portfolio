@@ -6,7 +6,7 @@ import {
   dbUpsertWorkspaceLead,
   dbAddWorkspaceCallLog,
 } from "@/lib/db";
-import { getObeyBrainContext } from "@/lib/settings";
+import { getObeyBrainContext, getSetting } from "@/lib/settings";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
@@ -97,6 +97,41 @@ export async function POST(req: NextRequest) {
       brainContext = brain?.formattedPrompt || brain?.knowledge || "";
     } catch {}
 
+    // 2.5 Resolve Voice ID & Personality
+    const effectiveVoiceId =
+      body.voice_id ||
+      wsSettings?.voice_id ||
+      (await getSetting("VOICE_ID")) ||
+      "nigerian_male";
+
+    const effectivePersonality =
+      body.voice_personality ||
+      wsSettings?.voice_personality ||
+      (await getSetting("VOICE_PERSONALITY")) ||
+      (workspace ? "professional" : "friendly");
+
+    let personalityPrompt = "";
+    if (effectivePersonality === "nigerian_pidgin") {
+      personalityPrompt = `SPOKEN TONE & ACCENT (AUTHENTIC NIGERIAN STREET-SMART):
+- Speak natural Nigerian English enriched with warm, authentic Nigerian Pidgin ("I dey with you, Boss! Sharp-sharp", "No wahala at all", "How body?", "Wetin you need make we run am?").
+- Energetic, charismatic, sharp, brotherly Naija vibe.
+- Keep sentences punchy, rhythmic, and natural.`;
+    } else if (effectivePersonality === "friendly") {
+      personalityPrompt = `SPOKEN TONE & ACCENT (WARM & BROTHERLY):
+- Sound deeply supportive, warm, enthusiastic, brotherly, and optimistic.
+- Make the caller feel genuinely welcomed, comfortable, and uplifted.
+- 1 to 2 spoken conversational sentences.`;
+    } else if (effectivePersonality === "direct") {
+      personalityPrompt = `SPOKEN TONE & ACCENT (DIRECT & CONCISE):
+- Ultra-concise, zero fluff, straight to the point.
+- Deliver immediate solutions or answers in 1 crisp sentence whenever possible.`;
+    } else {
+      personalityPrompt = `SPOKEN TONE & ACCENT (EXECUTIVE & ARTICULATE):
+- Professional, polished, courteous, articulate executive demeanor.
+- Authoritative yet warm, solution-oriented.
+- 1 to 3 smooth spoken sentences per turn.`;
+    }
+
     // 3. Build System Prompt tailored for Spoken Voice Conversations
     let systemPrompt = "";
     if (workspace) {
@@ -107,6 +142,8 @@ export async function POST(req: NextRequest) {
 
       systemPrompt = `You are Obey, the official intelligent voice representative for ${bizName}.
 You are having an actual spoken phone call with a customer/client named ${callerName}.
+
+${personalityPrompt}
 
 BUSINESS PROFILE:
 - Business Name: ${bizName}
@@ -125,6 +162,8 @@ VOICE CONVERSATION RULES:
     } else {
       systemPrompt = `You are Obey, an ultra-intelligent, magnetic, witty, and deeply empathetic AI voice companion built by Femi Adeleke.
 You are having an actual spoken phone call with a caller named ${callerName}.
+
+${personalityPrompt}
 
 CREATOR BACKGROUND:
 Femi Adeleke is a visionary software engineer, AI automator, and educator based in Ibadan, Nigeria.
@@ -147,7 +186,12 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
 
       // Clean greeting of markdown
       const cleanGreeting = greeting.replace(/[*#_~`[\]()]/g, "").trim();
-      return NextResponse.json({ ok: true, reply: cleanGreeting });
+      return NextResponse.json({
+        ok: true,
+        reply: cleanGreeting,
+        voice_id: effectiveVoiceId,
+        voice_personality: effectivePersonality,
+      });
     }
 
     // 4. Format conversation history for AI
@@ -201,6 +245,8 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
     return NextResponse.json({
       ok: true,
       reply: cleanReply,
+      voice_id: effectiveVoiceId,
+      voice_personality: effectivePersonality,
       provider: result.provider,
       model: result.model,
     });

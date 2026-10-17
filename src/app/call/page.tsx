@@ -15,8 +15,124 @@ import {
   MessageSquare,
   Bot,
   Send,
+  Sliders,
+  Check,
+  X,
 } from "lucide-react";
 import Link from "next/link";
+
+export const VOICE_PROFILES: Record<
+  string,
+  {
+    name: string;
+    flag: string;
+    gender: "male" | "female";
+    lang: string;
+    pitch: number;
+    rate: number;
+    preferredVoices: string[];
+  }
+> = {
+  nigerian_male: {
+    name: "Nigerian Male (Executive Brother)",
+    flag: "🇳🇬",
+    gender: "male",
+    lang: "en-NG",
+    pitch: 0.88,
+    rate: 1.0,
+    preferredVoices: [
+      "en-NG",
+      "Nigeria",
+      "Arthur",
+      "George",
+      "David",
+      "Male",
+      "Google UK English Male",
+    ],
+  },
+  nigerian_female: {
+    name: "Nigerian Female (Warm Lady)",
+    flag: "🇳🇬",
+    gender: "female",
+    lang: "en-NG",
+    pitch: 1.1,
+    rate: 1.02,
+    preferredVoices: [
+      "en-NG",
+      "Nigeria",
+      "Samantha",
+      "Victoria",
+      "Female",
+      "Google UK English Female",
+    ],
+  },
+  british_male: {
+    name: "British Male (Executive & Crisp)",
+    flag: "🇬🇧",
+    gender: "male",
+    lang: "en-GB",
+    pitch: 0.95,
+    rate: 1.0,
+    preferredVoices: ["en-GB", "Daniel", "George", "Arthur", "UK English Male"],
+  },
+  british_female: {
+    name: "British Female (Polished & Refined)",
+    flag: "🇬🇧",
+    gender: "female",
+    lang: "en-GB",
+    pitch: 1.05,
+    rate: 1.0,
+    preferredVoices: ["en-GB", "Victoria", "Hazel", "UK English Female"],
+  },
+  american_male: {
+    name: "American Male (Silicon Valley)",
+    flag: "🇺🇸",
+    gender: "male",
+    lang: "en-US",
+    pitch: 0.95,
+    rate: 1.05,
+    preferredVoices: ["en-US", "Alex", "Fred", "US English Male", "Natural"],
+  },
+  american_female: {
+    name: "American Female (Friendly & Energetic)",
+    flag: "🇺🇸",
+    gender: "female",
+    lang: "en-US",
+    pitch: 1.08,
+    rate: 1.05,
+    preferredVoices: ["en-US", "Samantha", "Zira", "US English Female", "Natural"],
+  },
+};
+
+export const PERSONALITY_PROFILES: Record<
+  string,
+  {
+    label: string;
+    description: string;
+    emoji: string;
+  }
+> = {
+  professional: {
+    label: "Professional Executive",
+    description: "Sharp, articulate, executive demeanor",
+    emoji: "💼",
+  },
+  friendly: {
+    label: "Warm & Brotherly",
+    description: "Supportive, uplifting, close brotherly friend vibe",
+    emoji: "🤝",
+  },
+  nigerian_pidgin: {
+    label: "Authentic Naija & Street-Smart",
+    description: "Natural blend of English and authentic Pidgin ('Sharp-sharp')",
+    emoji: "⚡",
+  },
+  direct: {
+    label: "Direct & Concise",
+    description: "Immediate solutions, zero fluff, straight to the point",
+    emoji: "🎯",
+  },
+};
 
 interface TranscriptMessage {
   role: "user" | "assistant";
@@ -39,7 +155,13 @@ function CallInterface() {
     slug: string;
     greeting?: string;
     phone?: string;
+    voice_id?: string;
+    voice_personality?: string;
   } | null>(null);
+
+  const [selectedVoice, setSelectedVoice] = useState<string>("nigerian_male");
+  const [selectedPersonality, setSelectedPersonality] = useState<string>("professional");
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
 
   const [callStatus, setCallStatus] = useState<
     "idle" | "loading" | "connecting" | "active" | "ended" | "error"
@@ -66,6 +188,8 @@ function CallInterface() {
   const transcriptsRef = useRef<TranscriptMessage[]>([]);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Keep transcriptsRef synchronized
   useEffect(() => {
@@ -108,7 +232,15 @@ function CallInterface() {
               slug: data.workspace.slug,
               greeting: data.settings?.voice_greeting,
               phone: data.workspace.owner_phone,
+              voice_id: data.settings?.voice_id,
+              voice_personality: data.settings?.voice_personality,
             });
+            if (data.settings?.voice_id) {
+              setSelectedVoice(data.settings.voice_id);
+            }
+            if (data.settings?.voice_personality) {
+              setSelectedPersonality(data.settings.voice_personality);
+            }
           }
         })
         .catch((err) => console.warn("Failed to fetch workspace branding:", err));
@@ -166,6 +298,8 @@ function CallInterface() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
 
     // Stop Speech Recognition
     if (recognitionRef.current) {
@@ -248,12 +382,15 @@ function CallInterface() {
     }
   };
 
-  // Speak aloud using browser SpeechSynthesis
+  // Speak aloud using browser SpeechSynthesis with Voice Modulation & Android Chrome Watchdog
   const speakAIspeech = (text: string, onDone?: () => void) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       if (onDone) onDone();
       return;
     }
+
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
 
     window.speechSynthesis.cancel();
 
@@ -268,39 +405,60 @@ function CallInterface() {
       return;
     }
 
+    const profile =
+      VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
     const utterance = new SpeechSynthesisUtterance(cleanSpoken);
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
+    utterance.rate = profile.rate;
+    utterance.pitch = profile.pitch;
     currentUtteranceRef.current = utterance;
 
-    // Select the best natural-sounding English voice
+    // Pick best matching natural voice from browser
     const voices = window.speechSynthesis.getVoices();
-    const naturalVoice =
-      voices.find(
-        (v) =>
-          v.lang.startsWith("en") &&
-          (v.name.includes("Natural") ||
-            v.name.includes("Google") ||
-            v.name.includes("Daniel") ||
-            v.name.includes("Samantha") ||
-            v.name.includes("Arthur"))
-      ) || voices.find((v) => v.lang.startsWith("en"));
-
-    if (naturalVoice) {
-      utterance.voice = naturalVoice;
+    let matchedVoice: SpeechSynthesisVoice | null = null;
+    for (const pref of profile.preferredVoices) {
+      const v = voices.find(
+        (voice) =>
+          voice.name.toLowerCase().includes(pref.toLowerCase()) ||
+          voice.lang.toLowerCase().replace("_", "-") === pref.toLowerCase()
+      );
+      if (v) {
+        matchedVoice = v;
+        break;
+      }
+    }
+    if (!matchedVoice) {
+      matchedVoice = voices.find((v) => v.lang.startsWith("en")) || null;
+    }
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
     }
 
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setIsListening(false);
-    };
-
+    let finishTriggered = false;
     const handleFinish = () => {
+      if (finishTriggered) return;
+      finishTriggered = true;
+      if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+      if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
       if (isCallActiveRef.current && onDone) {
         onDone();
       }
+    };
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      // Keep-alive loop to prevent Android Chrome audio engine from stalling
+      keepAliveIntervalRef.current = setInterval(() => {
+        if (
+          typeof window !== "undefined" &&
+          window.speechSynthesis &&
+          window.speechSynthesis.speaking
+        ) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 3500);
     };
 
     utterance.onend = handleFinish;
@@ -309,10 +467,20 @@ function CallInterface() {
       handleFinish();
     };
 
+    // Resilient Watchdog Timer: prevents Android Chrome from indefinitely freezing if onend fails to fire
+    const wordCount = cleanSpoken.split(/\s+/).length;
+    const maxExpectedMs = Math.max(3500, (wordCount / 2.0) * 1000 + 2500);
+    watchdogTimerRef.current = setTimeout(() => {
+      if (!finishTriggered && isCallActiveRef.current) {
+        console.log("[Voice Engine] Watchdog timer fired: ensuring mic listening resumes");
+        handleFinish();
+      }
+    }, maxExpectedMs);
+
     window.speechSynthesis.speak(utterance);
   };
 
-  // Start speech recognition listening loop
+  // Start speech recognition listening loop with Barge-In and mobile resilience
   const startSpeechRecognitionLoop = () => {
     if (!isCallActiveRef.current) return;
 
@@ -332,10 +500,18 @@ function CallInterface() {
         } catch {}
       }
 
+      const isMobile =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      const profile =
+        VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
+
       const recognition = new SpeechRecClass();
-      recognition.continuous = true;
+      // On mobile browsers, continuous mode drops after first pause; false + seamless onend loop is 100% resilient
+      recognition.continuous = !isMobile;
       recognition.interimResults = true;
-      recognition.lang = "en-US";
+      recognition.lang = profile.lang || "en-NG";
 
       let accumulatedFinal = "";
 
@@ -345,6 +521,14 @@ function CallInterface() {
 
       recognition.onresult = (event: any) => {
         if (!isCallActiveRef.current) return;
+
+        // Full Duplex Barge-in: If caller starts speaking while Obey is speaking aloud, cancel AI speech immediately!
+        if (isSpeaking) {
+          try {
+            window.speechSynthesis.cancel();
+            setIsSpeaking(false);
+          } catch {}
+        }
 
         let interim = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -358,10 +542,9 @@ function CallInterface() {
 
         const candidateText = (accumulatedFinal + " " + interim).trim();
 
-        // Clear previous silence timer
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // When user pauses speaking for 1.4 seconds, trigger Obey AI thinking
+        // When user pauses speaking for 1.2 seconds, trigger Obey AI thinking
         if (candidateText.length >= 2) {
           silenceTimerRef.current = setTimeout(() => {
             if (isCallActiveRef.current && candidateText.trim().length >= 2) {
@@ -372,29 +555,38 @@ function CallInterface() {
               } catch {}
               processUserVoiceStatement(statementToSend);
             }
-          }, 1400);
+          }, 1200);
         }
       };
 
       recognition.onerror = (event: any) => {
-        // Ignore "no-speech" or "aborted" as they are normal during pauses
-        if (event.error !== "no-speech" && event.error !== "aborted") {
-          console.warn("Speech recognition notice:", event.error);
+        // Non-fatal speech errors (no-speech, network timeout) are automatically recovered
+        if (event.error === "no-speech" || event.error === "network") {
+          setTimeout(() => {
+            if (isCallActiveRef.current && !isThinking && !isMuted) {
+              try {
+                recognition.start();
+              } catch {}
+            }
+          }, 250);
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        // Automatically restart listening if call is active and Obey is not speaking or thinking
+        // Automatically restart listening if call is active and Obey is not thinking or muted
         if (
           isCallActiveRef.current &&
-          !isSpeaking &&
           !isThinking &&
           !isMuted
         ) {
-          try {
-            recognition.start();
-          } catch {}
+          setTimeout(() => {
+            if (isCallActiveRef.current && !isThinking && !isMuted) {
+              try {
+                recognition.start();
+              } catch {}
+            }
+          }, 150);
         }
       };
 
@@ -424,6 +616,8 @@ function CallInterface() {
           bizSlug: bizInfo?.slug || rawBiz,
           userName: inputName || "Friend",
           userPhone: inputPhone,
+          voice_id: selectedVoice,
+          voice_personality: selectedPersonality,
         }),
       });
 
@@ -520,11 +714,19 @@ function CallInterface() {
               isGreeting: true,
               bizSlug: bizInfo?.slug || rawBiz,
               userName: effectiveName || "Friend",
+              voice_id: selectedVoice,
+              voice_personality: selectedPersonality,
             }),
           });
           const greetData = await greetRes.json();
           if (greetData.reply) {
             initialGreeting = greetData.reply;
+          }
+          if (greetData.voice_id) {
+            setSelectedVoice(greetData.voice_id);
+          }
+          if (greetData.voice_personality) {
+            setSelectedPersonality(greetData.voice_personality);
           }
         } catch {}
       }
@@ -535,10 +737,15 @@ function CallInterface() {
           : `Hello ${effectiveName || "Friend"}! Great to connect with you today! I am Obey, your AI companion. What is on your mind?`;
       }
 
-      // 5. Add greeting to transcripts & speak aloud
+      // 5. Add greeting to transcripts
       setTranscripts([{ role: "assistant", text: initialGreeting }]);
+
+      // 6. HOT MIC: Start microphone listening immediately from second 1
+      startSpeechRecognitionLoop();
+
+      // 7. Speak greeting aloud (barge-in will seamlessly interrupt if caller speaks)
       speakAIspeech(initialGreeting, () => {
-        if (isCallActiveRef.current && !isMuted) {
+        if (isCallActiveRef.current && !isMuted && !isListening) {
           startSpeechRecognitionLoop();
         }
       });
@@ -689,6 +896,25 @@ function CallInterface() {
             {callStatus === "error" &&
               (errorMessage || "Voice connection paused.")}
           </p>
+
+          {/* Quick Voice & Personality Switcher Pill */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowVoiceModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-[11px] font-semibold text-zinc-300 hover:text-white transition-all cursor-pointer shadow-sm mx-auto"
+              title="Click to customize Obey Voice and Personality"
+            >
+              <span>{VOICE_PROFILES[selectedVoice]?.flag || "🇳🇬"}</span>
+              <span>{VOICE_PROFILES[selectedVoice]?.name.split(" (")[0] || "Nigerian Male"}</span>
+              <span className="text-zinc-600">•</span>
+              <span>
+                {PERSONALITY_PROFILES[selectedPersonality]?.emoji || "💼"}{" "}
+                {PERSONALITY_PROFILES[selectedPersonality]?.label.split(" ")[0]}
+              </span>
+              <Sliders size={11} className="text-emerald-400 ml-0.5" />
+            </button>
+          </div>
         </div>
 
         {/* Pulsing Visualizer Orb with Obey Logo */}
@@ -1018,6 +1244,110 @@ function CallInterface() {
                   className="w-full py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs transition-all cursor-pointer"
                 >
                   Continue without WhatsApp Delivery
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal for Selecting Voice and Personality */}
+        {showVoiceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-700 p-6 text-left shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sliders size={18} className="text-emerald-400" />
+                  <h3 className="text-sm font-black text-white">Voice & Personality Tone</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceModal(false)}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p className="text-xs text-zinc-400">
+                Customize how Obey speaks with you during this live voice call.
+              </p>
+
+              {/* Voice Accent & Gender */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400 block">
+                  Voice Accent & Gender
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(VOICE_PROFILES).map(([key, prof]) => {
+                    const isSelected = selectedVoice === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedVoice(key)}
+                        className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center justify-between ${
+                          isSelected
+                            ? "bg-emerald-500/10 border-emerald-500 text-white"
+                            : "bg-zinc-950/70 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base">{prof.flag}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold truncate">{prof.name.split(" (")[0]}</p>
+                            <p className="text-[10px] text-zinc-400 truncate capitalize">
+                              {prof.gender} • {prof.lang}
+                            </p>
+                          </div>
+                        </div>
+                        {isSelected && <Check size={14} className="text-emerald-400 shrink-0 ml-1" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Personality Tone */}
+              <div className="space-y-2 pt-1">
+                <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400 block">
+                  Personality & Speaking Tone
+                </label>
+                <div className="space-y-1.5">
+                  {Object.entries(PERSONALITY_PROFILES).map(([key, prof]) => {
+                    const isSelected = selectedPersonality === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedPersonality(key)}
+                        className={`w-full p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center justify-between ${
+                          isSelected
+                            ? "bg-emerald-500/10 border-emerald-500 text-white"
+                            : "bg-zinc-950/70 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-base">{prof.emoji}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold">{prof.label}</p>
+                            <p className="text-[10px] text-zinc-400">{prof.description}</p>
+                          </div>
+                        </div>
+                        {isSelected && <Check size={14} className="text-emerald-400 shrink-0 ml-2" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceModal(false)}
+                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                >
+                  <Check size={14} />
+                  <span>Apply Voice Settings</span>
                 </button>
               </div>
             </div>
