@@ -169,6 +169,23 @@ function ControlRoomContent() {
   const [leads, setLeads] = useState<WorkspaceLead[]>([]);
   const [callLogs, setCallLogs] = useState<WorkspaceCallLog[]>([]);
 
+  // Dynamic Platform Pricing from API
+  const [platformPricing, setPlatformPricing] = useState({
+    starter_price: 9500,
+    pro_price: 22500,
+    enterprise_price: 55000,
+    trial_days: 7,
+  });
+
+  useEffect(() => {
+    fetch("/api/obey/pricing")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.pricing) setPlatformPricing(data.pricing);
+      })
+      .catch(() => {});
+  }, []);
+
   // WhatsApp connection states
   const [waState, setWaState] = useState<string>("disconnected");
   const [waQrCode, setWaQrCode] = useState<string | null>(null);
@@ -2471,10 +2488,10 @@ function ControlRoomContent() {
                     <button
                       onClick={() => handleDisconnectWhatsApp("code")}
                       disabled={waLoading}
-                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-medium text-xs flex items-center gap-1.5 transition border border-rose-500/20 disabled:opacity-50"
+                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 transition border border-rose-300 dark:border-rose-800/60 shadow-xs cursor-pointer disabled:opacity-50"
                       title="Unlink and disconnect this WhatsApp instance"
                     >
-                      <LogOut className="w-3.5 h-3.5" />
+                      <LogOut className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                       <span>Disconnect</span>
                     </button>
                   </div>
@@ -2482,20 +2499,20 @@ function ControlRoomContent() {
               ) : (
                 <div className="space-y-6">
                   {/* Dedicated Business Number Best-Practice Banner */}
-                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-amber-950/30 border border-emerald-500/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-lg">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30 text-lg">
+                  <div className="bg-white dark:bg-gradient-to-r dark:from-emerald-950/40 dark:via-slate-900 dark:to-amber-950/30 border border-slate-200 dark:border-emerald-500/30 rounded-2xl p-4 flex items-start gap-3.5 shadow-xs">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-500/30 text-lg">
                       💡
                     </div>
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-xs sm:text-sm font-bold text-white">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
                           Owner Tip: Link a Dedicated Business Number
                         </h4>
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold px-2 py-0.5 rounded-full uppercase">
+                        <span className="text-[10px] bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 font-bold px-2 py-0.5 rounded-full uppercase">
                           Recommended
                         </span>
                       </div>
-                      <p className="text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                         We strongly advise using a <strong>dedicated secondary SIM or WhatsApp Business line</strong> as Obey&apos;s bot number.
                         This allows you (the owner) to message Obey from your personal WhatsApp to test pricing, command the AI, and control your business hotline seamlessly without interfering with your personal chats.
                       </p>
@@ -2874,19 +2891,19 @@ function ControlRoomContent() {
         {activeTab === "status" && currentWs && (
           <div className="space-y-6">
             {/* Top Banner */}
-            <div className="bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-2xl p-6 relative overflow-hidden">
+            <div className="bg-white dark:bg-gradient-to-r dark:from-emerald-950/60 dark:via-slate-900 dark:to-slate-900 border border-slate-200 dark:border-emerald-500/30 rounded-2xl p-6 relative overflow-hidden shadow-xs">
               <div className="relative z-10 max-w-3xl space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-slate-950 uppercase tracking-wider flex items-center gap-1">
                     <Radio className="w-3 h-3 animate-pulse" /> Live Broadcast
                   </span>
-                  <span className="text-xs text-emerald-400 font-medium">WhatsApp Status Stories Engine</span>
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">WhatsApp Status Stories Engine</span>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                   Autonomous WhatsApp Status Automator
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Turn your WhatsApp Status into a 24/7 revenue engine. Compose, generate with AI, or set automated daily promotions that publish directly to your stories (<code className="text-emerald-400 bg-emerald-950/40 px-1 py-0.5 rounded">status@broadcast</code>).
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Turn your WhatsApp Status into a 24/7 revenue engine. Compose, generate with AI, or set automated daily promotions that publish directly to your stories (<code className="text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-transparent font-mono">status@broadcast</code>).
                 </p>
               </div>
             </div>
@@ -5396,21 +5413,21 @@ function ControlRoomContent() {
             </div>
 
             {/* Monetization / Pricing Tiers */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-amber-400" />
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-xs">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-amber-500 dark:text-amber-400" />
                 Monetization & Subscription Plans
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Each business owner can subscribe via Paystack to unlock unlimited leads, WhatsApp multi-agent bots, and dedicated WebRTC hotlines.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-400 uppercase">Starter Plan</div>
-                    <div className="text-2xl font-black text-white">₦9,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-400 space-y-1.5">
+                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Starter Plan</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.starter_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
                       <li>• Up to 250 auto-saved leads</li>
                       <li>• 10 Keyword Auto-responders</li>
                       <li>• WebRTC Voice Hotline (15 hrs/mo)</li>
@@ -5420,18 +5437,18 @@ function ControlRoomContent() {
                   <button
                     onClick={() => handleCheckoutPlan("starter")}
                     disabled={checkoutLoading === "starter"}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 disabled:opacity-50"
+                    className="w-full py-2 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition border border-slate-300 dark:border-slate-700 disabled:opacity-50"
                   >
                     {checkoutLoading === "starter" ? "Redirecting..." : "Activate Starter"}
                   </button>
                 </div>
 
-                <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 relative flex flex-col justify-between">
+                <div className="bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/40 rounded-xl p-4 space-y-3 relative flex flex-col justify-between">
                   <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 uppercase">Popular</span>
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-emerald-400 uppercase">Pro Business</div>
-                    <div className="text-2xl font-black text-white">₦22,500 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-300 space-y-1.5">
+                    <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase">Pro Business</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.pro_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
                       <li>• Unlimited auto-saved leads</li>
                       <li>• 50 Keyword Auto-responders</li>
                       <li>• WebRTC Voice Hotline (50 hrs/mo)</li>
@@ -5448,11 +5465,11 @@ function ControlRoomContent() {
                   </button>
                 </div>
 
-                <div className="bg-slate-850 border border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-400 uppercase">Enterprise / Founder</div>
-                    <div className="text-2xl font-black text-white">₦55,000 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-400 space-y-1.5">
+                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Enterprise / Founder</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.enterprise_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
+                    <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
                       <li>• Full Multi-tenant WhatsApp bot</li>
                       <li>• Unlimited Voice Hotline minutes</li>
                       <li>• Autonomous Web App & Document Generator</li>
@@ -5462,7 +5479,7 @@ function ControlRoomContent() {
                   <button
                     onClick={() => handleCheckoutPlan("enterprise")}
                     disabled={checkoutLoading === "enterprise"}
-                    className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 disabled:opacity-50"
+                    className="w-full py-2 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition border border-slate-300 dark:border-slate-700 disabled:opacity-50"
                   >
                     {checkoutLoading === "enterprise" ? "Redirecting..." : "Activate Enterprise"}
                   </button>
