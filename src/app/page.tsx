@@ -204,10 +204,10 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#050b14] text-zinc-900 dark:text-slate-100 font-sans selection:bg-emerald-500/20 selection:text-emerald-950 transition-colors duration-200">
       {/* Top Navigation */}
-      <header className="border-b border-zinc-300/80 dark:border-slate-800 bg-white/95 dark:bg-[#060d1a]/95 backdrop-blur-md sticky top-0 z-40 px-2.5 sm:px-6 py-2.5 sm:py-4 flex items-center justify-between max-w-7xl mx-auto shadow-xs transition-colors">
+      <header className="border-b border-zinc-300/80 dark:border-slate-800 bg-white/95 dark:bg-[#060d1a]/95 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between max-w-7xl mx-auto shadow-xs transition-colors">
         {/* Brand Logo & Title */}
-        <Link href="/" className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl overflow-hidden shadow-md shadow-emerald-600/20 border border-emerald-500/20 shrink-0">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden shadow-md shadow-emerald-600/20 border border-emerald-500/20 shrink-0">
             <Image
               src="/obey-logo.jpg"
               alt="Obey Logo"
@@ -217,36 +217,24 @@ export default function Home() {
               priority
             />
           </div>
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-extrabold text-xs sm:text-base tracking-tight text-zinc-950 dark:text-white truncate">
-              Obey<span className="hidden xs:inline"> Business</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-extrabold text-sm sm:text-base tracking-tight text-zinc-950 dark:text-white">
+              Obey Business
             </span>
-            <span className="hidden md:inline-flex text-[10px] uppercase font-bold px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-full shrink-0">
+            <span className="hidden sm:inline-flex text-[10px] uppercase font-bold px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-full shrink-0">
               AI 2.0
             </span>
           </div>
         </Link>
 
-        {/* Navigation Action Buttons - Scaled to Show All at Once on Mobile */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Creator Link */}
-          <Link
-            href="/portfolio"
-            className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-white dark:bg-[#0b1424] hover:bg-zinc-100 dark:hover:bg-slate-800 text-zinc-800 dark:text-slate-200 text-[11px] sm:text-xs font-bold border border-zinc-300 dark:border-slate-800 transition shadow-xs shrink-0"
-            title="Creator: Femi Adeleke"
-          >
-            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="hidden md:inline text-zinc-500">Creator:</span>
-            <span className="hidden sm:inline">Femi Adeleke</span>
-            <span className="sm:hidden">Femi</span>
-          </Link>
-
+        {/* Clean, Spacious Navigation Controls */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* User Manual */}
           <Link
             href="/manual"
-            className="flex items-center gap-1 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-white dark:bg-[#0b1424] hover:bg-zinc-100 dark:hover:bg-slate-800 text-zinc-800 dark:text-slate-200 text-[11px] sm:text-xs font-bold border border-zinc-300 dark:border-slate-800 transition shadow-xs shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0b1424] hover:bg-zinc-100 dark:hover:bg-slate-800 text-zinc-800 dark:text-slate-200 text-xs font-bold border border-zinc-300 dark:border-slate-800 transition shadow-xs"
           >
-            <BookOpen className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
             <span>Manual</span>
           </Link>
 
@@ -254,38 +242,28 @@ export default function Home() {
           <Link
             href="/call?biz=femi-adeleke"
             target="_blank"
-            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-[#0b1424] hover:bg-zinc-100 dark:hover:bg-slate-800 text-zinc-800 dark:text-slate-200 text-xs font-bold border border-zinc-300 dark:border-slate-800 transition shadow-xs shrink-0"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0b1424] hover:bg-zinc-100 dark:hover:bg-slate-800 text-zinc-800 dark:text-slate-200 text-xs font-bold border border-zinc-300 dark:border-slate-800 transition shadow-xs"
           >
-            <PhoneCall className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span>Try Voice Hotline</span>
+            <PhoneCall className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+            <span>Voice Hotline</span>
           </Link>
 
-          {/* Control Room CTA */}
+          {/* Control Room CTA (Leads straight to workspace / login) */}
           <Link
             href="/control-room"
-            className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] sm:text-xs transition shadow-md shadow-emerald-600/20 shrink-0"
+            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md shadow-emerald-600/20"
           >
-            <span className="hidden xs:inline">Control Room</span>
-            <span className="xs:hidden">Control</span>
+            Control Room
           </Link>
 
           {/* Theme Toggle */}
-          <div className="flex items-center shrink-0">
-            <ThemeToggle showLabel={false} />
-          </div>
+          <ThemeToggle showLabel={false} />
 
-          {/* Auth State */}
-          {isSignedIn ? (
-            <div className="pl-0.5 sm:pl-1 border-l border-zinc-300 dark:border-slate-800 flex items-center shrink-0">
+          {/* User Profile if signed in */}
+          {isSignedIn && (
+            <div className="pl-1 border-l border-zinc-300 dark:border-slate-800 flex items-center shrink-0">
               <UserButton />
             </div>
-          ) : (
-            <Link
-              href="/sign-in"
-              className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-zinc-900 dark:bg-slate-800 hover:bg-zinc-800 dark:hover:bg-slate-700 text-white text-[11px] sm:text-xs font-bold transition shadow-xs shrink-0"
-            >
-              Sign In
-            </Link>
           )}
         </div>
       </header>
@@ -432,8 +410,72 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-zinc-300 dark:border-slate-800 bg-white dark:bg-[#0b1424] shadow-md">
-          <table className="w-full text-left text-xs sm:text-sm">
+        {/* Mobile View: Clean, Compact Comparison Cards (Space-Efficient & Zero Clutter) */}
+        <div className="block md:hidden space-y-3">
+          {[
+            {
+              feature: "AI Intelligence & Reasoning",
+              traditional: "Rigid regex keywords only",
+              obey: "Deep contextual LLM reasoning + Smart Keyword Triggers",
+            },
+            {
+              feature: "WebRTC Voice Hotline Calling",
+              traditional: "None (Text only)",
+              obey: "100% Free WebRTC Voice Hotline with audio recordings",
+            },
+            {
+              feature: "Nigerian Dialects & Accents",
+              traditional: "Robotic flat English",
+              obey: "Natural Nigerian Pidgin, Yoruba, & fluent English",
+            },
+            {
+              feature: "Contact Auto-Save & vCard",
+              traditional: "Google Contacts sync",
+              obey: "Live Leads CRM + 1-Click Excel CSV & Phone vCard (.vcf)",
+            },
+            {
+              feature: "Document & Proposal Creation",
+              traditional: "None",
+              obey: "Generates Word (.doc), Markdown & Web Artifacts",
+            },
+            {
+              feature: "Personalized Broadcasts",
+              traditional: "Static text broadcasts",
+              obey: "Personalized dynamic tags ({name}, {business})",
+            },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              className="p-3.5 rounded-2xl border border-zinc-200 dark:border-slate-800 bg-white dark:bg-[#0b1424] space-y-2.5 shadow-2xs"
+            >
+              <div className="font-extrabold text-xs text-zinc-950 dark:text-white">
+                {item.feature}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                {/* Traditional */}
+                <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-slate-900/60 border border-zinc-200/80 dark:border-slate-800 text-zinc-600 dark:text-slate-400 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-slate-400 flex items-center gap-1">
+                    <XCircle className="w-3 h-3 text-red-500 shrink-0" />
+                    <span>Traditional</span>
+                  </div>
+                  <p className="leading-snug">{item.traditional}</p>
+                </div>
+                {/* Obey */}
+                <div className="p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 text-emerald-950 dark:text-emerald-300 font-semibold space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Obey AI</span>
+                  </div>
+                  <p className="leading-snug">{item.obey}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop View: Full Comparison Table */}
+        <div className="hidden md:block overflow-x-auto rounded-2xl border border-zinc-300 dark:border-slate-800 bg-white dark:bg-[#0b1424] shadow-md">
+          <table className="w-full text-left text-sm">
             <thead className="bg-zinc-100 dark:bg-slate-900 text-zinc-900 dark:text-slate-200 border-b border-zinc-300 dark:border-slate-800">
               <tr>
                 <th className="p-4 font-bold">Feature</th>
@@ -444,73 +486,97 @@ export default function Home() {
             <tbody className="divide-y divide-zinc-200 dark:divide-slate-800">
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">AI Intelligence & Reasoning</td>
-                <td className="p-4 text-zinc-600 dark:text-slate-400 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  Rigid regex keywords only
+                <td className="p-4 text-zinc-600 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>Rigid regex keywords only</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Deep contextual LLM reasoning + Smart Keyword Triggers
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Deep contextual LLM reasoning + Smart Keyword Triggers</span>
+                  </div>
                 </td>
               </tr>
 
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">WebRTC Voice Hotline Calling</td>
-                <td className="p-4 text-zinc-600 dark:text-slate-400 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  None (Text only)
+                <td className="p-4 text-zinc-600 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>None (Text only)</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  100% Free WebRTC Voice Hotline with audio recordings
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>100% Free WebRTC Voice Hotline with audio recordings</span>
+                  </div>
                 </td>
               </tr>
 
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">Nigerian Dialects & Accents</td>
-                <td className="p-4 text-zinc-600 dark:text-slate-400 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  Robotic flat English
+                <td className="p-4 text-zinc-600 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>Robotic flat English</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Natural Nigerian Pidgin, Yoruba, & fluent English
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Natural Nigerian Pidgin, Yoruba, & fluent English</span>
+                  </div>
                 </td>
               </tr>
 
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">Contact Auto-Save & vCard</td>
-                <td className="p-4 text-zinc-700 dark:text-slate-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Google Contacts sync
+                <td className="p-4 text-zinc-700 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Google Contacts sync</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Live Leads CRM + 1-Click Excel CSV & Phone vCard (.vcf)
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Live Leads CRM + 1-Click Excel CSV & Phone vCard (.vcf)</span>
+                  </div>
                 </td>
               </tr>
 
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">Document & Proposal Creation</td>
-                <td className="p-4 text-zinc-600 dark:text-slate-400 flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  None
+                <td className="p-4 text-zinc-600 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>None</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Generates Word (.doc), Markdown & Web Artifacts
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Generates Word (.doc), Markdown & Web Artifacts</span>
+                  </div>
                 </td>
               </tr>
 
               <tr>
                 <td className="p-4 font-semibold text-zinc-900 dark:text-slate-200">Personalized Broadcasts</td>
-                <td className="p-4 text-zinc-700 dark:text-slate-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Static text broadcasts
+                <td className="p-4 text-zinc-700 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Static text broadcasts</span>
+                  </div>
                 </td>
-                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  Personalized dynamic tags (&#123;name&#125;, &#123;business&#125;)
+                <td className="p-4 text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Personalized dynamic tags (&#123;name&#125;, &#123;business&#125;)</span>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -948,15 +1014,21 @@ export default function Home() {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-zinc-300/80 dark:border-slate-800 py-8 px-6 text-center text-xs text-zinc-600 dark:text-slate-400 space-y-2 bg-white/40 dark:bg-[#060d1a]/50">
-        <p>
-          Built by{" "}
-          <Link href="/portfolio" className="text-emerald-700 dark:text-emerald-400 hover:underline font-bold">
+      <footer className="border-t border-zinc-300/80 dark:border-slate-800 py-8 px-4 sm:px-6 text-center text-xs text-zinc-600 dark:text-slate-400 space-y-2 bg-white/40 dark:bg-[#060d1a]/50 transition-colors">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
+          <span>Built by</span>
+          <Link
+            href="/portfolio"
+            className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 font-extrabold underline decoration-emerald-500/40 hover:decoration-emerald-500 transition"
+          >
             Femi Adeleke
-          </Link>{" "}
-          • Elite Full-Stack AI Automation Engineer
+          </Link>
+          <span className="hidden sm:inline text-zinc-400 dark:text-slate-600">•</span>
+          <span className="text-zinc-500 dark:text-slate-400 text-xs">Elite Full-Stack AI Automation Engineer</span>
+        </div>
+        <p className="text-[11px] text-zinc-500 dark:text-slate-500">
+          © {new Date().getFullYear()} Obey Business. All rights reserved.
         </p>
-        <p>© {new Date().getFullYear()} Obey Business. All rights reserved.</p>
       </footer>
     </div>
   );
