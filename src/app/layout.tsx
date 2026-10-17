@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
+import ObeyFloatingChatWrapper from "@/components/ObeyFloatingChatWrapper";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -103,7 +104,10 @@ export default async function RootLayout({
             }}
           />
         </head>
-        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#f1f5f9] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">{children}</body>
+        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#f1f5f9] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">
+          {children}
+          <ObeyFloatingChatWrapper />
+        </body>
       </html>
     </ClerkProvider>
   );

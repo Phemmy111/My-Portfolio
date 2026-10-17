@@ -1564,6 +1564,43 @@ export async function dbUpdateWorkspaceWhatsAppStatus(
   }
 }
 
+export async function dbUpdateWorkspaceProfile(
+  idOrSlug: string,
+  params: {
+    owner_name?: string;
+    owner_phone?: string;
+    name?: string;
+  }
+): Promise<Workspace | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    let cleanPhone = params.owner_phone ? params.owner_phone.replace(/\D/g, "") : undefined;
+    if (cleanPhone && cleanPhone.startsWith("0") && cleanPhone.length === 11) {
+      cleanPhone = "234" + cleanPhone.slice(1);
+    }
+
+    const nameVal = params.name && params.name.trim() ? params.name.trim() : null;
+    const ownerNameVal = params.owner_name && params.owner_name.trim() ? params.owner_name.trim() : null;
+    const ownerPhoneVal = cleanPhone || null;
+
+    const rows = await db`
+      UPDATE workspaces 
+      SET 
+        owner_name = COALESCE(${ownerNameVal}, owner_name),
+        owner_phone = COALESCE(${ownerPhoneVal}, owner_phone),
+        name = COALESCE(${nameVal}, name),
+        updated_at = NOW()
+      WHERE id = ${idOrSlug} OR slug = ${idOrSlug}
+      RETURNING *
+    `;
+    return (rows && rows[0]) ? (rows[0] as Workspace) : null;
+  } catch (err) {
+    console.error("dbUpdateWorkspaceProfile error:", err);
+    return null;
+  }
+}
+
 export async function dbListWorkspaces(): Promise<Workspace[]> {
   const db = getSql();
   if (!db) return [];

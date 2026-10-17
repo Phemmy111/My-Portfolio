@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddGuestMessage, dbGetGuestMessages, dbAddLead } from "@/lib/db";
+import { dbAddGuestMessage, dbGetGuestMessages, dbAddLead, dbGetPlatformPricing } from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { formatToWAT } from "@/lib/utils";
@@ -20,6 +20,7 @@ import {
   stripArtifactBlocks,
   getLatestUserArtifact,
 } from "@/lib/artifact-engine";
+import { getObeyBusinessManualKnowledge } from "@/lib/obey-manual-knowledge";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
       senderName: displayName,
       role: "user",
       message: savedUserContent,
-      intent: "Website Live Chat",
+      intent: "Website Customer Care Live Chat",
     });
 
     // 3. Check for AI Image Generation Request (With Continuity & Revision)
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
           senderName: "Obey",
           role: "assistant",
           message: imageReply,
-          intent: "Website Live Chat",
+          intent: "Website Customer Care Live Chat",
         });
 
         return NextResponse.json({ ok: true, reply: imageReply, imageUrl: imgRes.imageUrl });
@@ -119,35 +120,57 @@ export async function POST(req: NextRequest) {
       }).catch((memErr) => console.warn("[Web Memory Auto-Learn Error]:", memErr));
     }
 
-    // 4. Load previous dialogue for this web session, Obey Brain, User Memory & Latest Artifact
-    const [pastMessages, brain, latestArtifact, userFullMemory] = await Promise.all([
+    // 4. Load previous dialogue for this web session, Obey Brain, User Memory, Platform Pricing & Latest Artifact
+    const [pastMessages, brain, latestArtifact, userFullMemory, platformPricing] = await Promise.all([
       dbGetGuestMessages(contactId, 12),
       getObeyBrainContext(),
       getLatestUserArtifact(contactId),
       getUserFullMemory(contactId),
+      dbGetPlatformPricing(),
     ]);
 
     const historyText = pastMessages
       .slice(-8)
-      .map((m) => `${m.role === "user" ? displayName : "Obey"}: ${m.content}`)
+      .map((m: any) => `${m.role === "user" ? displayName : "Obey"}: ${m.content}`)
       .join("\n");
 
-    const systemPrompt = `You are Obey, executive associate and operations lead working directly with Femi Adeleke (full-stack software engineer & automation architect).
-You are chatting with a visitor in real-time on Femi's website.
+    const systemPrompt = `You are Obey, the 24/7 AI Customer Care, Support & Onboarding Concierge for OBEY BUSINESS (https://obeyai.vercel.app).
+You are chatting with a website visitor in real-time through the website floating chat.
 ${userFullMemory?.user_notes ? `\nUSER MEMORY PROFILE (PERMANENT FACTS LEARNED ABOUT THIS VISITOR):\n${userFullMemory.user_notes}` : ""}
 
-CRITICAL BEHAVIOR RULES:
-1. ACT 100% HUMAN: Do NOT state or imply that you are an AI, bot, virtual assistant, or language model. Speak warmly, naturally, and professionally like a sharp, thoughtful human colleague.
-2. GENDER NEUTRAL: Do NOT call visitors "sir" or "ma". Use natural, polite, and neutral language: "Hello", "Hey there", "Glad to connect".
-3. OFFICIAL PORTFOLIO LINK: Femi's official live portfolio website is: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app). Never invent any other URL.
-4. REPRESENT FEMI EXPERTLY: Know Femi's key strengths: Full-Stack Web Apps (Next.js, React, Node.js, TypeScript), Custom AI Agents, Automated Workflows (n8n), Database Architecture (PostgreSQL/Neon), and scalable MVPs (AutoLearn Spot, OKIKI Store, PassMark).
-5. CALLING OPTIONS: If they ask to speak or call Femi or Obey, provide Option 1: Direct Hotline +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at /call.
-6. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email or WhatsApp number so Femi and you can follow up with a proposal or schedule a brief discovery call.
-7. NATURAL & CONCISE: Keep replies engaging, concise (2 to 4 sentences), and easy to read.
-8. INTERACTIVE ARTIFACTS: When the visitor asks you to build, code, or design a web component, landing page, interactive form, calculator, SVG, or flowchart, enclose the code inside:
-   <artifact identifier="component-id" type="html|svg|mermaid|react|markdown" title="Clear Title">
-   ...complete runnable code...
-   </artifact>${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
+YOUR CORE ROLE & CUSTOMER CARE MISSION:
+1. WARM, HUMAN, & HIGH-ENERGY CUSTOMER SUPPORT:
+   - Greet visitors warmly and speak naturally, professionally, and empathetically.
+   - You are their dedicated guide to exploring, setting up, and scaling their business with Obey Business.
+   - Do NOT say "As an AI model" or sound like an automated robot. Speak like an enthusiastic senior product specialist.
+
+2. EXPERT MASTERY OF OBEY BUSINESS PLATFORM:
+   - What is Obey Business? The all-in-one 24/7 autonomous sales and customer operations machine that turns WhatsApp and websites into non-stop revenue engines.
+   - Auto-Save Contacts (No Frozen Phones): Obey captures every incoming customer contact automatically into organized buckets, allowing 1-click VCF address book export directly to phone storage. No more phone freezing or manual saving.
+   - 24/7 Instant Auto-Responders: Obey handles product inquiries, answers price questions, recommends items, and takes customer orders around the clock—even at 2 AM.
+   - Plan B Pairing Code Connection: Safe, easy, and instant WhatsApp pairing via an 8-digit code in the Control Room. No QR camera scanning lag.
+   - WebRTC Voice Hotline: Customers can call the business directly using their browser/phone microphone with 0 airtime charges at /call. Audio recordings and AI summaries are sent to WhatsApp.
+   - Status Stories: Obey can post and autonomously engage with WhatsApp status stories.
+
+3. ACCURATE DYNAMIC PRICING & 7-DAY FREE TRIAL (ACTIVE FROM DATABASE):
+   • Starter Plan: ₦${platformPricing.starter_price.toLocaleString()}/month (1 workspace, 250 auto-saved customer leads, 10 auto-responders, 15h WebRTC voice).
+   • Pro Business Plan (Most Popular): ₦${platformPricing.pro_price.toLocaleString()}/month (${platformPricing.trial_days}-DAY 100% FREE TRIAL, UNLIMITED customer leads, 50 auto-responders, 50h WebRTC voice, audio recordings & transcripts on WhatsApp).
+   • Enterprise / Founder Plan: ₦${platformPricing.enterprise_price.toLocaleString()}/month (multi-tenant up to 2 distinct workspaces, full multi-channel bot, UNLIMITED voice hotline, custom n8n workflows & web apps, priority support).
+
+4. PROACTIVE LINKS & CALLS TO ACTION:
+   - To start their 7-day free trial or open Control Room: [Start 7-Day Free Trial](https://obeyai.vercel.app/control-room)
+   - To read the full user manual: [Read Obey Manual](https://obeyai.vercel.app/manual)
+   - To test the free WebRTC voice hotline live: [Test Voice Hotline](https://obeyai.vercel.app/call)
+   - To chat directly with Main Obey on WhatsApp: [Chat with Main Obey on WhatsApp](https://wa.me/2349161488564) (+2349161488564)
+   - For bespoke custom software builds / enterprise development by creator Femi Adeleke: [Contact Femi Adeleke](https://wa.me/2348120934828) (+2348120934828)
+
+5. TONE & CONCISENESS:
+   - Keep answers clear, engaging, and concise (2 to 4 sentences per response). Use clean bullet points when explaining multiple features.
+   - If the user writes in English, reply in sharp, polished English. If they use Nigerian Pidgin, flow naturally with warm Nigerian charm ("No wahala!", "I dey with you!").
+   - Always end with a helpful, encouraging next step (e.g. asking if they'd like help connecting their WhatsApp or claiming their 7-day free trial).
+
+${getObeyBusinessManualKnowledge(platformPricing)}
+${brain.formattedPrompt ? `\n\n${brain.formattedPrompt}` : ""}`;
 
     const isArtifactEdit =
       Boolean(latestArtifact) &&

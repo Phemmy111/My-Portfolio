@@ -28,6 +28,7 @@ import {
   TrendingUp,
   RefreshCw,
   Phone,
+  Pencil,
   Bot,
   Filter,
   CheckCircle2,
@@ -200,6 +201,14 @@ function ControlRoomContent() {
   const [waPairingLoading, setWaPairingLoading] = useState<boolean>(false);
   const [waPairingError, setWaPairingError] = useState<string>("");
   const [waCopiedCode, setWaCopiedCode] = useState<boolean>(false);
+
+  // Owner Identity & Boss WhatsApp Number states
+  const [ownerEditName, setOwnerEditName] = useState<string>("");
+  const [ownerEditPhone, setOwnerEditPhone] = useState<string>("");
+  const [isEditingOwnerModal, setIsEditingOwnerModal] = useState<boolean>(false);
+  const [savingOwnerProfile, setSavingOwnerProfile] = useState<boolean>(false);
+  const [ownerProfileSuccess, setOwnerProfileSuccess] = useState<boolean>(false);
+  const [ownerProfileError, setOwnerProfileError] = useState<string>("");
 
   // UI states
   const [loading, setLoading] = useState(true);
@@ -523,6 +532,8 @@ function ControlRoomContent() {
       const data = await res.json();
       if (data.workspace) {
         setCurrentWs(data.workspace);
+        setOwnerEditName(data.workspace.owner_name || "");
+        setOwnerEditPhone(data.workspace.owner_phone || "");
         try {
           localStorage.setItem("obey_current_workspace", data.workspace.slug);
         } catch {}
@@ -1448,19 +1459,93 @@ function ControlRoomContent() {
     loadWorkspaceDetails(slug);
   };
 
+  const handleSaveOwnerProfile = async (overrideName?: string, overridePhone?: string) => {
+    if (!currentWs) return;
+    setSavingOwnerProfile(true);
+    setOwnerProfileError("");
+    setOwnerProfileSuccess(false);
+
+    const targetName = (overrideName !== undefined ? overrideName : ownerEditName).trim();
+    let targetPhone = (overridePhone !== undefined ? overridePhone : ownerEditPhone).replace(/\D/g, "");
+    if (targetPhone.startsWith("0") && targetPhone.length === 11) {
+      targetPhone = "234" + targetPhone.slice(1);
+    }
+
+    if (!targetName) {
+      setOwnerProfileError("Owner / Boss Name cannot be empty.");
+      setSavingOwnerProfile(false);
+      return;
+    }
+
+    if (!targetPhone || targetPhone.length < 10 || targetPhone.length > 15) {
+      setOwnerProfileError("Please enter a valid phone number with country code (e.g. 2348120934828).");
+      setSavingOwnerProfile(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner_name: targetName,
+          owner_phone: targetPhone,
+          ...(settings || {}),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOwnerProfileSuccess(true);
+        if (data.workspace) {
+          setCurrentWs(data.workspace);
+          setWorkspaces((prev) =>
+            prev.map((w) => (w.id === currentWs.id ? { ...w, owner_name: targetName, owner_phone: targetPhone } : w))
+          );
+        }
+        setTimeout(() => {
+          setOwnerProfileSuccess(false);
+          setIsEditingOwnerModal(false);
+        }, 1500);
+      } else {
+        setOwnerProfileError(data.error || "Failed to update owner profile.");
+      }
+    } catch (err: any) {
+      console.error("Save owner profile error:", err);
+      setOwnerProfileError("Network error. Please try again.");
+    } finally {
+      setSavingOwnerProfile(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!currentWs || !settings) return;
     setSavingSettings(true);
     setSaveSuccess(false);
     try {
+      let cleanPhone = (ownerEditPhone || currentWs.owner_phone || "").replace(/\D/g, "");
+      if (cleanPhone.startsWith("0") && cleanPhone.length === 11) {
+        cleanPhone = "234" + cleanPhone.slice(1);
+      }
+
       const res = await fetch(`/api/obey/workspaces/${currentWs.slug}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({
+          ...settings,
+          owner_name: ownerEditName.trim() || currentWs.owner_name,
+          owner_phone: cleanPhone || currentWs.owner_phone,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         setSaveSuccess(true);
+        if (data.workspace) {
+          setCurrentWs(data.workspace);
+          setWorkspaces((prev) =>
+            prev.map((w) => (w.id === currentWs.id ? { ...w, owner_name: data.workspace.owner_name, owner_phone: data.workspace.owner_phone } : w))
+          );
+        }
         setTimeout(() => setSaveSuccess(false), 3000);
       }
     } catch (err) {
@@ -2151,11 +2236,25 @@ function ControlRoomContent() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <span>Owner: <strong className="text-slate-200">{currentWs.owner_name}</strong></span>
-                  <span>Hotline: <strong className="text-slate-200 font-mono">+{currentWs.owner_phone}</strong></span>
+                <div className="text-xs text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
+                  <span>Owner (Boss): <strong className="text-emerald-400 font-bold">{currentWs.owner_name}</strong></span>
+                  <span>Hotline: <strong className="text-slate-200 font-mono font-bold">+{currentWs.owner_phone}</strong></span>
+                  <button
+                    onClick={() => {
+                      setOwnerEditName(currentWs.owner_name || "");
+                      setOwnerEditPhone(currentWs.owner_phone || "");
+                      setOwnerProfileError("");
+                      setOwnerProfileSuccess(false);
+                      setIsEditingOwnerModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold transition cursor-pointer"
+                    title="Change Boss Phone Number or Edit Name"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Edit Boss Info</span>
+                  </button>
                   <span>Slug: <code className="text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 font-mono text-[11px]">{currentWs.slug}</code></span>
-                </p>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0">
@@ -4240,6 +4339,90 @@ function ControlRoomContent() {
 
             {/* Structured Settings Cards Suite */}
             <div className="space-y-5">
+              {/* Card 0: Business Owner & Boss WhatsApp Identity */}
+              <div className="bg-zinc-950 border border-emerald-500/30 rounded-2xl p-4 sm:p-6 space-y-4 shadow-lg shadow-emerald-500/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-850 pb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      Executive Boss Identity & WhatsApp Number
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Configure who Obey serves as the owner. Messages sent to Obey from this WhatsApp number immediately unlock boss executive controls.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 self-start sm:self-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Instant Sync
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Owner / Boss Full Name</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={ownerEditName}
+                      onChange={(e) => setOwnerEditName(e.target.value)}
+                      placeholder="e.g. David Adeleke"
+                      className="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-emerald-500 text-white text-xs sm:text-sm outline-none transition"
+                    />
+                    <p className="text-[10px] text-zinc-500">
+                      Obey addresses you by this name when giving feedback, reports, and status debriefs.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Boss WhatsApp Phone Number</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={ownerEditPhone}
+                      onChange={(e) => setOwnerEditPhone(e.target.value)}
+                      placeholder="e.g. 2348120934828 or 08120934828"
+                      className="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-emerald-500 text-white text-xs sm:text-sm font-mono outline-none transition"
+                    />
+                    <p className="text-[10px] text-zinc-500">
+                      Include country code (e.g. 234...). Messages from this line are treated as the Boss.
+                    </p>
+                  </div>
+                </div>
+
+                {ownerProfileError && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{ownerProfileError}</span>
+                  </div>
+                )}
+
+                {ownerProfileSuccess && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span>✅ Boss Identity Updated! Obey has synchronized your boss phone and name immediately.</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveOwnerProfile()}
+                    disabled={savingOwnerProfile}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingOwnerProfile ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>{savingOwnerProfile ? "Updating Obey..." : "Update Boss Profile"}</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Card 1: Business Identity & Overview */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-3.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
@@ -6414,6 +6597,109 @@ function ControlRoomContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: EDIT BOSS IDENTITY & WHATSAPP PHONE */}
+      {/* ============================================================== */}
+      {isEditingOwnerModal && currentWs && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl shadow-emerald-500/10">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <span>Edit Boss Profile & WhatsApp Line</span>
+              </h3>
+              <button
+                onClick={() => setIsEditingOwnerModal(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold transition p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Messages received from this WhatsApp number will be treated with full executive owner privileges for <strong className="text-white">{currentWs.name}</strong>.
+            </p>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold text-slate-300 block mb-1 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Owner / Boss Full Name</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. David Adeleke"
+                  value={ownerEditName}
+                  onChange={(e) => setOwnerEditName(e.target.value)}
+                  className="w-full bg-slate-850 border border-slate-700 rounded-xl p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-300 block mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Boss WhatsApp Phone Number</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 2348120934828 or 08120934828"
+                  value={ownerEditPhone}
+                  onChange={(e) => setOwnerEditPhone(e.target.value)}
+                  className="w-full bg-slate-850 border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Nigerian numbers (08...) automatically convert to international format (234...).
+                </p>
+              </div>
+
+              {ownerProfileError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{ownerProfileError}</span>
+                </div>
+              )}
+
+              {ownerProfileSuccess && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>✅ Obey updated immediately! New boss identity is active.</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingOwnerModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveOwnerProfile()}
+                  disabled={savingOwnerProfile}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition text-xs flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-emerald-600/20"
+                >
+                  {savingOwnerProfile ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Updating Obey...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
