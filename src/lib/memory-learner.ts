@@ -23,10 +23,10 @@ export async function autoLearnUserMemory(params: {
     /^(?:please\s+)?(?:remember|keep in mind|note that|don't forget|save this)(?:\s+that|\s*:|\s+to\s+memory)?\s+([\s\S]+)/i
   );
 
-  // 2. Check for implicit memory signals (courses, projects, people, goals, personal facts)
+  // 2. Check for implicit memory signals (identity, business, preferences, projects, relationships)
   const hasMemorySignals =
     explicitMatch ||
-    /\b(course|module|modules|studying|exam|quiz|boyfriend|girlfriend|husband|wife|friend|meeting with|project|working on|apply for|applying|grant|grants|remote job|jobs|career|schedule|my name is|i am a|i work as|i live in|allergic|prefer|my goal|routine)\b/i.test(
+    /\b(course|module|modules|studying|exam|quiz|boyfriend|girlfriend|husband|wife|friend|brother|sister|partner|meeting with|project|working on|building|app|store|shop|business|company|brand|startup|agency|products|services|sell|selling|pricing|budget|apply for|applying|grant|grants|remote job|jobs|career|schedule|my name is|call me|i am a|i am an|i work as|i live in|based in|located in|allergic|prefer|i prefer|i like|routine|my goal|target)\b/i.test(
       userText
     );
 
@@ -36,19 +36,20 @@ export async function autoLearnUserMemory(params: {
 
   try {
     // 3. Use fast AI completion to distill concise memory facts
-    const extractionPrompt = `You are the memory engine for Obey AI.
-Extract only concise, permanent facts about the user from their message below.
+    const extractionPrompt = `You are the permanent memory engine for Obey AI.
+Extract only concise, permanent facts about the user from their message below to ensure coherent and consistent long-term memory across sessions.
 Focus on:
-- Courses, studies, modules, degrees, or certifications
-- Relationships, partners, friends, or collaborators mentioned (e.g. boyfriend, friend Isaac Moon)
-- Projects, businesses, jobs, or grants they are applying for
-- Specific goals, schedules, preferences, or personal facts
+- User identity: Name, profession, role, location, background
+- Business & Projects: Brand name, store/company, products/services offered, apps being built, active pipelines
+- Preferences & Directives: Preferred tone/language (e.g. Pidgin vs formal), specific operational rules, routines, workflow choices
+- Relationships & Collaborators: Partners, clients, teammates, or family mentioned
+- Goals & Targets: Key milestones, exams, launches, or budgets
 
 RULES:
 - Return ONLY 1 to 4 bullet points starting with "• ".
-- Be concise, objective, and factual.
-- Do NOT include temporary small talk (e.g. "wants food breaks" or "checking X for updates").
-- If there are no permanent personal facts to retain, return "NONE".
+- Be concise, objective, and factual (e.g. "• Runs an agricultural e-commerce brand called Havilah Touch in Ibadan", "• Prefers communication in Nigerian English / Pidgin").
+- Do NOT include temporary transient chatter (e.g. "asked for a 10-second skit", "greeting Obey").
+- If there are no permanent personal, project, or business facts to retain, return "NONE".
 
 User Statement:
 "${userText}"`;
@@ -65,7 +66,7 @@ User Statement:
       return { memoryCaptured: false };
     }
 
-    // 4. Save to persistent user memory in Neon DB
+    // 4. Save to persistent user memory in Neon DB (individual user memory)
     await saveUserPersonalMemory({
       userIdentifier,
       userNotes: extracted,
@@ -74,12 +75,15 @@ User Statement:
 
     console.log(`[Memory Engine] Learned new facts for ${userIdentifier}:\n${extracted}`);
 
-    // 5. If this is the owner (Femi) giving core business knowledge
-    if (isOwner && explicitMatch) {
+    // 5. If this is the owner (Femi), also auto-persist directly into global OBEY_BRAIN_KNOWLEDGE
+    if (isOwner) {
       try {
         const existingKnowledge = (await getSetting("OBEY_BRAIN_KNOWLEDGE")) || "";
-        const updatedKnowledge = `${existingKnowledge}\n• ${explicitMatch[1].trim()}`;
-        await setSetting("OBEY_BRAIN_KNOWLEDGE", updatedKnowledge);
+        if (!existingKnowledge.includes(extracted)) {
+          const updatedKnowledge = existingKnowledge ? `${existingKnowledge}\n${extracted}` : extracted;
+          await setSetting("OBEY_BRAIN_KNOWLEDGE", updatedKnowledge);
+          console.log(`[Memory Engine] Automatically updated OBEY_BRAIN_KNOWLEDGE with owner facts!`);
+        }
       } catch (err) {
         console.warn("[Memory Engine] Failed to append to OBEY_BRAIN_KNOWLEDGE:", err);
       }

@@ -396,7 +396,8 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - You represent "${currentWs.name}" to customers and sell their products/services.
    - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
      * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
-     * Share the platform link (https://obeyai.vercel.app/control-room) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!`;
+     * Share the platform link (https://obeyai.vercel.app/control-room) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
+     * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
 
