@@ -15,33 +15,46 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Femi Adeleke | Developer · Automator · Educator",
+  metadataBase: new URL("https://obeyai.vercel.app"),
+  title: "Obey AI — 24/7 Autonomous WhatsApp Sales & Business AI",
   description:
-    "Full-stack developer, automation engineer, and educator. Founder of AutoLearn Spot. Building smart web apps, AI workflows, and empowering creators globally.",
+    "Turn your WhatsApp & website into an autonomous 24/7 sales machine. Auto-save contacts to your phone without freezes, reply instantly to price inquiries, dispatch personalized broadcasts, and take 100% free WebRTC voice calls.",
   keywords: [
+    "Obey AI",
+    "Obey Business",
+    "WhatsApp AI Bot",
+    "WhatsApp Automation",
+    "WhatsApp CRM",
+    "Auto-save WhatsApp Contacts",
+    "WebRTC Voice Hotline",
+    "AI Sales Assistant",
     "Femi Adeleke",
-    "AutoLearn Spot",
-    "Full-Stack Developer",
-    "n8n Automation",
-    "Next.js Developer",
-    "AI Automation",
-    "Flutter Developer",
-    "Music Producer",
   ],
-  authors: [{ name: "Femi Adeleke" }],
-  creator: "Femi Adeleke",
+  authors: [{ name: "Obey AI" }, { name: "Femi Adeleke", url: "https://obeyai.vercel.app/portfolio" }],
+  creator: "Obey AI",
+  publisher: "Obey AI",
   openGraph: {
     type: "website",
-    title: "Femi Adeleke | Developer · Automator · Educator",
+    title: "Obey AI — 24/7 Autonomous WhatsApp Sales & Business AI",
     description:
-      "Full-stack developer, automation engineer, and educator. Founder of AutoLearn Spot. Building smart web apps, AI workflows, and empowering creators globally.",
-    siteName: "Femi Adeleke",
+      "Turn your WhatsApp & website into an autonomous 24/7 sales machine. Auto-save contacts, reply to customer inquiries, dispatch broadcasts, and take live WebRTC voice calls.",
+    siteName: "Obey AI",
+    url: "https://obeyai.vercel.app",
+    images: [
+      {
+        url: "/obey-logo.jpg",
+        width: 800,
+        height: 800,
+        alt: "Obey AI Logo",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Femi Adeleke | Developer · Automator · Educator",
+    title: "Obey AI — 24/7 Autonomous WhatsApp Sales & Business AI",
     description:
-      "Full-stack developer, automation engineer, and educator. Founder of AutoLearn Spot. Building smart web apps, AI workflows, and empowering creators globally.",
+      "Turn your WhatsApp & website into an autonomous 24/7 sales machine. Auto-save contacts, reply to inquiries, dispatch broadcasts, and take live voice calls.",
+    images: ["/obey-logo.jpg"],
   },
   icons: {
     icon: [
