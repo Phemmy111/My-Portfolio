@@ -126,7 +126,7 @@ export async function GET(
 
             const dbLead = leadsMap.get(phone);
             const isSaved = item.isSaved !== undefined ? Boolean(item.isSaved) : Boolean(dbLead?.is_saved);
-            const pushName = item.pushName || item.verifiedName || dbLead?.name || "";
+            const pushName = item.name || item.pushName || item.verifiedName || item.notify || dbLead?.name || "";
             const finalName = pushName || `Contact ${phone.slice(-4)}`;
             const profilePicUrl = item.profilePicUrl || dbLead?.profile_pic_url || null;
 

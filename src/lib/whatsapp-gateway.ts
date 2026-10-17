@@ -616,34 +616,12 @@ export async function sendWhatsAppStatusPost(params: {
       }
     }
 
-    // Build recipient statusJidList so that status is delivered and synced to phone ("My Status")
+    // Build recipient statusJidList:
+    // When allContacts is true, Evolution API/Baileys already broadcasts to all contacts.
+    // We only need the instance owner's JID in statusJidList so that the user's primary phone syncs under "My Status"
+    // without inflating the payload or crashing Render memory!
     let jidList = params.statusJidList ? [...params.statusJidList] : [];
     if (jidList.length === 0) {
-      try {
-        const contactsRes = await fetch(`${evoUrl}/chat/findContacts/${encodeURIComponent(instance)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: evoKey },
-          body: JSON.stringify({}),
-        });
-        if (contactsRes.ok) {
-          const contacts = await contactsRes.json();
-          if (Array.isArray(contacts)) {
-            for (const c of contacts) {
-              const rawJid = c.remoteJid || c.id || "";
-              if (rawJid && !rawJid.includes("@g.us") && !rawJid.includes("@broadcast") && !rawJid.includes("status")) {
-                const clean = rawJid.replace(/[^0-9]/g, "");
-                if (clean && clean.length >= 8) {
-                  jidList.push(`${clean}@s.whatsapp.net`);
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[WhatsApp Status] Contact fetch warning:", e);
-      }
-
-      // Add instance owner JID to ensure primary device syncs under "My Status"
       try {
         if (sql) {
           const instRows = await sql`
@@ -682,24 +660,45 @@ export async function sendWhatsAppStatusPost(params: {
           ...(jidList.length > 0 ? { statusJidList: jidList } : {}),
         };
 
-    const statusRes = await fetch(`${evoUrl}/message/sendStatus/${encodeURIComponent(instance)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: evoKey,
-      },
-      body: JSON.stringify(payload),
-    });
+    // Execute with automatic retry for 502/503/504 (handling Render cold-starts gracefully)
+    let lastError = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const statusRes = await fetch(`${evoUrl}/message/sendStatus/${encodeURIComponent(instance)}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoKey,
+          },
+          body: JSON.stringify(payload),
+        });
 
-    if (statusRes.ok) {
-      const data = await statusRes.json();
-      const messageId = data?.key?.id || data?.id || (Array.isArray(data) && data[0]?.key?.id);
-      return { success: true, messageId };
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          const messageId = data?.key?.id || data?.id || (Array.isArray(data) && data[0]?.key?.id);
+          return { success: true, messageId };
+        }
+
+        const errText = await statusRes.text();
+        lastError = `Evolution status error (${statusRes.status}): ${errText}`;
+        console.warn(`[WhatsApp Status] sendStatus attempt ${attempt} failed (${statusRes.status}):`, errText);
+
+        // If 502 Bad Gateway / 503 / 504 (Render cold-start wake up), wait 3s and retry once
+        if (attempt === 1 && (statusRes.status === 502 || statusRes.status === 503 || statusRes.status === 504)) {
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        break;
+      } catch (fetchErr: any) {
+        lastError = fetchErr.message;
+        if (attempt === 1) {
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+      }
     }
 
-    const err = await statusRes.text();
-    console.error("[WhatsApp Status] sendStatus error:", statusRes.status, err);
-    return { success: false, error: `Evolution status error (${statusRes.status}): ${err}` };
+    return { success: false, error: lastError };
   } catch (err: any) {
     console.error("[WhatsApp Status] sendWhatsAppStatusPost error:", err);
     return { success: false, error: err.message };
@@ -741,6 +740,59 @@ export async function deleteWhatsAppStatusPost(params: {
     return { success: false, error: err };
   } catch (err: any) {
     console.error("[Evolution] deleteWhatsAppStatusPost error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Sends an emoji reaction to any WhatsApp message.
+ */
+export async function sendWhatsAppReaction(params: {
+  instanceName?: string;
+  remoteJid: string;
+  messageId: string;
+  reaction: string; // e.g. "👍", "❤️", "🔥", "🙏", "⚡", "😂"
+  fromMe?: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const evoUrl =
+      process.env.EVOLUTION_API_URL ||
+      "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    let cleanJid = params.remoteJid.trim();
+    if (!cleanJid.includes("@")) {
+      const digits = cleanJid.replace(/\D/g, "");
+      cleanJid = `${digits}@s.whatsapp.net`;
+    }
+
+    const payload = {
+      key: {
+        remoteJid: cleanJid,
+        fromMe: Boolean(params.fromMe),
+        id: params.messageId,
+      },
+      reaction: params.reaction,
+    };
+
+    const res = await fetch(`${evoUrl}/message/sendReaction/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+    const errText = await res.text();
+    console.warn(`[Evolution] sendReaction failed (${res.status}):`, errText);
+    return { success: false, error: errText };
+  } catch (err: any) {
+    console.warn("[Evolution] sendReaction exception:", err);
     return { success: false, error: err.message };
   }
 }

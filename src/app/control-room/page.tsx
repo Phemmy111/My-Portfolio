@@ -399,6 +399,9 @@ function ControlRoomContent() {
   const [newBucketName, setNewBucketName] = useState("");
   const [newBucketDesc, setNewBucketDesc] = useState("");
   const [savingBucket, setSavingBucket] = useState(false);
+  const [bucketPhones, setBucketPhones] = useState<string[]>([]);
+  const [bucketContactSearch, setBucketContactSearch] = useState("");
+  const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
 
   // Broadcast state
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -555,6 +558,26 @@ function ControlRoomContent() {
     }
   };
 
+  const handleOpenBucketModal = (existingBucket?: any) => {
+    if (currentWs?.slug && contacts.length === 0) {
+      fetchContacts(currentWs.slug, "all");
+    }
+    if (existingBucket) {
+      setEditingBucketId(existingBucket.id);
+      setNewBucketName(existingBucket.name || "");
+      setNewBucketDesc(existingBucket.description || "");
+      setBucketPhones(existingBucket.contact_phones || []);
+    } else {
+      setEditingBucketId(null);
+      setNewBucketName(`Bucket ${buckets.length + 1}`);
+      setNewBucketDesc("");
+      const initial = selectedPhones.length > 0 ? selectedPhones : broadcastSelectedNumbers;
+      setBucketPhones(initial);
+    }
+    setBucketContactSearch("");
+    setShowSaveAsBucketModal(true);
+  };
+
   const handleCreateBucket = async (name: string, phones: string[], description?: string) => {
     if (!currentWs) return;
     if (!name.trim()) {
@@ -567,27 +590,38 @@ function ControlRoomContent() {
     }
     setSavingBucket(true);
     try {
-      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/buckets`, {
-        method: "POST",
+      const isEdit = Boolean(editingBucketId);
+      const url = `/api/obey/workspaces/${currentWs.slug}/buckets`;
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phones, description }),
+        body: JSON.stringify({
+          bucketId: editingBucketId,
+          name: name.trim(),
+          phones,
+          description,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         await fetchBuckets(currentWs.slug);
         setShowSaveAsBucketModal(false);
+        setEditingBucketId(null);
         setNewBucketName("");
         setNewBucketDesc("");
+        setBucketPhones([]);
         setContactBannerMsg({
           type: "success",
-          text: `🗂️ Bucket "${data.bucket.name}" created with ${data.bucket.contact_phones?.length || phones.length} contact(s)!`,
+          text: isEdit
+            ? `🗂️ Bucket "${data.bucket.name}" updated with ${data.bucket.contact_phones?.length || phones.length} contact(s)!`
+            : `🗂️ Bucket "${data.bucket.name}" created with ${data.bucket.contact_phones?.length || phones.length} contact(s)!`,
         });
         setTimeout(() => setContactBannerMsg(null), 4000);
       } else {
-        alert(data.error || "Failed to create bucket");
+        alert(data.error || "Failed to save bucket");
       }
     } catch (err: any) {
-      alert("Failed to create bucket: " + err.message);
+      alert("Failed to save bucket: " + err.message);
     } finally {
       setSavingBucket(false);
     }
@@ -622,6 +656,12 @@ function ControlRoomContent() {
       }
     }
   }, [activeTab, contactTab, currentWs?.slug]);
+
+  useEffect(() => {
+    if ((showBroadcastModal || showSaveAsBucketModal) && currentWs?.slug && contacts.length === 0) {
+      fetchContacts(currentWs.slug, "all");
+    }
+  }, [showBroadcastModal, showSaveAsBucketModal, currentWs?.slug, contacts.length]);
 
   useEffect(() => {
     if (activeTab === "status" && currentWs?.id) {
@@ -975,7 +1015,11 @@ function ControlRoomContent() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error || "Failed to process status");
+        let rawErr = data.message || data.error || "Failed to process status";
+        if (rawErr.includes("502") || rawErr.includes("Bad Gateway") || rawErr.includes("<!DOCTYPE")) {
+          rawErr = "⚠️ WhatsApp gateway was temporarily warming up or transcoding media. Please tap 'Post to WhatsApp Status Stories Now' again in 5 seconds.";
+        }
+        throw new Error(rawErr);
       }
 
       setStatusSuccessMsg(
@@ -990,7 +1034,11 @@ function ControlRoomContent() {
       setStatusPostMode("post_now");
       await fetchStatuses(currentWs.id);
     } catch (err: any) {
-      setStatusErrorMsg(err.message || "Failed to post status to WhatsApp");
+      let msg = err.message || "Failed to post status to WhatsApp";
+      if (msg.includes("502") || msg.includes("Bad Gateway") || msg.includes("<!DOCTYPE")) {
+        msg = "⚠️ WhatsApp gateway was temporarily warming up or transcoding media. Please tap 'Post to WhatsApp Status Stories Now' again in 5 seconds.";
+      }
+      setStatusErrorMsg(msg);
     } finally {
       setPostingStatus(false);
     }
@@ -1540,8 +1588,9 @@ function ControlRoomContent() {
       const matchesSearch =
         !q ||
         (c.name && c.name.toLowerCase().includes(q)) ||
-        (cleanQ && c.phone.includes(cleanQ)) ||
-        (c.last_message && c.last_message.toLowerCase().includes(q));
+        (c.phone && (c.phone.includes(q) || (cleanQ && c.phone.includes(cleanQ)))) ||
+        (c.last_message && c.last_message.toLowerCase().includes(q)) ||
+        (c.intent_summary && c.intent_summary.toLowerCase().includes(q));
 
       const matchesTab =
         contactTab === "all"
@@ -1560,11 +1609,29 @@ function ControlRoomContent() {
     const q = broadcastNumberSearch.toLowerCase().trim();
     const cleanQ = broadcastNumberSearch.replace(/\D/g, "");
     if (!q) return list;
-    return list.filter((c: any) =>
-      (c.name && c.name.toLowerCase().includes(q)) ||
-      (cleanQ && c.phone && c.phone.includes(cleanQ))
-    );
+    return list.filter((c: any) => {
+      const nameMatch = c.name && c.name.toLowerCase().includes(q);
+      const phoneMatch = c.phone && (c.phone.toLowerCase().includes(q) || (cleanQ && c.phone.includes(cleanQ)));
+      const msgMatch = c.last_message && c.last_message.toLowerCase().includes(q);
+      const intentMatch = c.intent_summary && c.intent_summary.toLowerCase().includes(q);
+      return nameMatch || phoneMatch || msgMatch || intentMatch;
+    });
   }, [contacts, leads, broadcastNumberSearch]);
+
+  // Filtered contacts for Bucket Modal selector
+  const filteredBucketContacts = useMemo(() => {
+    const list = contacts && contacts.length > 0 ? contacts : leads.map((l) => ({ phone: l.phone, name: l.name || "Lead", is_saved: true }));
+    const q = bucketContactSearch.toLowerCase().trim();
+    const cleanQ = bucketContactSearch.replace(/\D/g, "");
+    if (!q) return list;
+    return list.filter((c: any) => {
+      const nameMatch = c.name && c.name.toLowerCase().includes(q);
+      const phoneMatch = c.phone && (c.phone.toLowerCase().includes(q) || (cleanQ && c.phone.includes(cleanQ)));
+      const msgMatch = c.last_message && c.last_message.toLowerCase().includes(q);
+      const intentMatch = c.intent_summary && c.intent_summary.toLowerCase().includes(q);
+      return nameMatch || phoneMatch || msgMatch || intentMatch;
+    });
+  }, [contacts, leads, bucketContactSearch]);
 
   const allFilteredSelected =
     filteredContacts.length > 0 &&
@@ -4664,11 +4731,7 @@ function ControlRoomContent() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => {
-                        setShowSaveAsBucketModal(true);
-                        setNewBucketName(`Bucket ${buckets.length + 1}`);
-                        setNewBucketDesc("");
-                      }}
+                      onClick={() => handleOpenBucketModal()}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-sm"
                     >
                       <FolderPlus className="w-3.5 h-3.5" />
@@ -4726,9 +4789,7 @@ function ControlRoomContent() {
                             alert(`You have reached the ${bucketLimit} bucket limit for your plan. Please upgrade to Pro or Enterprise for more buckets!`);
                             return;
                           }
-                          setShowSaveAsBucketModal(true);
-                          setNewBucketName(`Bucket ${buckets.length + 1}`);
-                          setNewBucketDesc("");
+                          handleOpenBucketModal();
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-sm"
                       >
@@ -4752,12 +4813,8 @@ function ControlRoomContent() {
                         You can also tell Obey on WhatsApp: <strong className="text-purple-400">&quot;deliver this message to bucket 1&quot;</strong>!
                       </p>
                       <button
-                        onClick={() => {
-                          setShowSaveAsBucketModal(true);
-                          setNewBucketName("Bucket 1");
-                          setNewBucketDesc("");
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition"
+                        onClick={() => handleOpenBucketModal()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Create Bucket 1</span>
@@ -4786,6 +4843,14 @@ function ControlRoomContent() {
                           </div>
 
                           <div className="flex items-center gap-2 pt-2 border-t border-slate-900">
+                            <button
+                              onClick={() => handleOpenBucketModal(b)}
+                              className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 font-bold text-xs border border-purple-500/20 transition cursor-pointer"
+                              title="Add or remove contacts in this bucket"
+                            >
+                              <FolderPlus className="w-3 h-3" />
+                              <span>Edit Contacts</span>
+                            </button>
                             <button
                               onClick={() => {
                                 setBroadcastTargetType("bucket");
@@ -5310,12 +5375,21 @@ function ControlRoomContent() {
                         placeholder="Search contact by name or number..."
                         value={broadcastNumberSearch}
                         onChange={(e) => setBroadcastNumberSearch(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
                       />
+                      {broadcastNumberSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastNumberSearch("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
 
                     {/* Scrollable contact list */}
-                    <div className="max-h-48 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-xl p-2">
+                    <div className="max-h-60 sm:max-h-72 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5">
                       {filteredBroadcastContacts.length === 0 ? (
                         <div className="p-4 text-center text-slate-500 text-xs">
                           No contacts match your search
@@ -5371,11 +5445,7 @@ function ControlRoomContent() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setShowSaveAsBucketModal(true);
-                            setNewBucketName(`Bucket ${buckets.length + 1}`);
-                            setNewBucketDesc("");
-                          }}
+                          onClick={() => handleOpenBucketModal()}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] transition cursor-pointer"
                         >
                           <FolderPlus className="w-3 h-3" />
@@ -5492,23 +5562,29 @@ function ControlRoomContent() {
       {/* ============================================================== */}
       {/* MODAL: CREATE / SAVE AS CONTACT BUCKET */}
       {/* ============================================================== */}
+      {/* ============================================================== */}
+      {/* MODAL: CREATE / EDIT / SAVE AS CONTACT BUCKET */}
+      {/* ============================================================== */}
       {showSaveAsBucketModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-white text-base flex items-center gap-2">
                 <FolderPlus className="w-5 h-5 text-purple-400" />
-                <span>Save Contacts as Bucket</span>
+                <span>{editingBucketId ? `Edit Bucket: ${newBucketName || "Bucket"}` : "Save Contacts as Bucket"}</span>
               </h3>
               <button
-                onClick={() => setShowSaveAsBucketModal(false)}
+                onClick={() => {
+                  setShowSaveAsBucketModal(false);
+                  setEditingBucketId(null);
+                }}
                 className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800 shrink-0">
               <span>Your Plan Bucket Limit:</span>
               <span className="font-mono font-bold text-purple-400">
                 {buckets.length} / {bucketLimit === 999999 ? "Unlimited" : bucketLimit} used
@@ -5518,10 +5594,9 @@ function ControlRoomContent() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const targetPhones = selectedPhones.length > 0 ? selectedPhones : broadcastSelectedNumbers;
-                handleCreateBucket(newBucketName, targetPhones, newBucketDesc);
+                handleCreateBucket(newBucketName, bucketPhones, newBucketDesc);
               }}
-              className="space-y-3 text-xs"
+              className="space-y-3.5 text-xs flex-1 overflow-y-auto pr-1"
             >
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Bucket Name *</label>
@@ -5546,37 +5621,145 @@ function ControlRoomContent() {
                 />
               </div>
 
-              <div className="p-3 bg-purple-950/30 border border-purple-800/40 rounded-xl space-y-1">
-                <div className="font-bold text-purple-300">
-                  Included Contacts: {(selectedPhones.length > 0 ? selectedPhones.length : broadcastSelectedNumbers.length)} number(s)
+              {/* Contact Picker Section */}
+              <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-purple-400" />
+                    <span>Included Contacts:</span>
+                    <span className="text-purple-300 font-bold font-mono">
+                      {bucketPhones.length} number(s)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allFiltered = filteredBucketContacts.map((c: any) => c.phone);
+                        const merged = Array.from(new Set([...bucketPhones, ...allFiltered]));
+                        setBucketPhones(merged);
+                      }}
+                      className="text-[11px] text-purple-400 hover:underline cursor-pointer"
+                    >
+                      Select All ({filteredBucketContacts.length})
+                    </button>
+                    <span className="text-slate-600">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setBucketPhones([])}
+                      className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  Once saved, you can broadcast to this bucket with 1 click or tell Obey on WhatsApp: &ldquo;deliver this message to {newBucketName || "Bucket 1"}&rdquo;
+
+                {/* Search contacts for bucket */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search contact by name or number..."
+                    value={bucketContactSearch}
+                    onChange={(e) => setBucketContactSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                  {bucketContactSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setBucketContactSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Scrollable contact selection list */}
+                <div className="max-h-56 sm:max-h-60 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-xl p-2">
+                  {filteredBucketContacts.length === 0 ? (
+                    <div className="p-4 text-center text-slate-500 text-xs">
+                      No contacts match your search
+                    </div>
+                  ) : (
+                    filteredBucketContacts.map((c: any) => {
+                      const isChecked = bucketPhones.includes(c.phone);
+                      return (
+                        <label
+                          key={c.phone}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
+                            isChecked
+                              ? "bg-purple-950/40 border border-purple-800/60"
+                              : "hover:bg-slate-900 border border-transparent"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setBucketPhones(bucketPhones.filter((p) => p !== c.phone));
+                                } else {
+                                  setBucketPhones([...bucketPhones, c.phone]);
+                                }
+                              }}
+                              className="accent-purple-500 rounded cursor-pointer"
+                            />
+                            <div>
+                              <div className="font-semibold text-slate-200 text-xs">
+                                {c.name || "Contact"}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                +{c.phone}
+                              </div>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              c.is_saved
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-amber-500/10 text-amber-400"
+                            }`}
+                          >
+                            {c.is_saved ? "Saved" : "Unsaved"}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-400 bg-purple-950/20 border border-purple-900/30 p-2.5 rounded-lg">
+                  💡 Once saved, you can broadcast to this bucket with 1 click or tell Obey on WhatsApp: &ldquo;deliver this message to {newBucketName || "Bucket 1"}&rdquo;
                 </p>
               </div>
 
-              <div className="pt-2 flex items-center gap-2">
+              <div className="pt-2 flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowSaveAsBucketModal(false)}
+                  onClick={() => {
+                    setShowSaveAsBucketModal(false);
+                    setEditingBucketId(null);
+                  }}
                   className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={savingBucket || (selectedPhones.length === 0 && broadcastSelectedNumbers.length === 0)}
+                  disabled={savingBucket || bucketPhones.length === 0 || !newBucketName.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold transition shadow-lg shadow-purple-600/20 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {savingBucket ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
+                      <span>Saving Bucket...</span>
                     </>
                   ) : (
                     <>
                       <Save className="w-3.5 h-3.5" />
-                      <span>Save Bucket</span>
+                      <span>{editingBucketId ? `Update Bucket (${bucketPhones.length})` : `Save Bucket (${bucketPhones.length})`}</span>
                     </>
                   )}
                 </button>

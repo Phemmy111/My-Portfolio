@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Star,
   ExternalLink,
+  BookOpen,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -49,6 +50,8 @@ export default function Home() {
     trial_days: 7,
   });
 
+  const [selectedPlanModal, setSelectedPlanModal] = useState<"starter" | "pro" | "enterprise" | null>(null);
+
   React.useEffect(() => {
     fetch("/api/obey/pricing")
       .then((res) => res.json())
@@ -57,6 +60,62 @@ export default function Home() {
       })
       .catch(() => {});
   }, []);
+
+  const planDetails = {
+    starter: {
+      name: "Starter Plan",
+      badge: "Emerging Businesses",
+      badgeColor: "bg-zinc-100 text-zinc-800 border-zinc-300",
+      price: platformPricing.starter_price,
+      trial: false,
+      summary: "Ideal for solo founders, boutique businesses, and freelance consultants starting with automated customer replies.",
+      features: [
+        { title: "1 Single Business Workspace", desc: "Dedicated instance connecting your brand's unique phone number." },
+        { title: "Up to 250 Auto-Saved Contacts", desc: "Captures and indexes leads so they can view your WhatsApp Status stories." },
+        { title: "2 Contact Buckets", desc: "Group your leads into up to 2 distinct bucket lists for targeted broadcasts." },
+        { title: "10 Keyword Auto-Responders", desc: "Instant replies for frequently asked questions, prices, and locations." },
+        { title: "15 Hours/Month WebRTC Voice Hotline", desc: "Zero-airtime audio calls with your chosen AI voice profile." },
+        { title: "Phone vCard (.vcf) & Excel CSV Export", desc: "1-tap contact export directly into your phone address book." },
+      ],
+      planKey: "starter",
+    },
+    pro: {
+      name: "Pro Business Plan",
+      badge: "Most Popular — 7-Day Free Trial",
+      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-300",
+      price: platformPricing.pro_price,
+      trial: true,
+      summary: "Built for active businesses seeking aggressive customer growth, unlimited lead storage, voice transcripts, and broadcasts.",
+      features: [
+        { title: "7-Day 100% Free Trial", desc: "Full Pro features with ₦0 charged today. Test everything risk-free." },
+        { title: "UNLIMITED Auto-Saved Contacts", desc: "Never hit a ceiling — every incoming customer is permanently indexed." },
+        { title: "Up to 10 Contact Buckets", desc: "Segment your audience into VIP, Wholesale, Retail, and Follow-Up buckets." },
+        { title: "50 Keyword Auto-Responders", desc: "Comprehensive coverage of your product lines, services, and queries." },
+        { title: "50 Hours/Month WebRTC Voice Hotline", desc: "Ample voice calling time for inbound sales and customer inquiries." },
+        { title: "Audio Recordings & Full WhatsApp Transcripts", desc: "Delivered straight to your WhatsApp as soon as each call ends." },
+        { title: "Custom Business Catalog & Bank Details", desc: "Obey pitches your real services and takes orders with your account number." },
+        { title: "Personalized WhatsApp Broadcasts", desc: "Send dynamic broadcast messages with {name} & {business} merge tags." },
+      ],
+      planKey: "trial",
+    },
+    enterprise: {
+      name: "Enterprise / Founder Plan",
+      badge: "Multi-Brand Scaling",
+      badgeColor: "bg-purple-100 text-purple-800 border-purple-300",
+      price: platformPricing.enterprise_price,
+      trial: false,
+      summary: "High-volume operations, multi-brand entrepreneurs, agencies, and schools needing unlimited minutes and multi-agent systems.",
+      features: [
+        { title: "Multi-Business Management", desc: "Register and run up to 2 distinct brand workspaces under one account." },
+        { title: "Full Multi-Tenant WhatsApp Bot", desc: "Independent AI brains, bios, and catalogs for each business." },
+        { title: "UNLIMITED Contact Buckets", desc: "Create as many audience buckets as your campaigns require." },
+        { title: "UNLIMITED Voice Hotline Minutes", desc: "Zero restrictions on WebRTC call volume or customer duration." },
+        { title: "Autonomous n8n Workflows & Web App Generator", desc: "Ask Obey on WhatsApp to architect production-ready JSON and HTML tools." },
+        { title: "24/7 Dedicated Priority Support", desc: "Direct engineering support from Femi Adeleke and the core tech team." },
+      ],
+      planKey: "enterprise",
+    },
+  };
 
   // Country Code & Local Phone
   const [countryCode, setCountryCode] = useState("234");
@@ -183,6 +242,15 @@ export default function Home() {
           >
             <PhoneCall className="w-3.5 h-3.5 text-teal-600" />
             <span>Try Voice Hotline</span>
+          </Link>
+
+          <Link
+            href="/manual"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-100 text-zinc-800 text-xs font-bold border border-zinc-300 transition shadow-xs"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden sm:inline">User</span>
+            <span>Manual</span>
           </Link>
 
           <Link
@@ -438,19 +506,40 @@ export default function Home() {
       {/* Pricing Section */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 space-y-6">
         <div className="text-center space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 text-purple-900 border border-purple-300 text-xs font-bold shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            <span>Interactive Plan Breakdown & Limits</span>
+          </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-950">
             Simple, Transparent Pricing
           </h2>
           <p className="text-xs sm:text-sm text-zinc-700">
             Cancel or change plans anytime via Paystack. Every account starts with a {platformPricing.trial_days}-day free trial.
           </p>
+          <div className="pt-1">
+            <Link
+              href="/manual#plans"
+              className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 hover:text-purple-900 hover:underline"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Read Full Plan Comparison & Quotas in User Manual &rarr;</span>
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
           {/* Starter */}
-          <div className="bg-white border border-zinc-300 rounded-2xl p-6 space-y-4 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+          <div
+            onClick={() => setSelectedPlanModal("starter")}
+            className="bg-white border border-zinc-300 hover:border-zinc-500 rounded-2xl p-6 space-y-4 flex flex-col justify-between shadow-sm hover:shadow-xl transition cursor-pointer group"
+          >
             <div className="space-y-3">
-              <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Starter</div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Starter</span>
+                <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full group-hover:bg-purple-100 transition">
+                  Click for Details ➔
+                </span>
+              </div>
               <div className="text-3xl font-black text-zinc-950">
                 ₦{platformPricing.starter_price.toLocaleString()}{" "}
                 <span className="text-xs text-zinc-500 font-normal">/ month</span>
@@ -461,27 +550,51 @@ export default function Home() {
               <ul className="text-xs text-zinc-800 space-y-2 pt-2 border-t border-zinc-200 font-medium">
                 <li className="flex items-center gap-2">✓ 1 Single Business Workspace</li>
                 <li className="flex items-center gap-2">✓ Up to 250 auto-saved contacts</li>
+                <li className="flex items-center gap-2">✓ 2 Contact Buckets</li>
                 <li className="flex items-center gap-2">✓ 10 Keyword Auto-responders</li>
                 <li className="flex items-center gap-2">✓ 15 hours/mo WebRTC Voice Hotline</li>
                 <li className="flex items-center gap-2">✓ CSV & Phone vCard Export</li>
               </ul>
             </div>
-            <a
-              href="#onboard"
-              onClick={() => setForm({ ...form, plan: "starter" })}
-              className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold text-center block transition shadow-xs"
-            >
-              Choose Starter
-            </a>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPlanModal("starter");
+                }}
+                className="w-full py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold text-center block transition cursor-pointer"
+              >
+                🔍 View Detailed Breakdown
+              </button>
+              <a
+                href="#onboard"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setForm({ ...form, plan: "starter" });
+                }}
+                className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold text-center block transition shadow-xs"
+              >
+                Choose Starter
+              </a>
+            </div>
           </div>
 
           {/* Pro */}
-          <div className="bg-emerald-50/50 border-2 border-emerald-600 rounded-2xl p-6 space-y-4 relative flex flex-col justify-between shadow-xl shadow-emerald-600/10">
+          <div
+            onClick={() => setSelectedPlanModal("pro")}
+            className="bg-emerald-50/50 border-2 border-emerald-600 hover:border-emerald-700 rounded-2xl p-6 space-y-4 relative flex flex-col justify-between shadow-xl shadow-emerald-600/10 cursor-pointer group"
+          >
             <span className="absolute -top-3 right-6 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-600 text-white uppercase tracking-wider shadow-sm">
               Most Popular
             </span>
             <div className="space-y-3">
-              <div className="text-xs font-extrabold text-emerald-800 uppercase tracking-wider">Pro Business</div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-emerald-800 uppercase tracking-wider">Pro Business</span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full group-hover:bg-emerald-200 transition">
+                  Click for Details ➔
+                </span>
+              </div>
               <div className="text-3xl font-black text-zinc-950">
                 ₦{platformPricing.pro_price.toLocaleString()}{" "}
                 <span className="text-xs text-zinc-600 font-normal">/ month</span>
@@ -492,6 +605,7 @@ export default function Home() {
               <ul className="text-xs text-zinc-900 space-y-2 pt-2 border-t border-emerald-200 font-medium">
                 <li className="flex items-center gap-2">✓ 1 Dedicated Business Workspace</li>
                 <li className="flex items-center gap-2">✓ <strong>Unlimited</strong> auto-saved customer leads</li>
+                <li className="flex items-center gap-2">✓ Up to 10 Contact Buckets</li>
                 <li className="flex items-center gap-2">✓ 50 Keyword Auto-responders</li>
                 <li className="flex items-center gap-2">✓ 50 hours/mo WebRTC Voice Hotline</li>
                 <li className="flex items-center gap-2">✓ Audio recordings & transcripts on WhatsApp</li>
@@ -499,19 +613,42 @@ export default function Home() {
                 <li className="flex items-center gap-2">✓ Personalized WhatsApp Broadcasts</li>
               </ul>
             </div>
-            <a
-              href="#onboard"
-              onClick={() => setForm({ ...form, plan: "trial" })}
-              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black text-center block transition shadow-lg shadow-emerald-600/25"
-            >
-              Start {platformPricing.trial_days}-Day Free Trial (Pro)
-            </a>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPlanModal("pro");
+                }}
+                className="w-full py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 text-xs font-bold text-center block transition cursor-pointer"
+              >
+                🔍 View Detailed Breakdown
+              </button>
+              <a
+                href="#onboard"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setForm({ ...form, plan: "trial" });
+                }}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black text-center block transition shadow-lg shadow-emerald-600/25"
+              >
+                Start {platformPricing.trial_days}-Day Free Trial (Pro)
+              </a>
+            </div>
           </div>
 
           {/* Enterprise */}
-          <div className="bg-white border border-zinc-300 rounded-2xl p-6 space-y-4 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+          <div
+            onClick={() => setSelectedPlanModal("enterprise")}
+            className="bg-white border border-zinc-300 hover:border-purple-500 rounded-2xl p-6 space-y-4 flex flex-col justify-between shadow-sm hover:shadow-xl transition cursor-pointer group"
+          >
             <div className="space-y-3">
-              <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Enterprise / Founder</div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Enterprise / Founder</span>
+                <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full group-hover:bg-purple-100 transition">
+                  Click for Details ➔
+                </span>
+              </div>
               <div className="text-3xl font-black text-zinc-950">
                 ₦{platformPricing.enterprise_price.toLocaleString()}{" "}
                 <span className="text-xs text-zinc-500 font-normal">/ month</span>
@@ -522,18 +659,34 @@ export default function Home() {
               <ul className="text-xs text-zinc-800 space-y-2 pt-2 border-t border-zinc-200 font-medium">
                 <li className="flex items-center gap-2">✓ <strong>Multi-Business:</strong> Add & manage up to 2 distinct brand workspaces</li>
                 <li className="flex items-center gap-2">✓ Full Multi-tenant WhatsApp Bot</li>
+                <li className="flex items-center gap-2">✓ <strong>Unlimited</strong> Contact Buckets</li>
                 <li className="flex items-center gap-2">✓ <strong>Unlimited</strong> Voice Hotline minutes</li>
                 <li className="flex items-center gap-2">✓ Autonomous Web App & Document Generator</li>
                 <li className="flex items-center gap-2">✓ Priority 24/7 dedicated support</li>
               </ul>
             </div>
-            <a
-              href="#onboard"
-              onClick={() => setForm({ ...form, plan: "enterprise" })}
-              className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold text-center block transition shadow-xs"
-            >
-              Choose Enterprise
-            </a>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPlanModal("enterprise");
+                }}
+                className="w-full py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold text-center block transition cursor-pointer"
+              >
+                🔍 View Detailed Breakdown
+              </button>
+              <a
+                href="#onboard"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setForm({ ...form, plan: "enterprise" });
+                }}
+                className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold text-center block transition shadow-xs"
+              >
+                Choose Enterprise
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -701,6 +854,83 @@ export default function Home() {
           </form>
         </div>
       </section>
+
+      {/* Interactive Plan Breakdown Modal */}
+      {selectedPlanModal && planDetails[selectedPlanModal] && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedPlanModal(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-zinc-200 p-6 sm:p-8 space-y-6 animate-in zoom-in-95 duration-200 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedPlanModal(null)}
+              className="absolute top-5 right-5 w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-800 flex items-center justify-center text-sm font-bold transition cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="space-y-2">
+              <span className={`text-[11px] font-extrabold uppercase px-3 py-1 rounded-full border inline-block ${planDetails[selectedPlanModal].badgeColor}`}>
+                {planDetails[selectedPlanModal].badge}
+              </span>
+              <h3 className="text-2xl font-black text-zinc-950">
+                {planDetails[selectedPlanModal].name}
+              </h3>
+              <div className="text-3xl font-black text-emerald-700">
+                ₦{planDetails[selectedPlanModal].price.toLocaleString()}{" "}
+                <span className="text-xs text-zinc-500 font-normal">/ month</span>
+              </div>
+              <p className="text-xs text-zinc-600 leading-relaxed pt-1">
+                {planDetails[selectedPlanModal].summary}
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-zinc-100">
+              <h4 className="text-xs font-black uppercase text-zinc-700 tracking-wider">
+                Full Plan Capabilities & Quotas:
+              </h4>
+              <div className="space-y-2.5">
+                {planDetails[selectedPlanModal].features.map((feat, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-2.5 rounded-xl bg-zinc-50 border border-zinc-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-bold text-zinc-900">{feat.title}</div>
+                      <div className="text-[11px] text-zinc-500 leading-normal">{feat.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-3">
+              <a
+                href="#onboard"
+                onClick={() => {
+                  setForm({ ...form, plan: planDetails[selectedPlanModal].planKey });
+                  setSelectedPlanModal(null);
+                }}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs text-center transition shadow-lg shadow-emerald-600/20"
+              >
+                {planDetails[selectedPlanModal].trial
+                  ? `Claim ${platformPricing.trial_days}-Day Free Trial`
+                  : `Select ${planDetails[selectedPlanModal].name}`}
+              </a>
+              <Link
+                href="/manual#plans"
+                onClick={() => setSelectedPlanModal(null)}
+                className="py-3 px-4 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs text-center transition flex items-center justify-center gap-1.5"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                <span>Read in Manual</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-zinc-300/80 py-8 px-6 text-center text-xs text-zinc-600 space-y-2 bg-white/40">

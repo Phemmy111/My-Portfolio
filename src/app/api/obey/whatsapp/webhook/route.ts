@@ -31,6 +31,7 @@ import {
   fetchEvolutionMediaBase64,
   markWhatsAppMessageRead,
   sendWhatsAppPresence,
+  sendWhatsAppReaction,
 } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
@@ -89,6 +90,8 @@ interface ProcessMessageParams {
   userText: string;
   pushName?: string;
   isVoiceNote?: boolean;
+  isSticker?: boolean;
+  messageId?: string;
   visionMedia?: { base64: string; mimetype: string } | null;
   docMedia?: { base64: string; mimetype: string } | null;
   documentFileName?: string;
@@ -438,6 +441,57 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
+  // Natural Emoji Reactions & Sticker Handling
+  if (params.messageId && replyTo) {
+    const isAppreciation = /\b(thank you|thanks|well done|welldone|proud of you|you are the best|awesome|amazing|bless you|god bless|love you|appreciate)\b/i.test(lower);
+    const isCelebration = /\b(fire|let'?s go|lets go|congrats|congratulations|wow|great job|kudos|superb|victory)\b/i.test(lower);
+    const isAffirmation = /^(yes|yeah|sure|done|approved|proceed|perfect|correct|ok|okay)\b/i.test(lower.trim());
+    const isHumor = /\b(haha|hahaha|lol|lmao|hehe|😂|🤣)\b/i.test(lower);
+
+    let chosenReaction = "";
+    if (params.isSticker) {
+      chosenReaction = ["❤️", "🔥", "😂", "👍"][Math.floor(Math.random() * 4)];
+    } else if (isAppreciation) {
+      chosenReaction = "❤️";
+    } else if (isCelebration) {
+      chosenReaction = "🔥";
+    } else if (isAffirmation) {
+      chosenReaction = "👍";
+    } else if (isHumor) {
+      chosenReaction = "😂";
+    }
+
+    if (chosenReaction) {
+      sendWhatsAppReaction({
+        instanceName: currentWs?.whatsapp_instance_name || instanceName || "obey",
+        remoteJid: `${replyTo}@s.whatsapp.net`,
+        messageId: params.messageId,
+        reaction: chosenReaction,
+      }).catch((err) => console.warn("[WA Reaction] Failed to send emoji reaction:", err));
+    }
+  }
+
+  // If incoming message was a sticker without other instructions:
+  if (params.isSticker && (!userText || userText === "[Sticker Sent by User]")) {
+    const stickerReplies = [
+      "Haha, nice sticker! 😄 How can I assist you right now?",
+      "Love the sticker! 🔥 Wetin we dey tackle today?",
+      "Sharp sticker! ⚡ Tell me what you'd like to work on.",
+    ];
+    const chosenReply = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
+    await reply(chosenReply);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-stk-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs?.name || "Obey",
+        role: "assistant",
+        content: chosenReply,
+      });
+    } catch {}
+    return;
+  }
+
   // 1. Record incoming message in Neon DB
   const recordedUserText = userText && userText !== "[Image Received]" && userText !== "[Unclear Voice Note]"
     ? (visionMedia?.base64
@@ -612,18 +666,18 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
         welcomeText =
           `👋 *Hello${welcomeName}! I am Obey.*
 
-I am an autonomous AI executive companion built by *Femi Adeleke*. I am here to assist, entertain, and make life easier for you across WhatsApp, Web, and Voice!
+I am your 24/7 personal AI companion and executive assistant, right here inside WhatsApp! ⚡
 
-🚀 *Here are my superpowers:*
+🚀 *Here is what we can do together:*
 🎙️ *Voice Notes:* Send me any voice note in English or Pidgin — I listen, analyze, and execute your instructions.
-📞 *Live Voice Calls:* Tap my call link anytime for a 100% free WebRTC voice chat — we fit gist about anything!
-🌐 *Instant Websites & Tools:* Ask me to build a website, landing page, or dashboard, and I'll send you the live preview link and code.
-🎨 *AI Image Generation:* Describe any artwork or photo, and I'll generate it instantly.
-📄 *Documents & Vision:* Send screenshots, PDFs, invoices, or contracts — I read and extract key insights.
-🔎 *Live Web Search:* Ask me for real-time news, facts, and trends across Nigeria and the world.
-📲 *Smart Delegation:* Ask me to message someone, and I'll format and dispatch it for you.
+📁 *Instant Documents & Plans:* Ask me to turn any idea, pitch, or meeting notes into a Word Doc, Google Doc, or PDF.
+⚙️ *n8n Automation Workflows:* Ask me to design ready-made n8n JSON workflows you can import with 1 click.
+🌐 *Web Apps & Tools:* Ask me to create or update interactive HTML pages, calculators, and dashboards with live links.
+🎨 *AI Image Generation:* Describe any artwork or image you want, and I'll generate it instantly.
+📞 *Live Voice Calls:* Tap my voice link anytime for a 100% free voice call — we can talk and brainstorm live!
+👥 *Contacts & Messaging:* Ask me to find numbers, message contacts, or broadcast to contact buckets.
 
-How can I assist you today?`;
+How can I assist you right now?`;
       } else {
         const wsSettings = await dbGetWorkspaceSettings(wsId);
         if (wsSettings?.whatsapp_welcome) {
@@ -1254,12 +1308,33 @@ Output ONLY the comment text.`,
                   status_text: statusText || (hasVisual ? "[Media Story]" : null),
                   comment_sent: comment,
                 });
+
+                // Write into guest_messages so Obey remembers commenting on their status when they reply!
+                try {
+                  await dbAddGuestMessage({
+                    id: `guest-status-cmt-${Date.now()}`,
+                    phone_number: posterPhone,
+                    sender_name: currentWs?.name || "Obey",
+                    role: "assistant",
+                    content: `[Obey replied to your WhatsApp Status "${statusText || (hasVisual ? "Media Story" : "Status Update")}"]: "${comment}"`,
+                  });
+                } catch (cmtDbErr) {
+                  console.warn("[WA Status] Failed to record status comment in guest_messages:", cmtDbErr);
+                }
+
                 console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}" (quoted reply)`);
 
                 // If Boss posted, also dispatch a personalized Chief-of-Staff salute from Main Obey!
                 if (instanceName !== "obey" && (posterPhone === "2348120934828" || phoneJid.includes("8120934828"))) {
                   const bossSalute = "Boss! Love this update. 🔥 Obey is right behind you!";
                   await sendWhatsAppMessage(bossSalute, posterPhone, "obey", quotedStatus);
+                  try {
+                    await dbAddChatMessage({
+                      id: `wa-asst-boss-${Date.now()}`,
+                      role: "assistant",
+                      content: `[Obey commented on your WhatsApp Status]: "${bossSalute}"`,
+                    });
+                  } catch {}
                   console.log(`[WA Status] Main Obey sent direct Boss comment to ${posterPhone}`);
                 }
               }
@@ -1329,12 +1404,28 @@ Output ONLY the comment text.`,
   const isImage = Boolean(msgObj.message?.imageMessage);
   const isDoc = Boolean(msgObj.message?.documentMessage || msgObj.message?.documentWithCaptionMessage);
   const isContact = Boolean(contactCard);
+  const isSticker = Boolean(msgObj.message?.stickerMessage);
 
-  if (!userText && !isAudio && !isImage && !isDoc && !isContact) {
+  // Extract quoted reply text (including status replies and quoted messages)
+  const quotedMsg = msgObj.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+  const quotedText =
+    quotedMsg?.conversation ||
+    quotedMsg?.extendedTextMessage?.text ||
+    quotedMsg?.imageMessage?.caption ||
+    "";
+  if (quotedText && !userText.includes("[Replying to:")) {
+    userText = `[Replying to: "${quotedText}"] ${userText}`.trim();
+  }
+
+  if (isSticker && !userText) {
+    userText = "[Sticker Sent by User]";
+  }
+
+  if (!userText && !isAudio && !isImage && !isDoc && !isContact && !isSticker) {
     return NextResponse.json({ ok: true });
   }
 
-  console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : '[Doc]')}"`);
+  console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : isSticker ? '[Sticker]' : '[Doc]')}"`);
 
   after(async () => {
     try {
@@ -1376,6 +1467,8 @@ Output ONLY the comment text.`,
         userText: activeText,
         pushName: msgObj.pushName,
         isVoiceNote,
+        isSticker,
+        messageId: msgObj.key?.id,
         visionMedia,
         docMedia,
         documentFileName: msgObj.message?.documentMessage?.fileName,
