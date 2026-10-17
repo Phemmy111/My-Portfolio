@@ -3,14 +3,28 @@
  * Shared across Main Obey (dynamic-companion) and Obey Business (multi-tenant webhooks).
  */
 
-export const OBEY_BUSINESS_MANUAL_KNOWLEDGE = `
-OBEY BUSINESS PLATFORM MANUAL & ARCHITECTURE:
-Obey Business (https://femiadelekeportfolio.vercel.app/control-room) is an autonomous 24/7 AI operations and WhatsApp sales platform engineered for founders, business owners, and creators.
+export interface PlatformPricingContext {
+  starter_price?: number;
+  pro_price?: number;
+  enterprise_price?: number;
+  trial_days?: number;
+}
 
-1. COMMERCIAL SUBSCRIPTION TIERS:
-• Starter Plan (₦9,500/month): 1 business workspace, 250 auto-saved leads, 10 keyword auto-responders, 15 hrs/month WebRTC voice calls, 2 contact buckets, 1-tap VCF / CSV contact export.
-• Pro Business Plan (₦22,500/month) [Most Popular]: 7-Day 100% Free Trial, UNLIMITED auto-saved customer leads, 50 keyword auto-responders, 50 hrs/month WebRTC voice calls, WhatsApp audio recordings & executive transcripts, custom business catalog with direct bank payment details, personalized WhatsApp broadcast engine, and up to 10 contact buckets.
-• Enterprise / Founder Plan (₦55,000/month): Multi-business management (up to 2 distinct workspaces), full multi-tenant WhatsApp bot, UNLIMITED voice hotline minutes, UNLIMITED contact buckets, autonomous n8n workflows & web app generator, and dedicated 24/7 priority engineer support.
+export function getObeyBusinessManualKnowledge(pricing?: PlatformPricingContext, baseUrl?: string): string {
+  const starter = (pricing?.starter_price || 9500).toLocaleString();
+  const pro = (pricing?.pro_price || 22500).toLocaleString();
+  const enterprise = (pricing?.enterprise_price || 55000).toLocaleString();
+  const trialDays = pricing?.trial_days || 7;
+  const domain = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
+
+  return `
+OBEY BUSINESS PLATFORM MANUAL & ARCHITECTURE:
+Obey Business (${domain}/control-room) is an autonomous 24/7 AI operations and WhatsApp sales platform engineered for founders, business owners, and creators.
+
+1. DYNAMIC COMMERCIAL SUBSCRIPTION TIERS:
+• Starter Plan (₦${starter}/month): 1 business workspace, 250 auto-saved leads, 10 keyword auto-responders, 15 hrs/month WebRTC voice calls, 2 contact buckets, 1-tap VCF / CSV contact export.
+• Pro Business Plan (₦${pro}/month) [Most Popular]: ${trialDays}-Day 100% Free Trial, UNLIMITED auto-saved customer leads, 50 keyword auto-responders, 50 hrs/month WebRTC voice calls, WhatsApp audio recordings & executive transcripts, custom business catalog with direct bank payment details, personalized WhatsApp broadcast engine, and up to 10 contact buckets.
+• Enterprise / Founder Plan (₦${enterprise}/month): Multi-business management (up to 2 distinct workspaces), full multi-tenant WhatsApp bot, UNLIMITED voice hotline minutes, UNLIMITED contact buckets, autonomous n8n workflows & web app generator, and dedicated 24/7 priority engineer support.
 
 2. CORE HOW-TO MANUAL & FEATURES:
 • WhatsApp Connect (Plan A & Plan B):
@@ -35,15 +49,24 @@ Obey Business (https://femiadelekeportfolio.vercel.app/control-room) is an auton
 • n8n Workflow & Web Artifacts:
   - Generates ready-to-import production n8n JSON automation pipelines and interactive HTML/Tailwind web apps.
 `;
+}
 
-export const MAIN_OBEY_FLAGSHIP_KNOWLEDGE = `
+export function getMainObeyFlagshipKnowledge(baseUrl?: string): string {
+  const domain = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
+
+  return `
 MAIN OBEY FLAGSHIP INTELLIGENCE:
 • Main Obey is the flagship personal AI executive companion and senior software architect engineered by Femi Adeleke.
 • Role: Acts as the client's dedicated personal AI Agent, companion, confidant, and assistant. Solves daily tasks, builds n8n workflows, codes software, analyzes media/docs, and leads technical strategy.
 • Creator Distinction: He only mentions Femi Adeleke as his creator when it is needed to show off or brag ("I was engineered by Femi Adeleke, one of Nigeria's top AI architects..."). Otherwise, he is 100% focused on being the client's loyal, personal assistant.
-• Creator Direct Contact:
+• Creator Direct Contact & Chat Link:
   - Femi Adeleke (Founder & Lead Architect)
-  - WhatsApp: +2348120934828
-  - Portfolio: https://femiadelekeportfolio.vercel.app
-  - Direct Engineering Hire & Custom Enterprise Bot requests go through Femi.
+  - Direct WhatsApp Chat Link: https://wa.me/2348120934828 (+2348120934828)
+  - Platform / Portfolio: ${domain}
+  - CRITICAL: Whenever sharing Femi Adeleke or Main Obey's contact details, ALWAYS provide the direct clickable WhatsApp link: https://wa.me/2348120934828
 `;
+}
+
+// Default static fallback exports for convenience
+export const OBEY_BUSINESS_MANUAL_KNOWLEDGE = getObeyBusinessManualKnowledge();
+export const MAIN_OBEY_FLAGSHIP_KNOWLEDGE = getMainObeyFlagshipKnowledge();

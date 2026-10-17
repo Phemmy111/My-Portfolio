@@ -26,6 +26,7 @@ import {
   dbAddStatusExclusion,
   dbRemoveStatusExclusion,
   dbGetStatusExclusions,
+  dbGetPlatformPricing,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -48,7 +49,12 @@ import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
 import { executePendingUserAction } from "@/lib/agent-dispatcher";
 import { processDynamicCompanionTurn } from "@/lib/dynamic-companion";
 import { getLatestUserArtifact } from "@/lib/artifact-engine";
-import { OBEY_BUSINESS_MANUAL_KNOWLEDGE, MAIN_OBEY_FLAGSHIP_KNOWLEDGE } from "@/lib/obey-manual-knowledge";
+import {
+  OBEY_BUSINESS_MANUAL_KNOWLEDGE,
+  MAIN_OBEY_FLAGSHIP_KNOWLEDGE,
+  getObeyBusinessManualKnowledge,
+  getMainObeyFlagshipKnowledge,
+} from "@/lib/obey-manual-knowledge";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -222,10 +228,13 @@ async function handleObeyBusinessOwnerTurn(params: {
   }
 
   // 4. Conversational Obey Business Assistant
-  const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
+  const [wsSettings, platformPricing] = await Promise.all([
+    dbGetWorkspaceSettings(currentWs.id),
+    dbGetPlatformPricing(),
+  ]);
   const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
   const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
-  const voiceCallLink = `https://femiadelekeportfolio.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}`;
+  const voiceCallLink = `https://obeyai.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}`;
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|can (?:we|i) call)\b/i.test(userText);
 
   const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
@@ -252,11 +261,12 @@ Your role and personality:
   You have the complete Obey Manual memorized. Guide Boss on how to use every feature: connecting WhatsApp with Plan B pairing code, saving leads with 1-click VCF export, creating Contact Buckets, running status broadcasts, and setting up keyword triggers.
 - MAIN OBEY & ADVANCED CUSTOM ENGINEERING:
   You are fully aware of Main Obey (Femi Adeleke's flagship personal AI engineer & executive companion).
-  If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Main Obey / Femi Adeleke directly, introduce Main Obey and provide Femi's verified direct line:
-  • Femi Adeleke (Founder & Lead Architect): WhatsApp +2348120934828 | https://femiadelekeportfolio.vercel.app
+  If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Main Obey / Femi Adeleke directly, introduce Main Obey and provide Femi's verified direct clickable WhatsApp link:
+  • Direct WhatsApp: https://wa.me/2348120934828 (+2348120934828)
+  • Platform / Portfolio: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app)
 
-${OBEY_BUSINESS_MANUAL_KNOWLEDGE}
-${MAIN_OBEY_FLAGSHIP_KNOWLEDGE}`;
+${getObeyBusinessManualKnowledge(platformPricing)}
+${getMainObeyFlagshipKnowledge()}`;
 
   const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
 
@@ -386,7 +396,7 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - You represent "${currentWs.name}" to customers and sell their products/services.
    - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
      * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
-     * Share the platform link (https://femiadelekeportfolio.vercel.app/control-room) and Femi's direct WhatsApp (+2348120934828) for getting their own custom business bot!`;
+     * Share the platform link (https://obeyai.vercel.app/control-room) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
 
