@@ -57,6 +57,10 @@ import {
   ToggleLeft,
   ToggleRight,
   Calendar,
+  FolderPlus,
+  Folder,
+  FolderCheck,
+  Target,
 } from "lucide-react";
 
 const WHATSAPP_STATUS_COLORS = [
@@ -381,14 +385,27 @@ function ControlRoomContent() {
     unsaved: number;
     autoSaveEnabled: boolean;
   }>({ total: 0, saved: 0, unsaved: 0, autoSaveEnabled: true });
-  const [contactTab, setContactTab] = useState<"all" | "unsaved" | "saved">("all");
+  const [contactTab, setContactTab] = useState<"all" | "unsaved" | "saved" | "buckets">("all");
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [contactActionLoading, setContactActionLoading] = useState<string | null>(null);
   const [autoSaveMaster, setAutoSaveMaster] = useState(true);
   const [contactBannerMsg, setContactBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Contact Buckets state
+  const [buckets, setBuckets] = useState<any[]>([]);
+  const [bucketLimit, setBucketLimit] = useState<number>(2);
+  const [bucketsLoading, setBucketsLoading] = useState(false);
+  const [showSaveAsBucketModal, setShowSaveAsBucketModal] = useState(false);
+  const [newBucketName, setNewBucketName] = useState("");
+  const [newBucketDesc, setNewBucketDesc] = useState("");
+  const [savingBucket, setSavingBucket] = useState(false);
+
   // Broadcast state
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTargetType, setBroadcastTargetType] = useState<"segment" | "specific_numbers" | "bucket">("segment");
+  const [broadcastSelectedNumbers, setBroadcastSelectedNumbers] = useState<string[]>([]);
+  const [broadcastSelectedBucketId, setBroadcastSelectedBucketId] = useState<string>("");
+  const [broadcastNumberSearch, setBroadcastNumberSearch] = useState("");
   const [broadcastTemplate, setBroadcastTemplate] = useState(
     "Hello {name}! We have an exclusive update from {business}. Would you like to check out our latest offers?"
   );
@@ -480,6 +497,7 @@ function ControlRoomContent() {
         setRules(data.rules || []);
         setLeads(data.leads || []);
         fetchContacts(data.workspace.slug, "all");
+        fetchBuckets(data.workspace.slug);
         setCallLogs(data.callLogs || []);
         setStatuses(data.statuses || []);
         setAutoStatusEnabled(data.workspace.auto_status_enabled || false);
@@ -499,12 +517,13 @@ function ControlRoomContent() {
     }
   }
 
-  const fetchContacts = async (slug?: string, filter: "all" | "unsaved" | "saved" = "all") => {
+  const fetchContacts = async (slug?: string, filter: "all" | "unsaved" | "saved" | "buckets" = "all") => {
     const targetSlug = slug || currentWs?.slug;
     if (!targetSlug) return;
     setContactsLoading(true);
     try {
-      const res = await fetch(`/api/obey/workspaces/${targetSlug}/contacts?filter=${filter}`);
+      const apiFilter = filter === "buckets" ? "all" : filter;
+      const res = await fetch(`/api/obey/workspaces/${targetSlug}/contacts?filter=${apiFilter}`);
       const data = await res.json();
       if (data.success) {
         setContacts(data.contacts || []);
@@ -518,9 +537,89 @@ function ControlRoomContent() {
     }
   };
 
+  const fetchBuckets = async (slug?: string) => {
+    const targetSlug = slug || currentWs?.slug;
+    if (!targetSlug) return;
+    setBucketsLoading(true);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${targetSlug}/buckets`);
+      const data = await res.json();
+      if (data.success) {
+        setBuckets(data.buckets || []);
+        setBucketLimit(data.limit || 2);
+      }
+    } catch (err) {
+      console.error("Failed to load buckets:", err);
+    } finally {
+      setBucketsLoading(false);
+    }
+  };
+
+  const handleCreateBucket = async (name: string, phones: string[], description?: string) => {
+    if (!currentWs) return;
+    if (!name.trim()) {
+      alert("Please provide a name for the bucket (e.g. Bucket 1 or VIP Clients).");
+      return;
+    }
+    if (!phones || phones.length === 0) {
+      alert("Please select at least one contact number to add to this bucket.");
+      return;
+    }
+    setSavingBucket(true);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/buckets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phones, description }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchBuckets(currentWs.slug);
+        setShowSaveAsBucketModal(false);
+        setNewBucketName("");
+        setNewBucketDesc("");
+        setContactBannerMsg({
+          type: "success",
+          text: `🗂️ Bucket "${data.bucket.name}" created with ${data.bucket.contact_phones?.length || phones.length} contact(s)!`,
+        });
+        setTimeout(() => setContactBannerMsg(null), 4000);
+      } else {
+        alert(data.error || "Failed to create bucket");
+      }
+    } catch (err: any) {
+      alert("Failed to create bucket: " + err.message);
+    } finally {
+      setSavingBucket(false);
+    }
+  };
+
+  const handleDeleteBucket = async (bucketId: string, bucketName: string) => {
+    if (!currentWs) return;
+    if (!confirm(`Are you sure you want to delete "${bucketName}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/buckets?id=${bucketId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBuckets((prev) => prev.filter((b) => b.id !== bucketId));
+        setContactBannerMsg({ type: "success", text: `Bucket "${bucketName}" deleted.` });
+        setTimeout(() => setContactBannerMsg(null), 4000);
+      } else {
+        alert(data.error || "Failed to delete bucket");
+      }
+    } catch (err: any) {
+      alert("Failed to delete bucket: " + err.message);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "leads" && currentWs?.slug) {
-      fetchContacts(currentWs.slug, contactTab);
+      if (contactTab === "buckets") {
+        fetchBuckets(currentWs.slug);
+      } else {
+        fetchContacts(currentWs.slug, contactTab as any);
+      }
     }
   }, [activeTab, contactTab, currentWs?.slug]);
 
@@ -1328,6 +1427,16 @@ function ControlRoomContent() {
   const handleSendBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentWs) return;
+
+    if (broadcastTargetType === "specific_numbers" && broadcastSelectedNumbers.length === 0) {
+      alert("Please select at least one contact number to broadcast to.");
+      return;
+    }
+    if (broadcastTargetType === "bucket" && !broadcastSelectedBucketId) {
+      alert("Please select a saved contact bucket to broadcast to.");
+      return;
+    }
+
     setBroadcastLoading(true);
     setBroadcastResult(null);
     try {
@@ -1336,7 +1445,10 @@ function ControlRoomContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template: broadcastTemplate,
+          targetType: broadcastTargetType,
           statusFilter: broadcastFilter,
+          specificNumbers: broadcastSelectedNumbers,
+          bucketId: broadcastSelectedBucketId,
         }),
       });
       const data = await res.json();
@@ -1441,6 +1553,18 @@ function ControlRoomContent() {
       return matchesSearch && matchesTab;
     });
   }, [contacts, leadSearch, contactTab]);
+
+  // Filtered contacts for Broadcast Modal Specific Numbers selector
+  const filteredBroadcastContacts = useMemo(() => {
+    const list = contacts && contacts.length > 0 ? contacts : leads.map((l) => ({ phone: l.phone, name: l.name || "Lead", is_saved: true }));
+    const q = broadcastNumberSearch.toLowerCase().trim();
+    const cleanQ = broadcastNumberSearch.replace(/\D/g, "");
+    if (!q) return list;
+    return list.filter((c: any) =>
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (cleanQ && c.phone && c.phone.includes(cleanQ))
+    );
+  }, [contacts, leads, broadcastNumberSearch]);
 
   const allFilteredSelected =
     filteredContacts.length > 0 &&
@@ -4489,6 +4613,24 @@ function ControlRoomContent() {
                       {contactsStats.saved}
                     </span>
                   </button>
+
+                  <button
+                    onClick={() => {
+                      setContactTab("buckets");
+                      setSelectedPhones([]);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      contactTab === "buckets"
+                        ? "bg-purple-600 text-white font-bold shadow-md shadow-purple-600/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>Contact Buckets</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${contactTab === "buckets" ? "bg-slate-950/20 text-white" : "bg-slate-800 text-slate-400"}`}>
+                      {buckets.length}
+                    </span>
+                  </button>
                 </div>
 
                 {/* Search Bar */}
@@ -4522,6 +4664,18 @@ function ControlRoomContent() {
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => {
+                        setShowSaveAsBucketModal(true);
+                        setNewBucketName(`Bucket ${buckets.length + 1}`);
+                        setNewBucketDesc("");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-sm"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                      <span>Save as Bucket ({selectedPhones.length})</span>
+                    </button>
+
+                    <button
                       onClick={() => handleSaveSelected(true)}
                       disabled={contactActionLoading === "save_selected"}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition cursor-pointer shadow-sm"
@@ -4549,9 +4703,119 @@ function ControlRoomContent() {
                 </div>
               )}
 
-              {/* Contacts Table */}
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="w-full text-left text-xs">
+              {/* Contact Buckets View OR Contacts Table */}
+              {contactTab === "buckets" ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
+                    <div>
+                      <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                        <Folder className="w-4 h-4 text-purple-400" />
+                        <span>Saved Contact Buckets</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Group contacts into buckets to broadcast instantly or tell Obey: &ldquo;deliver this message to bucket 1&rdquo;
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-900 text-purple-300 border border-slate-700">
+                        {buckets.length} / {bucketLimit === 999999 ? "Unlimited" : bucketLimit} Buckets Used
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (bucketLimit !== 999999 && buckets.length >= bucketLimit) {
+                            alert(`You have reached the ${bucketLimit} bucket limit for your plan. Please upgrade to Pro or Enterprise for more buckets!`);
+                            return;
+                          }
+                          setShowSaveAsBucketModal(true);
+                          setNewBucketName(`Bucket ${buckets.length + 1}`);
+                          setNewBucketDesc("");
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Create Bucket</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {bucketsLoading ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <RefreshCw className="w-5 h-5 text-purple-400 animate-spin mx-auto mb-2" />
+                      <span>Loading your contact buckets...</span>
+                    </div>
+                  ) : buckets.length === 0 ? (
+                    <div className="p-12 text-center border border-dashed border-slate-800 rounded-xl space-y-3">
+                      <Folder className="w-10 h-10 text-slate-600 mx-auto" />
+                      <h5 className="font-bold text-slate-300 text-sm">No Contact Buckets Created Yet</h5>
+                      <p className="text-xs text-slate-400 max-w-md mx-auto">
+                        Tick any contacts in the All Contacts tab and click &quot;Save as Bucket&quot;, or create your first bucket here.
+                        You can also tell Obey on WhatsApp: <strong className="text-purple-400">&quot;deliver this message to bucket 1&quot;</strong>!
+                      </p>
+                      <button
+                        onClick={() => {
+                          setShowSaveAsBucketModal(true);
+                          setNewBucketName("Bucket 1");
+                          setNewBucketDesc("");
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Create Bucket 1</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {buckets.map((b) => (
+                        <div key={b.id} className="bg-slate-950 border border-slate-800 hover:border-purple-500/40 rounded-xl p-4 space-y-3 flex flex-col justify-between transition">
+                          <div className="space-y-1.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-bold text-white text-sm flex items-center gap-2">
+                                <FolderCheck className="w-4 h-4 text-purple-400 shrink-0" />
+                                <span className="truncate">{b.name}</span>
+                              </span>
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 shrink-0">
+                                {b.contact_phones?.length || 0} contacts
+                              </span>
+                            </div>
+                            {b.description && (
+                              <p className="text-xs text-slate-400 line-clamp-2">{b.description}</p>
+                            )}
+                            <div className="text-[10px] text-slate-500">
+                              Created {new Date(b.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-slate-900">
+                            <button
+                              onClick={() => {
+                                setBroadcastTargetType("bucket");
+                                setBroadcastSelectedBucketId(b.id);
+                                setBroadcastResult(null);
+                                setShowBroadcastModal(true);
+                              }}
+                              className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold text-xs border border-emerald-500/20 transition cursor-pointer"
+                            >
+                              <Send className="w-3 h-3" />
+                              <span>Broadcast</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBucket(b.id, b.name)}
+                              className="p-1.5 rounded-lg bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition cursor-pointer"
+                              title="Delete bucket"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Contacts Table */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
                     <tr>
                       <th className="p-3.5 w-10 text-center">
@@ -4762,9 +5026,11 @@ function ControlRoomContent() {
                   Tip: Tap <strong className="text-emerald-400">Save to Phone (VCF)</strong> on your mobile browser to add all unsaved numbers to your phone with 1 tap.
                 </span>
               </div>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
+      </div>
+    )}
 
         {/* ============================================================== */}
         {/* TAB 5: VOICE HOTLINE & EMBED */}
@@ -4903,91 +5169,419 @@ function ControlRoomContent() {
       {/* ============================================================== */}
       {showBroadcastModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-white text-base flex items-center gap-2">
                 <Send className="w-5 h-5 text-emerald-400" />
-                Dispatch Personalized WhatsApp Broadcast
+                <span>Dispatch Personalized WhatsApp Broadcast</span>
               </h3>
               <button
                 onClick={() => setShowBroadcastModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {broadcastResult ? (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-3">
                 <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
                   <CheckCircle2 className="w-5 h-5" />
                   <span>Broadcast Dispatched Successfully!</span>
                 </div>
                 <p className="text-xs text-slate-300">
-                  Delivered personalized messages to {broadcastResult.dispatchedCount} out of {broadcastResult.totalTargets} contact(s).
+                  Delivered personalized messages to <strong className="text-emerald-400">{broadcastResult.dispatchedCount}</strong> out of <strong className="text-white">{broadcastResult.totalTargets}</strong> contact(s).
                 </p>
                 <button
                   onClick={() => setShowBroadcastModal(false)}
-                  className="mt-2 w-full py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs"
+                  className="mt-2 w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs hover:bg-emerald-400 transition cursor-pointer"
                 >
                   Done
                 </button>
               </div>
             ) : (
               <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
+                {/* 3-Way Audience Switcher */}
                 <div>
-                  <label className="font-semibold text-slate-300 block mb-1">
-                    Audience Segment
+                  <label className="font-bold text-slate-200 block mb-2">
+                    Select Target Audience
                   </label>
-                  <select
-                    value={broadcastFilter}
-                    onChange={(e) => setBroadcastFilter(e.target.value)}
-                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="all">All Captured Leads ({leads.length} contacts)</option>
-                    <option value="lead">New Leads Only</option>
-                    <option value="interested">Interested Prospects Only</option>
-                  </select>
+                  <div className="grid grid-cols-3 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastTargetType("segment")}
+                      className={`py-2 px-2 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        broadcastTargetType === "segment"
+                          ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Segment</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastTargetType("specific_numbers")}
+                      className={`py-2 px-2 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        broadcastTargetType === "specific_numbers"
+                          ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Target className="w-3.5 h-3.5" />
+                      <span>Specific ({broadcastSelectedNumbers.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastTargetType("bucket")}
+                      className={`py-2 px-2 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        broadcastTargetType === "bucket"
+                          ? "bg-purple-600 text-white font-bold shadow-md shadow-purple-600/20"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Folder className="w-3.5 h-3.5" />
+                      <span>Bucket ({buckets.length})</span>
+                    </button>
+                  </div>
                 </div>
 
+                {/* Option 1: Segment Dropdown */}
+                {broadcastTargetType === "segment" && (
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-300 block">
+                      Lead Pipeline Segment
+                    </label>
+                    <select
+                      value={broadcastFilter}
+                      onChange={(e) => setBroadcastFilter(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="all" className="bg-slate-900 text-white py-2">
+                        All Captured Contacts & Leads ({leads.length || contacts.length} contacts)
+                      </option>
+                      <option value="lead" className="bg-slate-900 text-white py-2">
+                        New Leads Only
+                      </option>
+                      <option value="interested" className="bg-slate-900 text-white py-2">
+                        Interested Prospects Only
+                      </option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Option 2: Specific Numbers Selector */}
+                {broadcastTargetType === "specific_numbers" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="font-semibold text-slate-300">
+                        Pick Individual Contacts
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allFiltered = filteredBroadcastContacts.map((c: any) => c.phone);
+                            const merged = Array.from(new Set([...broadcastSelectedNumbers, ...allFiltered]));
+                            setBroadcastSelectedNumbers(merged);
+                          }}
+                          className="text-[11px] text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          Select All ({filteredBroadcastContacts.length})
+                        </button>
+                        <span className="text-slate-600">•</span>
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastSelectedNumbers([])}
+                          className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Search inside modal */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="Search contact by name or number..."
+                        value={broadcastNumberSearch}
+                        onChange={(e) => setBroadcastNumberSearch(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Scrollable contact list */}
+                    <div className="max-h-48 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-xl p-2">
+                      {filteredBroadcastContacts.length === 0 ? (
+                        <div className="p-4 text-center text-slate-500 text-xs">
+                          No contacts match your search
+                        </div>
+                      ) : (
+                        filteredBroadcastContacts.map((c: any) => {
+                          const isChecked = broadcastSelectedNumbers.includes(c.phone);
+                          return (
+                            <label
+                              key={c.phone}
+                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
+                                isChecked ? "bg-emerald-950/40 border border-emerald-800/60" : "hover:bg-slate-900 border border-transparent"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    if (isChecked) {
+                                      setBroadcastSelectedNumbers(broadcastSelectedNumbers.filter((p) => p !== c.phone));
+                                    } else {
+                                      setBroadcastSelectedNumbers([...broadcastSelectedNumbers, c.phone]);
+                                    }
+                                  }}
+                                  className="accent-emerald-500 rounded"
+                                />
+                                <div>
+                                  <div className="font-semibold text-slate-200 text-xs">
+                                    {c.name || "Contact"}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    +{c.phone}
+                                  </div>
+                                </div>
+                              </div>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                c.is_saved ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+                              }`}>
+                                {c.is_saved ? "Saved" : "Unsaved"}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Quick action to save selected numbers as bucket */}
+                    {broadcastSelectedNumbers.length > 0 && (
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-purple-950/30 border border-purple-800/40">
+                        <span className="text-[11px] text-purple-300 font-medium">
+                          {broadcastSelectedNumbers.length} number(s) selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSaveAsBucketModal(true);
+                            setNewBucketName(`Bucket ${buckets.length + 1}`);
+                            setNewBucketDesc("");
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] transition cursor-pointer"
+                        >
+                          <FolderPlus className="w-3 h-3" />
+                          <span>Save as New Bucket</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Option 3: Saved Contact Bucket Dropdown */}
+                {broadcastTargetType === "bucket" && (
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-300 block">
+                      Choose Saved Contact Bucket
+                    </label>
+                    {buckets.length === 0 ? (
+                      <div className="p-3 bg-slate-950 border border-dashed border-purple-800/50 rounded-xl text-center space-y-2">
+                        <p className="text-xs text-slate-400">
+                          No contact buckets created yet.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSaveAsBucketModal(true);
+                            setNewBucketName("Bucket 1");
+                            setNewBucketDesc("");
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition"
+                        >
+                          + Create Bucket 1
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={broadcastSelectedBucketId}
+                        onChange={(e) => setBroadcastSelectedBucketId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white font-medium outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="" className="bg-slate-900 text-slate-400">
+                          -- Select a contact bucket --
+                        </option>
+                        {buckets.map((b) => (
+                          <option key={b.id} value={b.id} className="bg-slate-900 text-white py-2">
+                            {b.name} ({b.contact_phones?.length || 0} contacts)
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+
+                {/* Message Template Input */}
                 <div>
-                  <label className="font-semibold text-slate-300 block mb-1">
-                    Message Template (Supports <code className="text-emerald-400 font-mono">{"{name}"}</code> & <code className="text-emerald-400 font-mono">{"{business}"}</code>)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-300">
+                      Message Template
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      Supports <code className="text-emerald-400 font-mono">{"{name}"}</code> & <code className="text-emerald-400 font-mono">{"{business}"}</code>
+                    </span>
+                  </div>
                   <textarea
-                    rows={5}
+                    rows={4}
                     required
                     value={broadcastTemplate}
                     onChange={(e) => setBroadcastTemplate(e.target.value)}
-                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed font-sans"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed font-sans text-xs"
                     placeholder="Hello {name}! We have an exclusive update from {business}..."
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Preview: &quot;{broadcastTemplate.replace(/\{name\}/gi, "Chioma").replace(/\{business\}/gi, currentWs?.name || "Business")}&quot;
-                  </p>
+                  <div className="mt-1.5 p-2 bg-slate-950 border border-slate-800 rounded-lg text-[11px] text-slate-400">
+                    <span className="text-slate-500 font-semibold">Live Preview: </span>
+                    <span className="text-slate-200">
+                      &quot;{broadcastTemplate.replace(/\{name\}/gi, "Chioma").replace(/\{business\}/gi, currentWs?.name || "Business")}&quot;
+                    </span>
+                  </div>
                 </div>
 
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={broadcastLoading}
-                    className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    disabled={
+                      broadcastLoading ||
+                      (broadcastTargetType === "specific_numbers" && broadcastSelectedNumbers.length === 0) ||
+                      (broadcastTargetType === "bucket" && !broadcastSelectedBucketId)
+                    }
+                    className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {broadcastLoading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Dispatching to WhatsApp...</span>
+                        <span>Dispatching Personalized Messages...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Send Broadcast Now</span>
+                        <span>
+                          {broadcastTargetType === "specific_numbers"
+                            ? `Send Broadcast to ${broadcastSelectedNumbers.length} Contact(s)`
+                            : broadcastTargetType === "bucket"
+                            ? "Send Broadcast to Bucket"
+                            : "Send Broadcast to Segment"}
+                        </span>
                       </>
                     )}
                   </button>
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: CREATE / SAVE AS CONTACT BUCKET */}
+      {/* ============================================================== */}
+      {showSaveAsBucketModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-purple-400" />
+                <span>Save Contacts as Bucket</span>
+              </h3>
+              <button
+                onClick={() => setShowSaveAsBucketModal(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span>Your Plan Bucket Limit:</span>
+              <span className="font-mono font-bold text-purple-400">
+                {buckets.length} / {bucketLimit === 999999 ? "Unlimited" : bucketLimit} used
+              </span>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const targetPhones = selectedPhones.length > 0 ? selectedPhones : broadcastSelectedNumbers;
+                handleCreateBucket(newBucketName, targetPhones, newBucketDesc);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Bucket Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Bucket 1, VIP Clients, Retailers"
+                  value={newBucketName}
+                  onChange={(e) => setNewBucketName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. High value repeat buyers from WhatsApp"
+                  value={newBucketDesc}
+                  onChange={(e) => setNewBucketDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="p-3 bg-purple-950/30 border border-purple-800/40 rounded-xl space-y-1">
+                <div className="font-bold text-purple-300">
+                  Included Contacts: {(selectedPhones.length > 0 ? selectedPhones.length : broadcastSelectedNumbers.length)} number(s)
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Once saved, you can broadcast to this bucket with 1 click or tell Obey on WhatsApp: &ldquo;deliver this message to {newBucketName || "Bucket 1"}&rdquo;
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveAsBucketModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBucket || (selectedPhones.length === 0 && broadcastSelectedNumbers.length === 0)}
+                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold transition shadow-lg shadow-purple-600/20 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {savingBucket ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Bucket</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

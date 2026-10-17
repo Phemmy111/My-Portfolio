@@ -166,6 +166,25 @@ async function handleObeyBusinessOwnerTurn(params: {
     return;
   }
 
+  // 3.5. Owner Contact Search & Bucket Messaging Commands ("help me message Femi", "deliver this to bucket 1", "YES" to approve)
+  try {
+    const { handleOwnerContactOrBucketTurn } = await import("@/lib/contact-agent");
+    const contactTurn = await handleOwnerContactOrBucketTurn({
+      workspaceId: currentWs.id,
+      instanceName,
+      userPhone: replyTo,
+      userText,
+      historyText,
+      ownerName: currentWs.owner_name || "Boss",
+    });
+    if (contactTurn.handled) {
+      await reply(contactTurn.reply);
+      return;
+    }
+  } catch (err) {
+    console.warn("[WA Webhook] contact/bucket handler warning:", err);
+  }
+
   // 4. Conversational Obey Business Assistant
   const wsSettings = await dbGetWorkspaceSettings(currentWs.id);
   const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";

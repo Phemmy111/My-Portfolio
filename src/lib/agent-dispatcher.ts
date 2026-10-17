@@ -38,6 +38,33 @@ export async function executePendingUserAction(
       }
     }
 
+    // 1b. WhatsApp Contact Bucket Broadcast Dispatch
+    if (action.action_type === ("broadcast_bucket" as any)) {
+      const { dbGetContactBucketById } = await import("./db");
+      const bucket = await dbGetContactBucketById(action.target_recipient);
+      if (!bucket || !bucket.contact_phones || bucket.contact_phones.length === 0) {
+        await dbUpdateUserActionStatus(action.id, "failed");
+        return {
+          success: false,
+          message: `⚠️ *Broadcast Failed:* Bucket has no contacts or was removed.`,
+        };
+      }
+
+      let sentCount = 0;
+      for (const phone of bucket.contact_phones) {
+        try {
+          const res = await sendWhatsAppMessage(action.payload, phone);
+          if (res.success) sentCount++;
+        } catch {}
+      }
+
+      await dbUpdateUserActionStatus(action.id, "executed");
+      return {
+        success: true,
+        message: `✅ *Broadcast Delivered!* 🚀\n\nSuccessfully dispatched your message to *${sentCount}* contact(s) in *${bucket.name}*.`,
+      };
+    }
+
     // 2. Email Dispatch via Gmail / SMTP
     if (action.action_type === "email_send") {
       const mailOptions = {

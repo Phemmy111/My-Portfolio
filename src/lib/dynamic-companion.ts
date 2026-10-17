@@ -9,6 +9,7 @@ import {
   dbGetWorkspaceSettings,
   dbGetWorkspaceBySlug,
   dbGetPlatformPricing,
+  dbListWorkspaces,
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
@@ -259,6 +260,30 @@ export async function processDynamicCompanionTurn(params: {
     }
   }
 
+  // 2.5 CONTACT SEARCH & BUCKET MESSAGING FOR MAIN OBEY
+  try {
+    const { handleOwnerContactOrBucketTurn } = await import("@/lib/contact-agent");
+    const workspaces = await dbListWorkspaces();
+    const primaryWs = workspaces?.[0];
+    if (primaryWs) {
+      const contactTurn = await handleOwnerContactOrBucketTurn({
+        workspaceId: primaryWs.id,
+        instanceName: primaryWs.whatsapp_instance_name || "obey",
+        userPhone: userIdentifier,
+        userText,
+        historyText,
+        ownerName: senderName || "Boss",
+      });
+      if (contactTurn.handled) {
+        return {
+          reply: cleanWhatsApp(contactTurn.reply),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[Dynamic Companion] contact/bucket turn fallback:", err);
+  }
+
   // 3. OBEY AUTONOMOUS AI REASONING & DECISION ENGINE
   // Analyzes semantics, multi-turn dialogue, and context to select the exact right tool with ZERO hardcoded keywords.
   const decisionSystemPrompt = `You are Obey, the autonomous AI executive companion for Femi Adeleke.
@@ -442,15 +467,15 @@ Respond ONLY with a valid JSON object matching this schema:
       }
     }
   }
-  // ONLY look back into history if a delegation task is actively in flight (not already completed/closed!)
+  // ONLY look back into history if the immediate previous turn contained a phone or contact card
   if (!recentPhoneInContext && historyText && !lastTaskAlreadyClosed) {
-    const cleanHistory = historyText.replace(/https?:\/\/[^\s]+/gi, "").replace(/art-\d+-[a-z0-9]+/gi, "");
-    const histMatches = Array.from(cleanHistory.matchAll(/(?:Phone:\s*\+?|waid=|\+?)(\d{10,14})/gi));
-    for (let i = histMatches.length - 1; i >= 0; i--) {
-      const candidate = histMatches[i][1].replace(/\D/g, "");
+    const histLines = historyText.trim().split("\n");
+    const lastTurnText = histLines.slice(-2).join(" ");
+    const rawHistMatch = lastTurnText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})|(?:\+?234|0)[789][01]\d{8}|\b234\d{10}\b|\b0\d{10}\b/i);
+    if (rawHistMatch) {
+      const candidate = (rawHistMatch[1] || rawHistMatch[0]).replace(/\D/g, "");
       if (isValidPhoneNumber(candidate)) {
         recentPhoneInContext = candidate;
-        break;
       }
     }
   }
@@ -675,10 +700,9 @@ INSTRUCTIONS:
     let targetPhone = decision.action_params?.recipient_phone ? decision.action_params.recipient_phone.replace(/\D/g, "") : null;
     let messageContent = decision.action_params?.message_content ? decision.action_params.message_content.trim() : null;
 
-    // 1. Multi-Turn Phone Number Recovery: check current userText or past turns if missing
+    // 1. Phone Number Recovery: check current userText or immediate previous turn
     if (!targetPhone) {
-      const combinedText = userText + " " + (historyText || "");
-      const contactPhoneMatch = combinedText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})/i);
+      const contactPhoneMatch = userText.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})/i);
       if (contactPhoneMatch) {
         targetPhone = contactPhoneMatch[1];
       } else {
@@ -686,9 +710,11 @@ INSTRUCTIONS:
         if (rawPhoneMatch) {
           targetPhone = rawPhoneMatch[0].replace(/\D/g, "");
         } else if (historyText) {
-          const histMatches = historyText.match(/(?:(?:\+?234)|0)[789][01]\d{8}|\b0\d{10}\b|\b234\d{10}\b/g);
-          if (histMatches && histMatches.length > 0) {
-            targetPhone = histMatches[histMatches.length - 1].replace(/\D/g, "");
+          const histLines = historyText.trim().split("\n");
+          const recentSlice = histLines.slice(-2).join(" ");
+          const histContactMatch = recentSlice.match(/(?:Phone:\s*\+?|waid=)(\d{10,14})/i);
+          if (histContactMatch) {
+            targetPhone = histContactMatch[1];
           }
         }
       }

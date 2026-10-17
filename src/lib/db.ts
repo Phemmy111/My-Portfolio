@@ -849,6 +849,20 @@ export async function createWorkspaceTables() {
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;
+
+    // Ensure workspace_contact_buckets table exists for custom contact lists / buckets
+    await db`
+      CREATE TABLE IF NOT EXISTS workspace_contact_buckets (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        contact_phones JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await db`CREATE INDEX IF NOT EXISTS idx_workspace_buckets_ws ON workspace_contact_buckets(workspace_id)`;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
   }
@@ -859,6 +873,309 @@ export function getPlanScheduledPostLimit(plan?: string): number {
   if (p === "enterprise" || p === "founder" || p === "lifetime") return 999999;
   if (p === "pro") return 10;
   return 3;
+}
+
+export function getPlanBucketLimit(plan?: string): number {
+  const p = (plan || "starter").toLowerCase();
+  if (p === "enterprise" || p === "founder" || p === "lifetime") return 999999;
+  if (p === "pro") return 10;
+  return 2;
+}
+
+export interface ContactBucket {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  contact_phones: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function dbCreateContactBucket(params: {
+  workspaceId: string;
+  name: string;
+  phones: string[];
+  description?: string;
+}): Promise<ContactBucket | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const id = `bkt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const cleanedPhones = Array.from(
+      new Set(params.phones.map((p) => p.replace(/\D/g, "")).filter((p) => p.length >= 8))
+    );
+    const [row] = await db`
+      INSERT INTO workspace_contact_buckets (
+        id, workspace_id, name, description, contact_phones, created_at, updated_at
+      ) VALUES (
+        ${id},
+        ${params.workspaceId},
+        ${params.name.trim()},
+        ${params.description ? params.description.trim() : null},
+        ${JSON.stringify(cleanedPhones)}::jsonb,
+        NOW(),
+        NOW()
+      )
+      RETURNING *
+    `;
+    if (!row) return null;
+    return {
+      ...row,
+      contact_phones: Array.isArray(row.contact_phones)
+        ? row.contact_phones
+        : typeof row.contact_phones === "string"
+        ? JSON.parse(row.contact_phones)
+        : [],
+    } as ContactBucket;
+  } catch (err) {
+    console.error("dbCreateContactBucket error:", err);
+    return null;
+  }
+}
+
+export async function dbGetContactBuckets(workspaceId: string): Promise<ContactBucket[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT * FROM workspace_contact_buckets
+      WHERE workspace_id = ${workspaceId}
+      ORDER BY created_at ASC
+    `;
+    return (rows || []).map((r: any) => ({
+      ...r,
+      contact_phones: Array.isArray(r.contact_phones)
+        ? r.contact_phones
+        : typeof r.contact_phones === "string"
+        ? JSON.parse(r.contact_phones)
+        : [],
+    })) as ContactBucket[];
+  } catch (err) {
+    console.error("dbGetContactBuckets error:", err);
+    return [];
+  }
+}
+
+export async function dbGetContactBucketById(bucketId: string): Promise<ContactBucket | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT * FROM workspace_contact_buckets
+      WHERE id = ${bucketId}
+      LIMIT 1
+    `;
+    if (!rows || rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      ...r,
+      contact_phones: Array.isArray(r.contact_phones)
+        ? r.contact_phones
+        : typeof r.contact_phones === "string"
+        ? JSON.parse(r.contact_phones)
+        : [],
+    } as ContactBucket;
+  } catch (err) {
+    console.error("dbGetContactBucketById error:", err);
+    return null;
+  }
+}
+
+export async function dbFindBucketByName(
+  workspaceId: string,
+  bucketName: string
+): Promise<ContactBucket | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const cleanName = bucketName.trim().toLowerCase();
+    const rows = await db`
+      SELECT * FROM workspace_contact_buckets
+      WHERE workspace_id = ${workspaceId}
+        AND (
+          LOWER(name) = ${cleanName}
+          OR LOWER(name) LIKE ${`%${cleanName}%`}
+        )
+      ORDER BY 
+        CASE WHEN LOWER(name) = ${cleanName} THEN 0 ELSE 1 END,
+        created_at ASC
+      LIMIT 1
+    `;
+    if (!rows || rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      ...r,
+      contact_phones: Array.isArray(r.contact_phones)
+        ? r.contact_phones
+        : typeof r.contact_phones === "string"
+        ? JSON.parse(r.contact_phones)
+        : [],
+    } as ContactBucket;
+  } catch (err) {
+    console.error("dbFindBucketByName error:", err);
+    return null;
+  }
+}
+
+export async function dbUpdateContactBucket(params: {
+  bucketId: string;
+  workspaceId: string;
+  name?: string;
+  description?: string;
+  phones?: string[];
+}): Promise<ContactBucket | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createWorkspaceTables();
+    const cleanedPhones = params.phones
+      ? Array.from(
+          new Set(params.phones.map((p) => p.replace(/\D/g, "")).filter((p) => p.length >= 8))
+        )
+      : undefined;
+
+    const [row] = await db`
+      UPDATE workspace_contact_buckets
+      SET name = COALESCE(${params.name ? params.name.trim() : null}, name),
+          description = COALESCE(${params.description ? params.description.trim() : null}, description),
+          contact_phones = COALESCE(${cleanedPhones ? JSON.stringify(cleanedPhones) : null}::jsonb, contact_phones),
+          updated_at = NOW()
+      WHERE id = ${params.bucketId} AND workspace_id = ${params.workspaceId}
+      RETURNING *
+    `;
+    if (!row) return null;
+    return {
+      ...row,
+      contact_phones: Array.isArray(row.contact_phones)
+        ? row.contact_phones
+        : typeof row.contact_phones === "string"
+        ? JSON.parse(row.contact_phones)
+        : [],
+    } as ContactBucket;
+  } catch (err) {
+    console.error("dbUpdateContactBucket error:", err);
+    return null;
+  }
+}
+
+export async function dbDeleteContactBucket(
+  bucketId: string,
+  workspaceId: string
+): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await createWorkspaceTables();
+    await db`
+      DELETE FROM workspace_contact_buckets
+      WHERE id = ${bucketId} AND workspace_id = ${workspaceId}
+    `;
+    return true;
+  } catch (err) {
+    console.error("dbDeleteContactBucket error:", err);
+    return false;
+  }
+}
+
+export async function dbFindContactsByNameOrPhone(params: {
+  workspaceId: string;
+  query: string;
+  instanceName?: string;
+}): Promise<Array<{ name: string; phone: string; formattedPhone: string; source: string }>> {
+  const db = getSql();
+  const q = (params.query || "").toLowerCase().trim();
+  if (!q) return [];
+
+  const resultsMap = new Map<
+    string,
+    { name: string; phone: string; formattedPhone: string; source: string }
+  >();
+
+  // 1. Search in DB workspace_leads
+  if (db) {
+    try {
+      await createWorkspaceTables();
+      const rows = await db`
+        SELECT name, phone FROM workspace_leads
+        WHERE workspace_id = ${params.workspaceId}
+          AND (
+            LOWER(COALESCE(name, '')) LIKE ${`%${q}%`}
+            OR phone LIKE ${`%${q.replace(/\D/g, "")}%`}
+          )
+        LIMIT 25
+      `;
+      for (const r of rows) {
+        const clean = (r.phone || "").replace(/\D/g, "");
+        if (clean && clean.length >= 8) {
+          resultsMap.set(clean, {
+            name: r.name || `Contact ${clean.slice(-4)}`,
+            phone: clean,
+            formattedPhone: clean.startsWith("234")
+              ? `+234 ${clean.slice(3, 6)} ${clean.slice(6, 9)} ${clean.slice(9)}`
+              : `+${clean}`,
+            source: "crm_leads",
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("dbFindContactsByNameOrPhone DB search error:", e);
+    }
+  }
+
+  // 2. Search in live Evolution API contacts for the instance
+  if (params.instanceName) {
+    try {
+      const evoUrl =
+        process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+      const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+      const res = await fetch(
+        `${evoUrl}/chat/findContacts/${encodeURIComponent(params.instanceName)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: evoKey },
+          body: JSON.stringify({}),
+        }
+      );
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            const rawJid = item.remoteJid || item.id || "";
+            if (rawJid.includes("@g.us") || rawJid.includes("@broadcast") || rawJid.includes("status"))
+              continue;
+            const phone = rawJid.replace(/@s\.whatsapp\.net|@lid/g, "").replace(/\D/g, "");
+            if (!phone || phone.length < 8) continue;
+
+            const name = item.pushName || item.verifiedName || item.name || "";
+            const matchesName = name.toLowerCase().includes(q);
+            const matchesPhone = phone.includes(q.replace(/\D/g, ""));
+
+            if (matchesName || (q.replace(/\D/g, "").length >= 3 && matchesPhone)) {
+              const existing = resultsMap.get(phone);
+              const bestName = name || existing?.name || `Contact ${phone.slice(-4)}`;
+              resultsMap.set(phone, {
+                name: bestName,
+                phone,
+                formattedPhone: phone.startsWith("234")
+                  ? `+234 ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
+                  : `+${phone}`,
+                source: "whatsapp_phone",
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("dbFindContactsByNameOrPhone live contact search warning:", e);
+    }
+  }
+
+  return Array.from(resultsMap.values());
 }
 
 export async function dbGetWorkspaceStatuses(workspaceId: string, limit: number = 50) {
