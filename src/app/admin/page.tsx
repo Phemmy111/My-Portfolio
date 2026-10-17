@@ -41,6 +41,7 @@ import ObeyFloatingAssistant from "@/components/ObeyFloatingAssistant";
 import AISettingsModal from "@/components/AISettingsModal";
 import AdminOmnichannelInbox from "@/components/AdminOmnichannelInbox";
 import AdminMasterControlRoom from "@/components/AdminMasterControlRoom";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -341,12 +342,12 @@ export default function AdminDashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#dfe3e8] dark:bg-black text-zinc-950 dark:text-white font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0">
+    <div className="min-h-screen bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
-      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-300 dark:border-zinc-800 bg-[#ebedf0] dark:bg-[#0a0a0a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-300 dark:border-slate-800 bg-[#ebedf0] dark:bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
           {/* Top Brand & Profile */}
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-300 dark:border-zinc-800">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-300 dark:border-slate-800">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-zinc-400 dark:border-zinc-700 shadow-sm shrink-0">
                 <Image
@@ -494,31 +495,34 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="pt-3 border-t border-zinc-300 dark:border-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="pt-3 border-t border-zinc-300 dark:border-slate-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-semibold text-[11px]">Neon DB Connected</span>
+            <span className="font-semibold text-[11px]">Neon DB</span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle showLabel={false} />
+            <button
+              onClick={handleLogout}
+              className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* 2. Mobile-First Sticky Header (md:hidden) */}
-      <header className="md:hidden sticky top-0 z-40 bg-[#dfe3e8]/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-300 dark:border-zinc-800 px-3 py-2.5 flex items-center justify-between">
+      <header className="md:hidden sticky top-0 z-40 bg-[#dfe3e8]/95 dark:bg-[#060d1a]/95 backdrop-blur-md border-b border-zinc-300 dark:border-slate-800 px-3 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white"
+            className="p-1.5 rounded-lg bg-white dark:bg-[#0b1424] border border-zinc-300 dark:border-slate-800 text-zinc-900 dark:text-white"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
-          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-zinc-400 dark:border-zinc-700 shrink-0">
+          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-zinc-400 dark:border-slate-700 shrink-0">
             <Image src="/femi-headshot.webp" alt="Femi" fill className="object-cover" />
           </div>
           <div className="min-w-0">
@@ -528,6 +532,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <ThemeToggle showLabel={false} />
           <button
             onClick={() => {
               setSettingsModalTab("brain");
@@ -542,7 +547,7 @@ export default function AdminDashboardPage() {
               setSettingsModalTab("ai");
               setShowSettingsModal(true);
             }}
-            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-700"
+            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-white dark:bg-[#0b1424] text-zinc-900 dark:text-white border border-zinc-300 dark:border-slate-800"
           >
             <Zap size={12} className="text-emerald-500 inline mr-0.5" />
             AI Keys
@@ -631,8 +636,8 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-zinc-300 dark:border-zinc-800 flex items-center justify-between">
-              <span className="text-[11px] text-zinc-500">Femi Adeleke OS</span>
+            <div className="pt-3 border-t border-zinc-300 dark:border-slate-800 flex items-center justify-between">
+              <ThemeToggle showLabel={true} />
               <button
                 onClick={handleLogout}
                 className="text-xs font-bold text-red-600 hover:underline"

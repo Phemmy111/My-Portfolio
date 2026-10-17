@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const VOICE_PROFILES: Record<
   string,
@@ -826,12 +827,12 @@ function CallInterface() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col justify-between selection:bg-emerald-500 selection:text-black">
+    <div className="min-h-screen bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-white flex flex-col justify-between selection:bg-emerald-500 selection:text-black transition-colors duration-200">
       {/* Top Header */}
-      <header className="px-4 sm:px-6 py-4 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
+      <header className="px-4 sm:px-6 py-4 flex items-center justify-between border-b border-zinc-300 dark:border-slate-800 bg-white/90 dark:bg-[#060d1a]/80 backdrop-blur-md sticky top-0 z-30">
         <Link
           href="/"
-          className="flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-white transition-all"
+          className="flex items-center gap-2 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-all"
         >
           <ArrowLeft size={16} />
           <span className="hidden sm:inline">Back to Portfolio</span>
@@ -841,17 +842,20 @@ function CallInterface() {
           <div className="relative w-5 h-5 rounded-full overflow-hidden border border-emerald-500/50 shrink-0">
             <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
           </div>
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-200">
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-zinc-200">
             Obey Free Voice Engine
           </span>
-          <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
             100% Free
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500">
-          <ShieldCheck size={14} className="text-emerald-500" />
-          <span className="hidden sm:inline">Encrypted Audio</span>
+        <div className="flex items-center gap-2.5">
+          <ThemeToggle showLabel={false} />
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-zinc-500">
+            <ShieldCheck size={14} className="text-emerald-500" />
+            <span>Encrypted Audio</span>
+          </div>
         </div>
       </header>
 

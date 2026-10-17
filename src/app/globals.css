@@ -13,10 +13,10 @@
 }
 
 .dark {
-  --background: #000000; /* Real classic pure pitch black OLED */
-  --foreground: #ffffff;
-  --card-bg: #0a0a0c;
-  --card-border: rgba(255, 255, 255, 0.08);
+  --background: #050b14; /* Control room dark canvas */
+  --foreground: #f1f5f9;
+  --card-bg: #0b1424;
+  --card-border: rgba(30, 41, 59, 0.8);
 }
 
 @theme inline {
@@ -72,6 +72,76 @@ body {
 /* Section padding */
 .section-pad {
   padding: 5rem 0;
+}
+
+/* Control Room: Admin color combo in Light Mode (Default) */
+html:not(.dark) .control-room-root {
+  background-color: #dfe3e8 !important;
+  color: #09090b !important;
+}
+
+html:not(.dark) .control-room-root aside {
+  background-color: #ebedf0 !important;
+  border-color: #d4d4d8 !important;
+}
+
+html:not(.dark) .control-room-root .bg-\[\#060d1a\],
+html:not(.dark) .control-room-root .bg-\[\#060d1a\]\/95,
+html:not(.dark) .control-room-root .bg-\[\#060d1a\]\/60 {
+  background-color: #ebedf0 !important;
+  border-color: #d4d4d8 !important;
+}
+
+html:not(.dark) .control-room-root .bg-\[\#0b1424\],
+html:not(.dark) .control-room-root .bg-slate-900,
+html:not(.dark) .control-room-root .bg-slate-900\/90,
+html:not(.dark) .control-room-root .bg-slate-900\/80,
+html:not(.dark) .control-room-root .bg-slate-900\/60,
+html:not(.dark) .control-room-root .bg-slate-900\/40,
+html:not(.dark) .control-room-root .bg-slate-850 {
+  background-color: #ffffff !important;
+  color: #09090b;
+}
+
+html:not(.dark) .control-room-root .bg-slate-950 {
+  background-color: #f4f4f5 !important;
+  color: #09090b;
+}
+
+html:not(.dark) .control-room-root .border-slate-800,
+html:not(.dark) .control-room-root .border-slate-800\/80,
+html:not(.dark) .control-room-root .border-slate-800\/90,
+html:not(.dark) .control-room-root .border-slate-700 {
+  border-color: #e4e4e7 !important;
+}
+
+html:not(.dark) .control-room-root .text-white,
+html:not(.dark) .control-room-root .text-slate-100,
+html:not(.dark) .control-room-root .text-slate-200 {
+  color: #09090b !important;
+}
+
+html:not(.dark) .control-room-root .text-slate-300,
+html:not(.dark) .control-room-root .text-slate-400 {
+  color: #52525b !important;
+}
+
+html:not(.dark) .control-room-root .text-slate-500,
+html:not(.dark) .control-room-root .text-slate-600 {
+  color: #71717a !important;
+}
+
+html:not(.dark) .control-room-root input:not([type="checkbox"]):not([type="radio"]),
+html:not(.dark) .control-room-root select,
+html:not(.dark) .control-room-root textarea {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+  border-color: #d4d4d8 !important;
+}
+
+html:not(.dark) .control-room-root code {
+  background-color: #e4e4e7 !important;
+  color: #09090b !important;
 }
 
 /* Clerk Development Mode Badge & Watermark Suppressors */

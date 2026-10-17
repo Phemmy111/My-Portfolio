@@ -54,7 +54,7 @@ export default function Navbar() {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         scrolled
-          ? "bg-[#dfe3e8]/90 dark:bg-black/85 backdrop-blur-md border-b border-zinc-400/40 dark:border-white/[0.08] shadow-xs"
+          ? "bg-[#dfe3e8]/90 dark:bg-[#050b14]/90 backdrop-blur-md border-b border-zinc-400/40 dark:border-slate-800 shadow-xs"
           : "bg-transparent"
       )}
     >
@@ -134,7 +134,7 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {menuOpen && (
-        <div className="md:hidden bg-[#dfe3e8]/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-400/40 dark:border-zinc-800 px-6 py-5 flex flex-col gap-4">
+        <div className="md:hidden bg-[#dfe3e8]/95 dark:bg-[#060d1a]/95 backdrop-blur-md border-b border-zinc-400/40 dark:border-slate-800 px-6 py-5 flex flex-col gap-4">
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}

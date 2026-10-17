@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { UserButton, useUser, useClerk } from "@clerk/nextjs";
+import ThemeToggle from "@/components/ThemeToggle";
 import {
   Building2,
   Users,
@@ -1806,7 +1807,7 @@ function ControlRoomContent() {
   );
 
   return (
-    <div className="min-h-screen bg-[#050b14] text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0">
+    <div className="min-h-screen control-room-root bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
       <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-slate-800/80 bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
@@ -1926,7 +1927,10 @@ function ControlRoomContent() {
           )}
 
           <div className="flex items-center justify-between pt-1">
-            <UserButton />
+            <div className="flex items-center gap-2">
+              <UserButton />
+              <ThemeToggle showLabel={false} />
+            </div>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold border border-rose-500/20 transition cursor-pointer"
@@ -1956,6 +1960,7 @@ function ControlRoomContent() {
         </div>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle showLabel={false} />
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <button
             onClick={handleAddBusinessClick}
@@ -2042,7 +2047,11 @@ function ControlRoomContent() {
               </nav>
             </div>
 
-            <div className="pt-4 border-t border-slate-800 space-y-2">
+            <div className="pt-4 border-t border-slate-800 space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-slate-400 font-medium">Appearance</span>
+                <ThemeToggle showLabel={true} />
+              </div>
               <button
                 onClick={handleLogout}
                 className="w-full py-2 rounded-xl bg-rose-500/10 text-rose-400 text-xs font-bold border border-rose-500/20 flex items-center justify-center gap-2 cursor-pointer"
