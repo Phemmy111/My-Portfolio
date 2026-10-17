@@ -451,6 +451,24 @@ async function processMessage(params: ProcessMessageParams) {
     console.warn("[WA] DB save error:", err);
   }
 
+  // Auto-capture non-owner incoming contact into workspace_leads (for auto-saving & status view boost)
+  if (!isOwner && currentWs) {
+    try {
+      await dbUpsertWorkspaceLead({
+        workspace_id: currentWs.id,
+        phone: replyTo,
+        name: pushName || `WhatsApp User ${replyTo.slice(-4)}`,
+        source: "whatsapp",
+        status: "lead",
+        intent_summary: userText.slice(0, 150),
+        last_message: userText,
+        auto_save: currentWs.auto_save_contacts !== false,
+      });
+    } catch (leadErr) {
+      console.warn("[WA] Auto-save contact lead capture error:", leadErr);
+    }
+  }
+
   // Asynchronously extract and commit personal memory facts to DB in background
   if (userText && userText.length >= 10 && userText !== "[Unclear Voice Note]") {
     autoLearnUserMemory({

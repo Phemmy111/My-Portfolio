@@ -626,6 +626,7 @@ export interface Workspace {
   auto_comment_status?: boolean;
   comment_tone?: string;
   comment_rate_limit?: string;
+  auto_save_contacts?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -663,6 +664,9 @@ export interface WorkspaceLead {
   email?: string | null;
   source: string;
   status: string;
+  is_saved?: boolean;
+  auto_save?: boolean;
+  profile_pic_url?: string | null;
   intent_summary?: string | null;
   last_message?: string | null;
   metadata?: Record<string, unknown>;
@@ -795,6 +799,12 @@ export async function createWorkspaceTables() {
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_comment_status BOOLEAN DEFAULT FALSE`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_tone TEXT DEFAULT 'friendly'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_rate_limit TEXT DEFAULT 'plan_based'`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_save_contacts BOOLEAN DEFAULT TRUE`;
+
+    // Ensure contact auto-save and phone status columns exist in workspace_leads
+    await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS is_saved BOOLEAN DEFAULT FALSE`;
+    await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS auto_save BOOLEAN DEFAULT TRUE`;
+    await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS profile_pic_url TEXT`;
 
     // Ensure workspace_status_comments table exists for tracking viewed/replied WhatsApp statuses
     await db`
@@ -1225,6 +1235,9 @@ export async function dbUpsertWorkspaceLead(params: {
   email?: string | null;
   source?: string;
   status?: string;
+  is_saved?: boolean;
+  auto_save?: boolean;
+  profile_pic_url?: string | null;
   intent_summary?: string | null;
   last_message?: string | null;
   metadata?: Record<string, unknown>;
@@ -1236,7 +1249,11 @@ export async function dbUpsertWorkspaceLead(params: {
     const cleanPhone = params.phone.replace(/\D/g, "");
     const id = `lead_${cleanPhone}_${params.workspace_id}`;
     const [row] = await db`
-      INSERT INTO workspace_leads (id, workspace_id, phone, name, email, source, status, intent_summary, last_message, metadata, updated_at)
+      INSERT INTO workspace_leads (
+        id, workspace_id, phone, name, email, source, status,
+        is_saved, auto_save, profile_pic_url,
+        intent_summary, last_message, metadata, updated_at
+      )
       VALUES (
         ${id},
         ${params.workspace_id},
@@ -1245,6 +1262,9 @@ export async function dbUpsertWorkspaceLead(params: {
         ${params.email || null},
         ${params.source || 'whatsapp'},
         ${params.status || 'lead'},
+        ${params.is_saved ?? false},
+        ${params.auto_save ?? true},
+        ${params.profile_pic_url || null},
         ${params.intent_summary || null},
         ${params.last_message || null},
         ${params.metadata ? JSON.stringify(params.metadata) : '{}'},
@@ -1255,6 +1275,9 @@ export async function dbUpsertWorkspaceLead(params: {
         email = COALESCE(EXCLUDED.email, workspace_leads.email),
         source = COALESCE(EXCLUDED.source, workspace_leads.source),
         status = COALESCE(EXCLUDED.status, workspace_leads.status),
+        is_saved = COALESCE(EXCLUDED.is_saved, workspace_leads.is_saved),
+        auto_save = COALESCE(EXCLUDED.auto_save, workspace_leads.auto_save),
+        profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, workspace_leads.profile_pic_url),
         intent_summary = COALESCE(EXCLUDED.intent_summary, workspace_leads.intent_summary),
         last_message = COALESCE(EXCLUDED.last_message, workspace_leads.last_message),
         metadata = workspace_leads.metadata || EXCLUDED.metadata,
@@ -1265,6 +1288,95 @@ export async function dbUpsertWorkspaceLead(params: {
   } catch (err) {
     console.error("dbUpsertWorkspaceLead error:", err);
     return null;
+  }
+}
+
+export async function dbMarkLeadsSaved(
+  workspaceId: string,
+  phones: string[],
+  isSaved: boolean = true
+): Promise<number> {
+  const db = getSql();
+  if (!db || phones.length === 0) return 0;
+  try {
+    await createWorkspaceTables();
+    const cleanPhones = phones.map(p => p.replace(/\D/g, "")).filter(Boolean);
+    if (cleanPhones.length === 0) return 0;
+    const result = await db`
+      UPDATE workspace_leads
+      SET is_saved = ${isSaved}, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId}
+        AND phone = ANY(${cleanPhones})
+      RETURNING id
+    `;
+    return result.length;
+  } catch (err) {
+    console.error("dbMarkLeadsSaved error:", err);
+    return 0;
+  }
+}
+
+export async function dbMarkAllUnsavedLeads(
+  workspaceId: string,
+  isSaved: boolean = true
+): Promise<number> {
+  const db = getSql();
+  if (!db) return 0;
+  try {
+    await createWorkspaceTables();
+    const result = await db`
+      UPDATE workspace_leads
+      SET is_saved = ${isSaved}, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId}
+        AND (is_saved IS FALSE OR is_saved IS NULL)
+      RETURNING id
+    `;
+    return result.length;
+  } catch (err) {
+    console.error("dbMarkAllUnsavedLeads error:", err);
+    return 0;
+  }
+}
+
+export async function dbToggleLeadAutoSave(
+  workspaceId: string,
+  phone: string,
+  autoSave: boolean
+): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await createWorkspaceTables();
+    const cleanPhone = phone.replace(/\D/g, "");
+    await db`
+      UPDATE workspace_leads
+      SET auto_save = ${autoSave}, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId} AND phone = ${cleanPhone}
+    `;
+    return true;
+  } catch (err) {
+    console.error("dbToggleLeadAutoSave error:", err);
+    return false;
+  }
+}
+
+export async function dbToggleWorkspaceAutoSave(
+  workspaceId: string,
+  enabled: boolean
+): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await createWorkspaceTables();
+    await db`
+      UPDATE workspaces
+      SET auto_save_contacts = ${enabled}, updated_at = NOW()
+      WHERE id = ${workspaceId}
+    `;
+    return true;
+  } catch (err) {
+    console.error("dbToggleWorkspaceAutoSave error:", err);
+    return false;
   }
 }
 

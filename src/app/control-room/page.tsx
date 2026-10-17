@@ -49,6 +49,13 @@ import {
   CreditCard,
   BookOpen,
   Menu,
+  AlertCircle,
+  UserCheck,
+  UserX,
+  CheckSquare,
+  Square,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 const COUNTRY_CODES = [
@@ -331,9 +338,24 @@ function ControlRoomContent() {
   const [testInput, setTestInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
 
-  // Leads Filter
+  // Leads & Contacts Filter
   const [leadSearch, setLeadSearch] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+
+  // Contacts & Auto-Saver CRM state
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsStats, setContactsStats] = useState<{
+    total: number;
+    saved: number;
+    unsaved: number;
+    autoSaveEnabled: boolean;
+  }>({ total: 0, saved: 0, unsaved: 0, autoSaveEnabled: true });
+  const [contactTab, setContactTab] = useState<"all" | "unsaved" | "saved">("all");
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
+  const [contactActionLoading, setContactActionLoading] = useState<string | null>(null);
+  const [autoSaveMaster, setAutoSaveMaster] = useState(true);
+  const [contactBannerMsg, setContactBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Broadcast state
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -427,6 +449,7 @@ function ControlRoomContent() {
         setSettings(data.settings);
         setRules(data.rules || []);
         setLeads(data.leads || []);
+        fetchContacts(data.workspace.slug, "all");
         setCallLogs(data.callLogs || []);
         setStatuses(data.statuses || []);
         setAutoStatusEnabled(data.workspace.auto_status_enabled || false);
@@ -445,6 +468,135 @@ function ControlRoomContent() {
       setLoading(false);
     }
   }
+
+  const fetchContacts = async (slug?: string, filter: "all" | "unsaved" | "saved" = "all") => {
+    const targetSlug = slug || currentWs?.slug;
+    if (!targetSlug) return;
+    setContactsLoading(true);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${targetSlug}/contacts?filter=${filter}`);
+      const data = await res.json();
+      if (data.success) {
+        setContacts(data.contacts || []);
+        setContactsStats(data.stats || { total: 0, saved: 0, unsaved: 0, autoSaveEnabled: true });
+        setAutoSaveMaster(data.stats?.autoSaveEnabled ?? true);
+      }
+    } catch (err) {
+      console.error("Failed to load contacts:", err);
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "leads" && currentWs?.slug) {
+      fetchContacts(currentWs.slug, contactTab);
+    }
+  }, [activeTab, contactTab, currentWs?.slug]);
+
+  const handleSaveAllUnsaved = async () => {
+    if (!currentWs) return;
+    setContactActionLoading("save_all");
+    setContactBannerMsg(null);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save_all_unsaved" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setContactBannerMsg({
+          type: "success",
+          text: `⚡ WhatsApp Status Views Booster: Successfully marked ${data.updatedCount || contactsStats.unsaved} unsaved contacts as saved!`,
+        });
+        await fetchContacts(currentWs.slug, contactTab);
+      } else {
+        setContactBannerMsg({ type: "error", text: data.error || "Failed to save unsaved contacts." });
+      }
+    } catch (err: any) {
+      setContactBannerMsg({ type: "error", text: err.message || "Failed to save contacts." });
+    } finally {
+      setContactActionLoading(null);
+    }
+  };
+
+  const handleSaveSelected = async (isSaved: boolean = true) => {
+    if (!currentWs || selectedPhones.length === 0) return;
+    setContactActionLoading("save_selected");
+    setContactBannerMsg(null);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_selected",
+          phones: selectedPhones,
+          is_saved: isSaved,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setContactBannerMsg({
+          type: "success",
+          text: `Updated ${data.updatedCount || selectedPhones.length} contacts status!`,
+        });
+        setSelectedPhones([]);
+        await fetchContacts(currentWs.slug, contactTab);
+      } else {
+        setContactBannerMsg({ type: "error", text: data.error || "Failed to update selected contacts." });
+      }
+    } catch (err: any) {
+      setContactBannerMsg({ type: "error", text: err.message || "Action failed." });
+    } finally {
+      setContactActionLoading(null);
+    }
+  };
+
+  const handleToggleContactAutoSave = async (phone: string, currentAutoSave: boolean) => {
+    if (!currentWs) return;
+    const target = !currentAutoSave;
+    setContacts((prev) =>
+      prev.map((c) => (c.phone === phone ? { ...c, auto_save: target } : c))
+    );
+    try {
+      await fetch(`/api/obey/workspaces/${currentWs.slug}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_auto_save",
+          phone,
+          auto_save: target,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to toggle contact auto save:", err);
+    }
+  };
+
+  const handleToggleMasterAutoSave = async () => {
+    if (!currentWs) return;
+    const target = !autoSaveMaster;
+    setAutoSaveMaster(target);
+    try {
+      await fetch(`/api/obey/workspaces/${currentWs.slug}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_master_auto_save",
+          enabled: target,
+        }),
+      });
+      setContactBannerMsg({
+        type: "success",
+        text: target
+          ? "🤖 Automatic Contact Saver enabled! All new incoming WhatsApp chats will be saved automatically."
+          : "⏸️ Automatic Contact Saver paused.",
+      });
+    } catch (err) {
+      console.error("Failed to toggle master auto save:", err);
+    }
+  };
 
   const handleSelectMediaFile = (file: File) => {
     if (!file) return;
@@ -1123,6 +1275,46 @@ function ControlRoomContent() {
     });
   }, [leads, leadSearch, leadStatusFilter]);
 
+  // Filtered contacts based on search and tab
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((c) => {
+      const q = leadSearch.toLowerCase().trim();
+      const cleanQ = leadSearch.replace(/\D/g, "");
+      const matchesSearch =
+        !q ||
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (cleanQ && c.phone.includes(cleanQ)) ||
+        (c.last_message && c.last_message.toLowerCase().includes(q));
+
+      const matchesTab =
+        contactTab === "all"
+          ? true
+          : contactTab === "unsaved"
+          ? !c.is_saved
+          : c.is_saved;
+
+      return matchesSearch && matchesTab;
+    });
+  }, [contacts, leadSearch, contactTab]);
+
+  const allFilteredSelected =
+    filteredContacts.length > 0 &&
+    filteredContacts.every((c) => selectedPhones.includes(c.phone));
+
+  const handleSelectAllToggle = () => {
+    if (allFilteredSelected) {
+      setSelectedPhones([]);
+    } else {
+      setSelectedPhones(filteredContacts.map((c) => c.phone));
+    }
+  };
+
+  const handleToggleSelectPhone = (phone: string) => {
+    setSelectedPhones((prev) =>
+      prev.includes(phone) ? prev.filter((p) => p !== phone) : [...prev, phone]
+    );
+  };
+
   const hotlineUrl = currentWs
     ? typeof window !== "undefined"
       ? `${window.location.origin}/call?biz=${currentWs.slug}`
@@ -1166,7 +1358,13 @@ function ControlRoomContent() {
     },
     { id: "brain", label: "AI Brain & Settings", icon: Sparkles, highlight: true },
     { id: "rules", label: "Keyword Triggers", icon: Zap, badge: rules.length },
-    { id: "leads", label: "Leads CRM", icon: Users, badge: leads.length },
+    {
+      id: "leads",
+      label: "Contacts & Auto-Saver",
+      icon: Users,
+      badge: contactsStats.unsaved > 0 ? `${contactsStats.unsaved} Unsaved` : (contactsStats.total || leads.length),
+      badgeColor: contactsStats.unsaved > 0 ? "text-amber-300 bg-amber-950/60 border-amber-800/50" : undefined,
+    },
     { id: "hotline", label: "Voice Hotline & Embed", icon: PhoneCall },
   ];
 
@@ -1433,7 +1631,9 @@ function ControlRoomContent() {
             <span className="text-slate-600">/</span>
             <span className="text-white font-bold">{currentWs?.name || "Workspace"}</span>
             <span className="text-slate-600">/</span>
-            <span className="text-emerald-400 font-bold capitalize">{activeTab}</span>
+            <span className="text-emerald-400 font-bold capitalize">
+              {activeTab === "leads" ? "Contacts & Auto-Saver" : activeTab}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -3534,144 +3734,534 @@ function ControlRoomContent() {
         )}
 
         {/* ============================================================== */}
-        {/* TAB 4: LEADS CRM */}
+        {/* TAB 4: WHATSAPP CONTACTS & AUTO-SAVER CRM */}
         {/* ============================================================== */}
         {activeTab === "leads" && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-emerald-400" />
-                  Auto-Saved Leads & Customer CRM
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Every contact who reaches out via WhatsApp or calls your Voice Hotline is automatically saved.
-                </p>
+          <div className="space-y-6">
+            {/* Header & Feature Explanation */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Users className="w-5 h-5 text-emerald-400" />
+                      WhatsApp Contacts &amp; Auto-Saver CRM
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-400" />
+                      Status Views Booster 🚀
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    Obey syncs all numbers from your phone&apos;s WhatsApp and automatically saves any new incoming customer number.
+                    <span className="text-emerald-300 font-medium ml-1">
+                      When both you and the customer save each other&apos;s number, WhatsApp unlocks 100% status story visibility for maximum reach!
+                    </span>
+                  </p>
+                </div>
+
+                {currentWs && (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      onClick={handleSaveAllUnsaved}
+                      disabled={contactActionLoading === "save_all" || contactsStats.unsaved === 0}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition shadow-lg cursor-pointer ${
+                        contactsStats.unsaved > 0
+                          ? "bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 shadow-emerald-500/20 animate-pulse"
+                          : "bg-slate-800 text-slate-400 border border-slate-700 opacity-60 cursor-not-allowed"
+                      }`}
+                      title="Save all unsaved numbers so they can view your WhatsApp status updates"
+                    >
+                      <Zap className="w-4 h-4 fill-current" />
+                      <span>{contactActionLoading === "save_all" ? "Saving All..." : `Save All Unsaved (${contactsStats.unsaved})`}</span>
+                    </button>
+
+                    <a
+                      href={`/api/obey/workspaces/${currentWs.slug}/contacts?format=vcf&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}
+                      download
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs sm:text-sm font-semibold border border-teal-500/30 transition cursor-pointer"
+                      title="Download .VCF file for 1-tap import directly into your Android, iPhone, or Google Contacts address book"
+                    >
+                      <Phone className="w-4 h-4 text-teal-400" />
+                      <span>Save to Phone (VCF)</span>
+                    </a>
+
+                    <a
+                      href={`/api/obey/workspaces/${currentWs.slug}/contacts?format=csv&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}
+                      download
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition"
+                      title="Export contacts as Excel / CSV spreadsheet"
+                    >
+                      <Download className="w-4 h-4 text-emerald-400" />
+                      <span>CSV</span>
+                    </a>
+
+                    <button
+                      onClick={() => {
+                        setBroadcastResult(null);
+                        setShowBroadcastModal(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs sm:text-sm font-semibold border border-emerald-500/20 transition cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Broadcast</span>
+                    </button>
+
+                    <button
+                      onClick={() => fetchContacts(currentWs.slug, contactTab)}
+                      disabled={contactsLoading}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+                      title="Refresh contacts"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${contactsLoading ? "animate-spin text-emerald-400" : ""}`} />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {currentWs && (
-                <div className="flex flex-wrap items-center gap-2">
+              {/* Feedback Alert Banner */}
+              {contactBannerMsg && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                    contactBannerMsg.type === "success"
+                      ? "bg-emerald-950/60 border-emerald-800/80 text-emerald-200"
+                      : "bg-rose-950/60 border-rose-800/80 text-rose-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {contactBannerMsg.type === "success" ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{contactBannerMsg.text}</span>
+                  </div>
                   <button
-                    onClick={() => {
-                      setBroadcastResult(null);
-                      setShowBroadcastModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-md shadow-emerald-500/10"
+                    onClick={() => setContactBannerMsg(null)}
+                    className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
                   >
-                    <Send className="w-4 h-4" />
-                    <span>Send Broadcast</span>
+                    ✕
                   </button>
-
-                  <a
-                    href={`/api/obey/workspaces/${currentWs.slug}/leads?format=vcf`}
-                    download
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs sm:text-sm font-semibold border border-teal-500/30 transition"
-                    title="Export .vcf file for 1-tap import into Google Contacts or phone address book"
-                  >
-                    <Phone className="w-4 h-4 text-teal-400" />
-                    <span>Save to Phone (VCF)</span>
-                  </a>
-
-                  <a
-                    href={`/api/obey/workspaces/${currentWs.slug}/leads?format=csv`}
-                    download
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition"
-                  >
-                    <Download className="w-4 h-4 text-emerald-400" />
-                    <span>Excel / CSV</span>
-                  </a>
                 </div>
               )}
+
+              {/* 4 Top Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+                {/* Total Contacts */}
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span>Total WhatsApp Contacts</span>
+                    <Users className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="text-2xl font-black text-white">
+                    {contactsLoading ? "..." : contactsStats.total}
+                  </div>
+                  <p className="text-[11px] text-slate-400">Synced live from phone</p>
+                </div>
+
+                {/* Saved in Phone */}
+                <div className="bg-slate-950/80 border border-emerald-900/30 rounded-xl p-3.5 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span>Saved in Phone</span>
+                    <UserCheck className="w-4 h-4 text-teal-400" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-emerald-400">
+                      {contactsLoading ? "..." : contactsStats.saved}
+                    </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Status Views ON
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">Can view your WhatsApp statuses</p>
+                </div>
+
+                {/* Unsaved Contacts */}
+                <div
+                  className={`bg-slate-950/80 rounded-xl p-3.5 space-y-1 border ${
+                    contactsStats.unsaved > 0 ? "border-amber-500/40 bg-amber-950/10" : "border-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span>Unsaved Numbers</span>
+                    <AlertCircle className={`w-4 h-4 ${contactsStats.unsaved > 0 ? "text-amber-400" : "text-slate-400"}`} />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-2xl font-black ${contactsStats.unsaved > 0 ? "text-amber-400" : "text-white"}`}>
+                      {contactsLoading ? "..." : contactsStats.unsaved}
+                    </span>
+                    {contactsStats.unsaved > 0 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                        Needs Save
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-amber-400/80">Save to unlock their status views</p>
+                </div>
+
+                {/* Auto-Save Engine Master Toggle */}
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span>Auto-Save Engine</span>
+                    <button
+                      onClick={handleToggleMasterAutoSave}
+                      className="cursor-pointer transition"
+                      title={autoSaveMaster ? "Click to Pause Auto-Save" : "Click to Enable Auto-Save"}
+                    >
+                      {autoSaveMaster ? (
+                        <ToggleRight className="w-6 h-6 text-emerald-400" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-slate-500" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span
+                      className={`w-2 h-2 rounded-full ${autoSaveMaster ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`}
+                    />
+                    <span className="text-xs font-bold text-white">
+                      {autoSaveMaster ? "Active 24/7" : "Paused"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">Auto-saves new incoming WhatsApp numbers</p>
+                </div>
+              </div>
             </div>
 
-            {/* Filter and Search */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Search by name, phone, or inquiry notes..."
-                  value={leadSearch}
-                  onChange={(e) => setLeadSearch(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 bg-slate-850 border border-slate-700 rounded-xl p-1 text-xs">
-                {["all", "lead", "interested", "purchased"].map((st) => (
+            {/* Sub-Tabs, Search & Batch Actions */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* 3 Sub-Tabs */}
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl p-1 text-xs">
                   <button
-                    key={st}
-                    onClick={() => setLeadStatusFilter(st)}
-                    className={`px-3 py-1 rounded-lg capitalize transition ${
-                      leadStatusFilter === st
-                        ? "bg-emerald-500 text-slate-950 font-bold"
-                        : "text-slate-400 hover:text-slate-200"
+                    onClick={() => {
+                      setContactTab("all");
+                      setSelectedPhones([]);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      contactTab === "all"
+                        ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    {st}
+                    <span>All Contacts</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${contactTab === "all" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                      {contactsStats.total}
+                    </span>
                   </button>
-                ))}
-              </div>
-            </div>
 
-            {/* Leads Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-850 text-slate-400 font-semibold border-b border-slate-800">
-                  <tr>
-                    <th className="p-3.5">Customer</th>
-                    <th className="p-3.5">Phone Number</th>
-                    <th className="p-3.5">Source</th>
-                    <th className="p-3.5">Interest / Intent</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5 text-right">Direct Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800 bg-slate-900/60">
-                  {filteredLeads.length === 0 ? (
+                  <button
+                    onClick={() => {
+                      setContactTab("unsaved");
+                      setSelectedPhones([]);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      contactTab === "unsaved"
+                        ? "bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span>Unsaved Numbers</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      contactTab === "unsaved"
+                        ? "bg-slate-950/20 text-slate-950"
+                        : contactsStats.unsaved > 0
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold"
+                        : "bg-slate-800 text-slate-400"
+                    }`}>
+                      {contactsStats.unsaved}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setContactTab("saved");
+                      setSelectedPhones([]);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      contactTab === "saved"
+                        ? "bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span>Saved in Phone</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${contactTab === "saved" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                      {contactsStats.saved}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search contacts by name, phone number, or notes..."
+                    value={leadSearch}
+                    onChange={(e) => setLeadSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                  />
+                  {leadSearch && (
+                    <button
+                      onClick={() => setLeadSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Multi-Selection Action Bar (appears when 1+ contacts are ticked) */}
+              {selectedPhones.length > 0 && (
+                <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
+                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                    <span>{selectedPhones.length} contact{selectedPhones.length === 1 ? "" : "s"} ticked</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSaveSelected(true)}
+                      disabled={contactActionLoading === "save_selected"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition cursor-pointer shadow-sm"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>{contactActionLoading === "save_selected" ? "Saving..." : "Save Selected (Mark Saved)"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleSaveSelected(false)}
+                      disabled={contactActionLoading === "save_selected"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition cursor-pointer border border-slate-700"
+                    >
+                      <UserX className="w-3.5 h-3.5" />
+                      <span>Mark Unsaved</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedPhones([])}
+                      className="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs transition cursor-pointer"
+                    >
+                      Deselect
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Contacts Table */}
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-500">
-                        No leads match your filter.
-                      </td>
+                      <th className="p-3.5 w-10 text-center">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllToggle}
+                          className="cursor-pointer text-slate-400 hover:text-white"
+                          title={allFilteredSelected ? "Deselect All" : "Select All"}
+                        >
+                          {allFilteredSelected ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-600" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="p-3.5">Contact Name</th>
+                      <th className="p-3.5">Phone Number</th>
+                      <th className="p-3.5">WhatsApp Status Views</th>
+                      <th className="p-3.5">Auto-Save</th>
+                      <th className="p-3.5">Recent Notes / Inquiry</th>
+                      <th className="p-3.5 text-right">Direct Action</th>
                     </tr>
-                  ) : (
-                    filteredLeads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-slate-850/60 transition">
-                        <td className="p-3.5 font-medium text-slate-200">
-                          {lead.name || "Anonymous Contact"}
-                        </td>
-                        <td className="p-3.5 font-mono text-slate-300">
-                          +{lead.phone}
-                        </td>
-                        <td className="p-3.5">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 capitalize">
-                            {lead.source}
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-slate-400 max-w-xs truncate">
-                          {lead.intent_summary || lead.last_message || "—"}
-                        </td>
-                        <td className="p-3.5">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 capitalize">
-                            {lead.status}
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-right">
-                          <a
-                            href={`https://wa.me/${lead.phone}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium border border-emerald-500/20 transition"
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            <span>WhatsApp</span>
-                          </a>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 bg-slate-900/60">
+                    {contactsLoading ? (
+                      <tr>
+                        <td colSpan={7} className="p-12 text-center text-slate-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />
+                            <span>Syncing WhatsApp contacts from phone address book...</span>
+                          </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredContacts.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-12 text-center text-slate-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Users className="w-8 h-8 text-slate-600" />
+                            <p className="font-semibold text-slate-300">No contacts found</p>
+                            <p className="text-xs text-slate-500 max-w-sm">
+                              {contactTab === "unsaved"
+                                ? "🎉 Outstanding! All contacts in your WhatsApp are already saved in your phone address book. Status views are 100% active!"
+                                : "No contacts match your current search filter."}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredContacts.map((contact) => {
+                        const isTicked = selectedPhones.includes(contact.phone);
+                        return (
+                          <tr
+                            key={contact.id || contact.phone}
+                            className={`transition cursor-pointer ${
+                              isTicked ? "bg-emerald-950/20 hover:bg-emerald-950/30" : "hover:bg-slate-850/60"
+                            }`}
+                            onClick={() => handleToggleSelectPhone(contact.phone)}
+                          >
+                            {/* Checkbox */}
+                            <td
+                              className="p-3.5 text-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSelectPhone(contact.phone);
+                              }}
+                            >
+                              {isTicked ? (
+                                <CheckSquare className="w-4 h-4 text-emerald-400 inline-block" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-600 hover:text-slate-400 inline-block" />
+                              )}
+                            </td>
+
+                            {/* Contact Name & Avatar */}
+                            <td className="p-3.5 font-medium text-slate-200">
+                              <div className="flex items-center gap-2.5">
+                                {contact.profile_pic_url ? (
+                                  <img
+                                    src={contact.profile_pic_url}
+                                    alt={contact.name}
+                                    className="w-7 h-7 rounded-full object-cover border border-slate-700 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-[11px] text-emerald-400 shrink-0">
+                                    {(contact.name || "C").slice(0, 1).toUpperCase()}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-bold text-slate-200">
+                                    {contact.name || `Contact ${contact.phone.slice(-4)}`}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    via {contact.source || "WhatsApp"}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Phone */}
+                            <td className="p-3.5 font-mono text-slate-300">
+                              <div className="flex items-center gap-1.5">
+                                <span>+{contact.phone}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(`+${contact.phone}`);
+                                  }}
+                                  className="text-slate-500 hover:text-emerald-400 p-0.5 cursor-pointer"
+                                  title="Copy phone"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* WhatsApp Status Views Pill */}
+                            <td className="p-3.5">
+                              {contact.is_saved ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  <Check className="w-3 h-3" />
+                                  <span>Saved in Phone (Views ON)</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  <AlertCircle className="w-3 h-3" />
+                                  <span>Unsaved (No Views Yet)</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Auto-Save Toggle */}
+                            <td
+                              className="p-3.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleContactAutoSave(contact.phone, Boolean(contact.auto_save))}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer border ${
+                                  contact.auto_save
+                                    ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/70"
+                                    : "bg-slate-800/80 text-slate-400 border-slate-700"
+                                }`}
+                                title={contact.auto_save ? "Auto-Save is active for this contact" : "Auto-Save is disabled"}
+                              >
+                                {contact.auto_save ? (
+                                  <>
+                                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                                    <span>Auto-Save ON</span>
+                                  </>
+                                ) : (
+                                  <span>Off</span>
+                                )}
+                              </button>
+                            </td>
+
+                            {/* Notes / Last Message */}
+                            <td className="p-3.5 text-slate-400 max-w-xs truncate">
+                              {contact.last_message || contact.intent_summary || "—"}
+                            </td>
+
+                            {/* Direct WhatsApp Action */}
+                            <td
+                              className="p-3.5 text-right"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center justify-end gap-1.5">
+                                {!contact.is_saved && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPhones([contact.phone]);
+                                      handleSaveSelected(true);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-[11px] border border-emerald-500/20 transition cursor-pointer"
+                                    title="Mark contact as saved in phone"
+                                  >
+                                    Mark Saved
+                                  </button>
+                                )}
+                                <a
+                                  href={`https://wa.me/${contact.phone}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium border border-emerald-500/20 transition"
+                                >
+                                  <MessageSquare className="w-3 h-3" />
+                                  <span>Chat</span>
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Footer Summary */}
+              <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 pt-2 px-1">
+                <span>
+                  Showing {filteredContacts.length} of {contactsStats.total} contacts
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Tip: Tap <strong className="text-emerald-400">Save to Phone (VCF)</strong> on your mobile browser to add all unsaved numbers to your phone with 1 tap.
+                </span>
+              </div>
             </div>
           </div>
         )}
