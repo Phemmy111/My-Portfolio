@@ -298,7 +298,7 @@ export default function ManualPage() {
   }, [sections, activeCategory, searchQuery]);
 
   return (
-    <div className="min-h-screen bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-900 dark:text-slate-100 font-sans selection:bg-emerald-500/20 selection:text-emerald-950 dark:selection:text-white transition-colors duration-200">
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#050b14] text-zinc-900 dark:text-slate-100 font-sans selection:bg-emerald-500/20 selection:text-emerald-950 dark:selection:text-white transition-colors duration-200">
       {/* Top Header */}
       <header className="border-b border-zinc-300/80 dark:border-slate-800/80 bg-white/90 dark:bg-[#060d1a]/90 backdrop-blur-xl sticky top-0 z-40 transition-colors">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between gap-4">

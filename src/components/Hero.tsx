@@ -266,7 +266,7 @@ export default function Hero() {
         </AnimatePresence>
 
         {/* Clean atmospheric overlay protecting legibility across light and dark modes */}
-        <div className="absolute inset-0 bg-[#dfe3e8]/75 dark:bg-black/85 backdrop-blur-[1px]" />
+        <div className="absolute inset-0 bg-[#f8fafc]/75 dark:bg-black/85 backdrop-blur-[1px]" />
       </div>
 
       {/* ============================================================ */}

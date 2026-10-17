@@ -306,7 +306,7 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#dfe3e8] dark:bg-black flex items-center justify-center text-zinc-950 dark:text-white font-bold">
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#050b14] flex items-center justify-center text-zinc-950 dark:text-white font-bold">
         <div className="flex items-center gap-3">
           <RefreshCw size={20} className="animate-spin text-emerald-600" />
           Loading Command Center...
@@ -342,9 +342,9 @@ export default function AdminDashboardPage() {
   );
 
   return (
-    <div className="min-h-screen admin-root bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
+    <div className="min-h-screen admin-root bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-black dark:selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
-      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-300 dark:border-slate-800 bg-[#ebedf0] dark:bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-zinc-200 dark:border-slate-800 bg-white dark:bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
           {/* Top Brand & Profile */}
           <div className="flex items-center justify-between pb-3 border-b border-zinc-300 dark:border-slate-800">
@@ -513,7 +513,7 @@ export default function AdminDashboardPage() {
       </aside>
 
       {/* 2. Mobile-First Sticky Header (md:hidden) */}
-      <header className="md:hidden sticky top-0 z-40 bg-[#dfe3e8]/95 dark:bg-[#060d1a]/95 backdrop-blur-md border-b border-zinc-300 dark:border-slate-800 px-3 py-2.5 flex items-center justify-between">
+      <header className="md:hidden sticky top-0 z-40 bg-[#f8fafc]/95 dark:bg-[#060d1a]/95 backdrop-blur-md border-b border-zinc-200 dark:border-slate-800 px-3 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -562,7 +562,7 @@ export default function AdminDashboardPage() {
           onClick={() => setMobileMenuOpen(false)}
         >
           <div
-            className="w-72 bg-[#ebedf0] dark:bg-[#0a0a0a] border-r border-zinc-300 dark:border-zinc-800 h-full p-4 flex flex-col justify-between overflow-y-auto"
+            className="w-72 bg-white dark:bg-[#060d1a] border-r border-zinc-200 dark:border-slate-800 h-full p-4 flex flex-col justify-between overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-4">
@@ -1719,7 +1719,7 @@ export default function AdminDashboardPage() {
       />
 
       {/* 4. Mobile-First Bottom Navigation Bar (md:hidden) */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#ebedf0]/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-zinc-300 dark:border-zinc-800 py-1 px-2 flex items-center justify-around md:hidden">
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-[#060d1a]/95 backdrop-blur-xl border-t border-zinc-200 dark:border-slate-800 py-1 px-2 flex items-center justify-around md:hidden">
         {[
           { id: "master", label: "Master", icon: Building2 },
           { id: "inbox", label: "Inbox", icon: MessagesSquare },

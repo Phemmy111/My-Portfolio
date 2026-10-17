@@ -86,7 +86,7 @@ export default function RootLayout({
             }}
           />
         </head>
-        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">{children}</body>
+        <body className="min-h-full w-full flex flex-col overflow-x-hidden bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 transition-colors duration-200">{children}</body>
       </html>
     </ClerkProvider>
   );

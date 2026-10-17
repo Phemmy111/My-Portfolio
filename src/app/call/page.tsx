@@ -827,7 +827,7 @@ function CallInterface() {
   };
 
   return (
-    <div className="min-h-screen bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-white flex flex-col justify-between selection:bg-emerald-500 selection:text-black transition-colors duration-200">
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-white flex flex-col justify-between selection:bg-emerald-500 selection:text-black transition-colors duration-200">
       {/* Top Header */}
       <header className="px-4 sm:px-6 py-4 flex items-center justify-between border-b border-zinc-300 dark:border-slate-800 bg-white/90 dark:bg-[#060d1a]/80 backdrop-blur-md sticky top-0 z-30">
         <Link

@@ -4,10 +4,10 @@
 @source "../lib";
 
 :root {
-  --background: #dfe3e8; /* Clean uniform light ash */
+  --background: #f8fafc; /* Crisp clean off-white canvas */
   --foreground: #09090b; /* Pure dark for high contrast */
   --card-bg: #ffffff;
-  --card-border: #cbd5e1;
+  --card-border: #e2e8f0;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -74,47 +74,109 @@ body {
   padding: 5rem 0;
 }
 
-/* Control Room: Admin color combo in Light Mode (Default) */
-html:not(.dark) .control-room-root {
-  background-color: #dfe3e8 !important;
+/* Control Room & Admin: Crisp Clean Light Mode (Default) */
+html:not(.dark) .control-room-root,
+html:not(.dark) .admin-root {
+  background-color: #f8fafc !important;
   color: #09090b !important;
 }
 
-html:not(.dark) .control-room-root aside {
-  background-color: #ebedf0 !important;
-  border-color: #d4d4d8 !important;
+html:not(.dark) .control-room-root aside,
+html:not(.dark) .admin-root aside,
+html:not(.dark) .control-room-root header,
+html:not(.dark) .admin-root header {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
 
 html:not(.dark) .control-room-root [class*="bg-[#060d1a]"],
-html:not(.dark) .control-room-root [class*="bg-[#050b14]"] {
-  background-color: #ebedf0 !important;
-  border-color: #d4d4d8 !important;
+html:not(.dark) .control-room-root [class*="bg-[#050b14]"],
+html:not(.dark) .admin-root [class*="bg-[#060d1a]"],
+html:not(.dark) .admin-root [class*="bg-[#050b14]"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
 
 /* Primary Cards, Modals, Panels */
 html:not(.dark) .control-room-root [class*="bg-[#0b1424]"],
 html:not(.dark) .control-room-root [class*="bg-slate-900"],
 html:not(.dark) .control-room-root [class*="bg-zinc-950"],
-html:not(.dark) .control-room-root [class*="bg-black"] {
+html:not(.dark) .control-room-root [class*="bg-black"],
+html:not(.dark) .admin-root [class*="bg-[#0b1424]"],
+html:not(.dark) .admin-root [class*="bg-[#0c0c0e]"],
+html:not(.dark) .admin-root [class*="bg-[#080808]"],
+html:not(.dark) .admin-root [class*="bg-zinc-950"],
+html:not(.dark) .admin-root [class*="bg-black"] {
   background-color: #ffffff !important;
   color: #09090b !important;
+  border-color: #e2e8f0 !important;
 }
 
 /* Secondary / Nested Sub-Cards, Chips, & Metric Boxes */
 html:not(.dark) .control-room-root [class*="bg-slate-950"],
 html:not(.dark) .control-room-root [class*="bg-slate-850"],
 html:not(.dark) .control-room-root [class*="bg-zinc-900"],
-html:not(.dark) .control-room-root [class*="bg-zinc-850"] {
-  background-color: #ffffff !important;
+html:not(.dark) .control-room-root [class*="bg-zinc-850"],
+html:not(.dark) .admin-root [class*="bg-zinc-900"],
+html:not(.dark) .admin-root [class*="bg-zinc-850"] {
+  background-color: #f8fafc !important;
   color: #09090b !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Fix dark grey / black phone pills & badges */
+html:not(.dark) .control-room-root [class*="bg-slate-800"],
+html:not(.dark) .control-room-root [class*="bg-zinc-800"],
+html:not(.dark) .admin-root [class*="bg-slate-800"],
+html:not(.dark) .admin-root [class*="bg-zinc-800"] {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .control-room-root code,
+html:not(.dark) .admin-root code {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Status Badges in Light Mode */
+html:not(.dark) [class*="bg-emerald-950"] {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+
+html:not(.dark) [class*="bg-amber-950"] {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+html:not(.dark) [class*="bg-purple-950"] {
+  background-color: #faf5ff !important;
+  color: #7e22ce !important;
+  border-color: #e9d5ff !important;
+}
+
+html:not(.dark) [class*="bg-rose-950"],
+html:not(.dark) [class*="bg-red-950"] {
+  background-color: #fff1f2 !important;
+  color: #be123c !important;
+  border-color: #fecdd3 !important;
 }
 
 /* Borders in Light Mode */
 html:not(.dark) .control-room-root [class*="border-slate-800"],
 html:not(.dark) .control-room-root [class*="border-slate-700"],
 html:not(.dark) .control-room-root [class*="border-zinc-800"],
-html:not(.dark) .control-room-root [class*="border-zinc-700"] {
-  border-color: #d4d4d8 !important;
+html:not(.dark) .control-room-root [class*="border-zinc-700"],
+html:not(.dark) .admin-root [class*="border-slate-800"],
+html:not(.dark) .admin-root [class*="border-slate-700"],
+html:not(.dark) .admin-root [class*="border-zinc-800"],
+html:not(.dark) .admin-root [class*="border-zinc-700"] {
+  border-color: #e2e8f0 !important;
 }
 
 /* Typography Overrides */
@@ -122,56 +184,74 @@ html:not(.dark) .control-room-root .text-white,
 html:not(.dark) .control-room-root [class*="text-slate-100"],
 html:not(.dark) .control-room-root [class*="text-slate-200"],
 html:not(.dark) .control-room-root [class*="text-zinc-100"],
-html:not(.dark) .control-room-root [class*="text-zinc-200"] {
+html:not(.dark) .control-room-root [class*="text-zinc-200"],
+html:not(.dark) .admin-root .text-white,
+html:not(.dark) .admin-root [class*="text-slate-100"],
+html:not(.dark) .admin-root [class*="text-slate-200"],
+html:not(.dark) .admin-root [class*="text-zinc-100"],
+html:not(.dark) .admin-root [class*="text-zinc-200"] {
   color: #09090b !important;
 }
 
 html:not(.dark) .control-room-root [class*="text-slate-300"],
 html:not(.dark) .control-room-root [class*="text-slate-400"],
 html:not(.dark) .control-room-root [class*="text-zinc-300"],
-html:not(.dark) .control-room-root [class*="text-zinc-400"] {
-  color: #52525b !important;
+html:not(.dark) .control-room-root [class*="text-zinc-400"],
+html:not(.dark) .admin-root [class*="text-slate-300"],
+html:not(.dark) .admin-root [class*="text-slate-400"],
+html:not(.dark) .admin-root [class*="text-zinc-300"],
+html:not(.dark) .admin-root [class*="text-zinc-400"] {
+  color: #475569 !important;
 }
 
 html:not(.dark) .control-room-root [class*="text-slate-500"],
 html:not(.dark) .control-room-root [class*="text-slate-600"],
 html:not(.dark) .control-room-root [class*="text-zinc-500"],
-html:not(.dark) .control-room-root [class*="text-zinc-600"] {
-  color: #71717a !important;
+html:not(.dark) .control-room-root [class*="text-zinc-600"],
+html:not(.dark) .admin-root [class*="text-slate-500"],
+html:not(.dark) .admin-root [class*="text-slate-600"],
+html:not(.dark) .admin-root [class*="text-zinc-500"],
+html:not(.dark) .admin-root [class*="text-zinc-600"] {
+  color: #64748b !important;
 }
 
 /* Protect Colored Buttons & Action Badges from Text Darkening */
-html:not(.dark) .control-room-root [class*="bg-emerald-"] .text-white,
-html:not(.dark) .control-room-root [class*="bg-emerald-"].text-white,
-html:not(.dark) .control-room-root [class*="bg-blue-"] .text-white,
-html:not(.dark) .control-room-root [class*="bg-blue-"].text-white,
-html:not(.dark) .control-room-root [class*="bg-purple-"] .text-white,
-html:not(.dark) .control-room-root [class*="bg-purple-"].text-white,
-html:not(.dark) .control-room-root [class*="bg-rose-"] .text-white,
-html:not(.dark) .control-room-root [class*="bg-rose-"].text-white,
-html:not(.dark) .control-room-root button[class*="bg-emerald"],
-html:not(.dark) .control-room-root button[class*="bg-blue"],
-html:not(.dark) .control-room-root button[class*="bg-purple"],
-html:not(.dark) .control-room-root button[class*="bg-rose"] {
+html:not(.dark) [class*="bg-emerald-"] .text-white,
+html:not(.dark) [class*="bg-emerald-"].text-white,
+html:not(.dark) [class*="bg-blue-"] .text-white,
+html:not(.dark) [class*="bg-blue-"].text-white,
+html:not(.dark) [class*="bg-purple-"] .text-white,
+html:not(.dark) [class*="bg-purple-"].text-white,
+html:not(.dark) [class*="bg-rose-"] .text-white,
+html:not(.dark) [class*="bg-rose-"].text-white,
+html:not(.dark) button[class*="bg-emerald"],
+html:not(.dark) button[class*="bg-blue"],
+html:not(.dark) button[class*="bg-purple"],
+html:not(.dark) button[class*="bg-rose"] {
   color: #ffffff !important;
 }
 
 /* Inputs, Textareas, Selects */
 html:not(.dark) .control-room-root input:not([type="checkbox"]):not([type="radio"]),
 html:not(.dark) .control-room-root select,
-html:not(.dark) .control-room-root textarea {
+html:not(.dark) .control-room-root textarea,
+html:not(.dark) .admin-root input:not([type="checkbox"]):not([type="radio"]),
+html:not(.dark) .admin-root select,
+html:not(.dark) .admin-root textarea {
   background-color: #ffffff !important;
   color: #09090b !important;
-  border-color: #d4d4d8 !important;
+  border-color: #cbd5e1 !important;
 }
 
 html:not(.dark) .control-room-root input::placeholder,
-html:not(.dark) .control-room-root textarea::placeholder {
-  color: #71717a !important;
+html:not(.dark) .control-room-root textarea::placeholder,
+html:not(.dark) .admin-root input::placeholder,
+html:not(.dark) .admin-root textarea::placeholder {
+  color: #94a3b8 !important;
 }
 
 html:not(.dark) .control-room-root code {
-  background-color: #e4e4e7 !important;
+  background-color: #f1f5f9 !important;
   color: #09090b !important;
 }
 

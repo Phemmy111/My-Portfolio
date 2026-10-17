@@ -1807,7 +1807,7 @@ function ControlRoomContent() {
   );
 
   return (
-    <div className="min-h-screen control-room-root bg-[#dfe3e8] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0 transition-colors duration-200">
+    <div className="min-h-screen control-room-root bg-[#f8fafc] dark:bg-[#050b14] text-zinc-950 dark:text-slate-100 flex flex-col md:flex-row selection:bg-emerald-500/20 selection:text-white pb-20 md:pb-0 transition-colors duration-200">
       {/* 1. Desktop Left Sidebar (Vercel Rail Style) */}
       <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-slate-800/80 bg-[#060d1a] h-screen sticky top-0 overflow-y-auto justify-between p-4 z-30">
         <div className="space-y-4">
