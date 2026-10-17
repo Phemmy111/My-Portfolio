@@ -683,7 +683,8 @@ export async function markWhatsAppMessageRead(
   instanceName: string,
   remoteJid: string,
   messageId: string,
-  participant?: string
+  participant?: string,
+  altParticipant?: string
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
@@ -691,20 +692,26 @@ export async function markWhatsAppMessageRead(
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
-    const readItem: any = {
-      remoteJid: jid,
-      fromMe: false,
-      id: messageId,
-    };
-    if (participant) {
-      readItem.participant = participant;
+    const readMessages: any[] = [
+      {
+        remoteJid: jid,
+        fromMe: false,
+        id: messageId,
+        ...(participant ? { participant } : {}),
+      },
+    ];
+    if (altParticipant && altParticipant !== participant) {
+      readMessages.push({
+        remoteJid: jid,
+        fromMe: false,
+        id: messageId,
+        participant: altParticipant,
+      });
     }
     const res = await fetch(`${evoUrl}/chat/markMessageAsRead/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoKey },
-      body: JSON.stringify({
-        readMessages: [readItem],
-      }),
+      body: JSON.stringify({ readMessages }),
     });
     return await res.json();
   } catch (err: any) {

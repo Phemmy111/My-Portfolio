@@ -9,9 +9,11 @@ import {
   generateAIImage,
   getUserImageMemory,
   saveUserImageMemory,
+  getUserFullMemory,
   isImageRevisionRequest,
   synthesizeImageRevisionPrompt,
 } from "@/lib/image-generator";
+import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   saveArtifact,
   extractArtifactBlocks,
@@ -108,11 +110,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Load previous dialogue for this web session, Obey Brain & Latest Artifact
-    const [pastMessages, brain, latestArtifact] = await Promise.all([
+    // Asynchronously learn & extract user memory facts in background
+    if (userText && userText.length >= 10) {
+      autoLearnUserMemory({
+        userIdentifier: contactId,
+        userText,
+        userName: displayName,
+      }).catch((memErr) => console.warn("[Web Memory Auto-Learn Error]:", memErr));
+    }
+
+    // 4. Load previous dialogue for this web session, Obey Brain, User Memory & Latest Artifact
+    const [pastMessages, brain, latestArtifact, userFullMemory] = await Promise.all([
       dbGetGuestMessages(contactId, 12),
       getObeyBrainContext(),
       getLatestUserArtifact(contactId),
+      getUserFullMemory(contactId),
     ]);
 
     const historyText = pastMessages
@@ -122,6 +134,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are Obey, executive associate and operations lead working directly with Femi Adeleke (full-stack software engineer & automation architect).
 You are chatting with a visitor in real-time on Femi's website.
+${userFullMemory?.user_notes ? `\nUSER MEMORY PROFILE (PERMANENT FACTS LEARNED ABOUT THIS VISITOR):\n${userFullMemory.user_notes}` : ""}
 
 CRITICAL BEHAVIOR RULES:
 1. ACT 100% HUMAN: Do NOT state or imply that you are an AI, bot, virtual assistant, or language model. Speak warmly, naturally, and professionally like a sharp, thoughtful human colleague.

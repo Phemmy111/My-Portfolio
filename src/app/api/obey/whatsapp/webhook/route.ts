@@ -24,6 +24,7 @@ import {
   dbGetStatusCommentsTodayCount,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
+import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   sendWhatsAppMessage,
   sendWhatsAppStatusPost,
@@ -448,6 +449,16 @@ async function processMessage(params: ProcessMessageParams) {
     }
   } catch (err) {
     console.warn("[WA] DB save error:", err);
+  }
+
+  // Asynchronously extract and commit personal memory facts to DB in background
+  if (userText && userText.length >= 10 && userText !== "[Unclear Voice Note]") {
+    autoLearnUserMemory({
+      userIdentifier: replyTo,
+      userText,
+      userName: pushName,
+      isOwner,
+    }).catch((memErr) => console.warn("[Memory Auto-Learn Error]:", memErr));
   }
 
   // 2. Load conversation history (Fetch recent 40 messages, keep last 25 turns)
@@ -1051,14 +1062,14 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
 
         // 3. Auto-View Status (Mark as Read in WhatsApp)
         if (msgObj.key?.id) {
-          await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, readParticipant);
+          await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, readParticipant, phoneJid);
           console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
         }
 
         // 4. AI Status Commenting
         if (posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
-          // Guard: Don't comment on our own number or Femi's number
-          if (posterPhone === FEMI_PERSONAL_NUMBER || (currentWs?.owner_phone && posterPhone.endsWith(currentWs.owner_phone.slice(-10)))) {
+          // Guard: Don't comment on the bot's own posted status
+          if (msgObj.key?.fromMe) {
             return;
           }
 

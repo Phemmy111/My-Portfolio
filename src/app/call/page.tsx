@@ -14,6 +14,7 @@ import {
   RefreshCw,
   MessageSquare,
   Bot,
+  Send,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -46,20 +47,51 @@ function CallInterface() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
-  const [vapiConfig, setVapiConfig] = useState<{ publicKey: string; assistantId: string } | null>(null);
+  const [textFallbackInput, setTextFallbackInput] = useState("");
+  const [supportsSpeechRec, setSupportsSpeechRec] = useState(true);
 
-  const vapiRef = useRef<any>(null);
+  // Audio & Speech refs
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const isCallActiveRef = useRef<boolean>(false);
+  const transcriptsRef = useRef<TranscriptMessage[]>([]);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // Fetch workspace details if biz param provided or saved in localStorage
+  // Keep transcriptsRef synchronized
+  useEffect(() => {
+    transcriptsRef.current = transcripts;
+  }, [transcripts]);
+
+  // Check browser speech recognition support
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRec =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+      if (!SpeechRec) {
+        setSupportsSpeechRec(false);
+      }
+    }
+  }, []);
+
+  // Fetch workspace details if biz param provided
   useEffect(() => {
     let effectiveBiz = rawBiz;
     if (!effectiveBiz && typeof window !== "undefined") {
       try {
-        const savedBiz = localStorage.getItem("obey_current_workspace") || localStorage.getItem("current_workspace_slug");
+        const savedBiz =
+          localStorage.getItem("obey_current_workspace") ||
+          localStorage.getItem("current_workspace_slug");
         if (savedBiz && savedBiz !== "femi" && savedBiz !== "femi-adeleke") {
           effectiveBiz = savedBiz;
         }
@@ -83,7 +115,7 @@ function CallInterface() {
     }
   }, [rawBiz]);
 
-  // Initialize from localStorage if query params were empty
+  // Initialize phone/name from localStorage
   useEffect(() => {
     try {
       if (rawPhone) {
@@ -107,25 +139,6 @@ function CallInterface() {
     } catch {}
   }, [rawPhone, rawName]);
 
-  // Fetch Vapi configuration
-  useEffect(() => {
-    fetch("/api/obey/calls/config")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.publicKey && data.assistantId) {
-          setVapiConfig(data);
-        } else {
-          setErrorMessage("Vapi Voice configuration is missing.");
-          setCallStatus("error");
-        }
-      })
-      .catch((err) => {
-        console.error("Config fetch error:", err);
-        setErrorMessage("Could not connect to voice service.");
-        setCallStatus("error");
-      });
-  }, []);
-
   // Call duration counter
   useEffect(() => {
     if (callStatus === "active") {
@@ -141,261 +154,513 @@ function CallInterface() {
     };
   }, [callStatus]);
 
-  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAllMedia();
+    };
+  }, []);
 
-  const startCall = async (overridePhone?: string, overrideName?: string) => {
-    if (!vapiConfig) {
-      setErrorMessage("Voice service not ready. Please wait a moment.");
+  const stopAllMedia = () => {
+    isCallActiveRef.current = false;
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+    // Stop Speech Recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
+
+    // Stop Speech Synthesis
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+
+    // Stop Microphone Stream
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    // Close AudioContext
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch {}
+      audioContextRef.current = null;
+    }
+
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsThinking(false);
+    setVolumeLevel(0);
+  };
+
+  // Setup real-time audio volume visualizer
+  const setupAudioVisualizer = (stream: MediaStream) => {
+    try {
+      const AudioCtxClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+
+      const audioCtx = new AudioCtxClass();
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.8;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      audioContextRef.current = audioCtx;
+      analyserRef.current = analyser;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const renderVolume = () => {
+        if (!isCallActiveRef.current || !analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / bufferLength;
+        const normalized = Math.min(1, avg / 90);
+        setVolumeLevel(normalized);
+
+        animFrameRef.current = requestAnimationFrame(renderVolume);
+      };
+
+      renderVolume();
+    } catch (err) {
+      console.warn("Audio visualizer setup error:", err);
+    }
+  };
+
+  // Speak aloud using browser SpeechSynthesis
+  const speakAIspeech = (text: string, onDone?: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      if (onDone) onDone();
       return;
     }
 
-    const effectiveRawPhone = overridePhone !== undefined ? overridePhone : (inputPhone || rawPhone || "");
-    const effectiveRawName = overrideName !== undefined ? overrideName : (inputName || rawName || "");
+    window.speechSynthesis.cancel();
 
-    let cleanPhone = effectiveRawPhone.replace(/\D/g, "");
-    if (cleanPhone.startsWith("0") && cleanPhone.length === 11) {
-      cleanPhone = "234" + cleanPhone.slice(1);
+    // Clean any remaining markdown characters for flawless voice pronunciation
+    const cleanSpoken = text
+      .replace(/[*#_~`[\]()]/g, "")
+      .replace(/https?:\/\/\S+/gi, "")
+      .trim();
+
+    if (!cleanSpoken) {
+      if (onDone) onDone();
+      return;
     }
-    const userPhone = cleanPhone.length >= 10 ? cleanPhone : "";
-    const userName = effectiveRawName.trim() || "Friend";
 
-    // If caller hasn't entered a phone number and overridePhone wasn't explicitly provided, show modal prompt
-    if (!userPhone && overridePhone === undefined) {
-      setModalPhone(inputPhone || "");
-      setModalName(inputName || "");
+    const utterance = new SpeechSynthesisUtterance(cleanSpoken);
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+    currentUtteranceRef.current = utterance;
+
+    // Select the best natural-sounding English voice
+    const voices = window.speechSynthesis.getVoices();
+    const naturalVoice =
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Natural") ||
+            v.name.includes("Google") ||
+            v.name.includes("Daniel") ||
+            v.name.includes("Samantha") ||
+            v.name.includes("Arthur"))
+      ) || voices.find((v) => v.lang.startsWith("en"));
+
+    if (naturalVoice) {
+      utterance.voice = naturalVoice;
+    }
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setIsListening(false);
+    };
+
+    const handleFinish = () => {
+      setIsSpeaking(false);
+      currentUtteranceRef.current = null;
+      if (isCallActiveRef.current && onDone) {
+        onDone();
+      }
+    };
+
+    utterance.onend = handleFinish;
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis notice:", e);
+      handleFinish();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Start speech recognition listening loop
+  const startSpeechRecognitionLoop = () => {
+    if (!isCallActiveRef.current) return;
+
+    const SpeechRecClass =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecClass) {
+      setSupportsSpeechRec(false);
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+
+      const recognition = new SpeechRecClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      let accumulatedFinal = "";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        if (!isCallActiveRef.current) return;
+
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const trans = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            accumulatedFinal += " " + trans;
+          } else {
+            interim += trans;
+          }
+        }
+
+        const candidateText = (accumulatedFinal + " " + interim).trim();
+
+        // Clear previous silence timer
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+        // When user pauses speaking for 1.4 seconds, trigger Obey AI thinking
+        if (candidateText.length >= 2) {
+          silenceTimerRef.current = setTimeout(() => {
+            if (isCallActiveRef.current && candidateText.trim().length >= 2) {
+              const statementToSend = candidateText.trim();
+              accumulatedFinal = "";
+              try {
+                recognition.stop();
+              } catch {}
+              processUserVoiceStatement(statementToSend);
+            }
+          }, 1400);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        // Ignore "no-speech" or "aborted" as they are normal during pauses
+        if (event.error !== "no-speech" && event.error !== "aborted") {
+          console.warn("Speech recognition notice:", event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        // Automatically restart listening if call is active and Obey is not speaking or thinking
+        if (
+          isCallActiveRef.current &&
+          !isSpeaking &&
+          !isThinking &&
+          !isMuted
+        ) {
+          try {
+            recognition.start();
+          } catch {}
+        }
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+    } catch (err) {
+      console.warn("Speech recognition loop error:", err);
+    }
+  };
+
+  // Process user speech statement: send to /api/obey/calls/talk and speak reply
+  const processUserVoiceStatement = async (userText: string) => {
+    if (!userText.trim() || !isCallActiveRef.current) return;
+
+    // 1. Add user statement to transcript
+    setTranscripts((prev) => [...prev, { role: "user", text: userText }]);
+    setIsThinking(true);
+    setIsListening(false);
+
+    try {
+      const res = await fetch("/api/obey/calls/talk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userText,
+          history: transcriptsRef.current.slice(-6),
+          bizSlug: bizInfo?.slug || rawBiz,
+          userName: inputName || "Friend",
+          userPhone: inputPhone,
+        }),
+      });
+
+      const data = await res.json();
+      const reply = data.reply || "I hear you clearly! Please go ahead.";
+
+      if (!isCallActiveRef.current) return;
+
+      // 2. Add assistant statement to transcript
+      setTranscripts((prev) => [...prev, { role: "assistant", text: reply }]);
+      setIsThinking(false);
+
+      // 3. Speak reply aloud, then resume listening
+      speakAIspeech(reply, () => {
+        if (isCallActiveRef.current && !isMuted) {
+          startSpeechRecognitionLoop();
+        }
+      });
+    } catch (err) {
+      console.error("AI Talk error:", err);
+      setIsThinking(false);
+      const fallbackReply =
+        "I got your point. Let's keep going, what else can I assist you with?";
+      setTranscripts((prev) => [
+        ...prev,
+        { role: "assistant", text: fallbackReply },
+      ]);
+      speakAIspeech(fallbackReply, () => {
+        if (isCallActiveRef.current && !isMuted) {
+          startSpeechRecognitionLoop();
+        }
+      });
+    }
+  };
+
+  // Start Call Handler
+  const startCall = async (overridePhone?: string, overrideName?: string) => {
+    stopAllMedia();
+
+    const effectivePhone =
+      overridePhone !== undefined ? overridePhone : inputPhone;
+    const effectiveName =
+      overrideName !== undefined ? overrideName : inputName;
+
+    // Prompt for phone if empty
+    if (!effectivePhone && !showPhoneModal && callStatus === "idle") {
       setShowPhoneModal(true);
       return;
     }
-
     setShowPhoneModal(false);
 
     try {
       setCallStatus("connecting");
       setErrorMessage(null);
+      isCallActiveRef.current = true;
 
-      // Auto-cancel rotating spinner if connection takes longer than 12 seconds
-      if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = setTimeout(() => {
-        setCallStatus((current) => {
-          if (current === "connecting") {
-            setErrorMessage("Voice connection took longer than usual. Please retry or message Obey directly on WhatsApp.");
-            return "error";
-          }
-          return current;
-        });
-      }, 12000);
-
-      // Dynamically import @vapi-ai/web to prevent SSR issues
-      const { default: Vapi } = await import("@vapi-ai/web");
-
-      if (!vapiRef.current) {
-        vapiRef.current = new Vapi(vapiConfig.publicKey);
-
-        vapiRef.current.on("call-start", () => {
-          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-          setCallStatus("active");
-          setCallDuration(0);
-        });
-
-        vapiRef.current.on("call-end", () => {
-          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-          setCallStatus("ended");
-          setIsSpeaking(false);
-          setVolumeLevel(0);
-        });
-
-        vapiRef.current.on("speech-start", () => {
-          setIsSpeaking(true);
-        });
-
-        vapiRef.current.on("speech-end", () => {
-          setIsSpeaking(false);
-        });
-
-        vapiRef.current.on("volume-level", (volume: number) => {
-          setVolumeLevel(volume);
-        });
-
-        vapiRef.current.on("message", (msg: any) => {
-          if (msg.type === "transcript" && msg.transcript) {
-            const role = msg.role === "assistant" ? "assistant" : "user";
-            setTranscripts((prev) => {
-              if (prev.length > 0 && prev[prev.length - 1].role === role) {
-                const next = [...prev];
-                next[next.length - 1].text = msg.transcript;
-                return next;
-              }
-              return [...prev, { role, text: msg.transcript }];
-            });
-          }
-        });
-
-        vapiRef.current.on("error", (err: any) => {
-          if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-          console.error("Vapi call error:", err);
-          let rawErr = "";
-          if (typeof err === "string") {
-            rawErr = err;
-          } else if (err?.error?.message && typeof err.error.message === "string") {
-            rawErr = err.error.message;
-          } else if (err?.message && typeof err.message === "string") {
-            rawErr = err.message;
-          } else if (typeof err?.error === "string") {
-            rawErr = err.error;
-          } else {
-            try {
-              rawErr = JSON.stringify(err);
-            } catch {
-              rawErr = "Voice connection error";
-            }
-          }
-          const lower = String(rawErr || "").toLowerCase();
-          if (lower.includes("wallet") || lower.includes("balance") || lower.includes("credit") || lower.includes("purchase") || lower.includes("bad request") || lower.includes("400")) {
-            setErrorMessage("Voice hotline service limit reached. You can connect with Obey directly on WhatsApp below.");
-          } else if (lower.includes("audio") || lower.includes("microphone") || !rawErr) {
-            setErrorMessage("Voice connection paused. Tap 'Start Voice Call' below to resume speaking with Obey.");
-          } else {
-            setErrorMessage(rawErr);
-          }
-          setCallStatus("error");
-        });
-      }
-
-      // Resume AudioContext on mobile devices (required for iOS Safari and Android Chrome)
+      // 1. Request microphone access
+      let stream: MediaStream;
       try {
-        if (typeof window !== "undefined") {
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-          if (AudioContextClass) {
-            const ctx = new AudioContextClass();
-            if (ctx.state === "suspended") {
-              await ctx.resume().catch(() => {});
-            }
-          }
-        }
-      } catch {}
-
-      // Ensure microphone permission without pre-killing the track on mobile
-      try {
-        if (typeof navigator !== "undefined" && navigator?.mediaDevices?.getUserMedia) {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        mediaStreamRef.current = stream;
       } catch (micErr: any) {
-        if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-        console.warn("[Call] Microphone permission issue:", micErr);
-        setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser to speak with Obey.");
+        console.warn("Microphone access error:", micErr);
+        setErrorMessage(
+          "Microphone permission was not granted. Please allow microphone access in your browser to speak with Obey."
+        );
         setCallStatus("error");
+        isCallActiveRef.current = false;
         return;
       }
 
-      if (userPhone) {
+      // 2. Setup audio frequency visualizer for the glowing orb
+      setupAudioVisualizer(stream);
+
+      // 3. Set call active
+      setCallStatus("active");
+      setCallDuration(0);
+      setTranscripts([]);
+
+      // 4. Fetch customized voice greeting from server
+      let initialGreeting = bizInfo?.greeting;
+      if (!initialGreeting) {
         try {
-          localStorage.setItem("obey_call_phone", userPhone);
-          if (userName && userName !== "Friend") localStorage.setItem("obey_call_name", userName);
+          const greetRes = await fetch("/api/obey/calls/talk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              isGreeting: true,
+              bizSlug: bizInfo?.slug || rawBiz,
+              userName: effectiveName || "Friend",
+            }),
+          });
+          const greetData = await greetRes.json();
+          if (greetData.reply) {
+            initialGreeting = greetData.reply;
+          }
         } catch {}
       }
 
-      const overrides: any = {};
-      if (bizInfo?.greeting) {
-        overrides.firstMessage = bizInfo.greeting;
+      if (!initialGreeting) {
+        initialGreeting = bizInfo?.name
+          ? `Hello ${effectiveName || "there"}! I am Obey, the AI voice assistant for ${bizInfo.name}. How can I help you today?`
+          : `Hello ${effectiveName || "Friend"}! Great to connect with you today! I am Obey, your AI companion. What is on your mind?`;
       }
 
-      await vapiRef.current.start(vapiConfig.assistantId, overrides);
-    } catch (err: any) {
-      if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
-      console.error("Failed to start call:", err);
-      let msg = "";
-      if (typeof err === "string") {
-        msg = err;
-      } else if (err?.message && typeof err.message === "string") {
-        msg = err.message;
-      } else if (err?.error?.message && typeof err.error.message === "string") {
-        msg = err.error.message;
-      } else {
-        try {
-          msg = JSON.stringify(err);
-        } catch {
-          msg = "Connection failed";
+      // 5. Add greeting to transcripts & speak aloud
+      setTranscripts([{ role: "assistant", text: initialGreeting }]);
+      speakAIspeech(initialGreeting, () => {
+        if (isCallActiveRef.current && !isMuted) {
+          startSpeechRecognitionLoop();
         }
-      }
-      const lower = String(msg || "").toLowerCase();
-      if (lower.includes("wallet") || lower.includes("balance") || lower.includes("credit") || lower.includes("purchase") || lower.includes("400")) {
-        setErrorMessage("Voice hotline service limit reached. Please message Obey directly on WhatsApp below.");
-      } else {
-        setErrorMessage(
-          msg || "Microphone access denied or connection failed. Please allow microphone permissions."
-        );
-      }
+      });
+    } catch (err: any) {
+      console.error("Failed to start voice call:", err);
+      setErrorMessage(
+        err.message || "Could not connect to voice audio. Please retry."
+      );
       setCallStatus("error");
+      stopAllMedia();
     }
   };
 
-  const endCall = () => {
-    if (vapiRef.current) {
-      try {
-        vapiRef.current.stop();
-      } catch (err) {
-        console.error("Error stopping call:", err);
-      }
-    }
+  // End Call Handler
+  const endCall = async () => {
+    const finalTranscripts = [...transcriptsRef.current];
+    const finalDuration = callDuration;
+
+    stopAllMedia();
     setCallStatus("ended");
-    setIsSpeaking(false);
-    setVolumeLevel(0);
+
+    // Asynchronously dispatch WhatsApp summary report
+    try {
+      fetch("/api/obey/calls/talk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isEndReport: true,
+          history: finalTranscripts,
+          durationSeconds: finalDuration,
+          bizSlug: bizInfo?.slug || rawBiz,
+          userName: inputName || "Friend",
+          userPhone: inputPhone,
+        }),
+      }).catch(() => {});
+    } catch {}
   };
 
+  // Mute / Unmute Toggle
   const toggleMute = () => {
-    if (vapiRef.current && callStatus === "active") {
-      const nextMuted = !isMuted;
-      try {
-        vapiRef.current.setMuted(nextMuted);
-        setIsMuted(nextMuted);
-      } catch (err) {
-        console.error("Mute toggle error:", err);
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+
+    if (nextMuted) {
+      // Mute: stop recognition & speech
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsListening(false);
+      setIsSpeaking(false);
+    } else {
+      // Unmute: resume listening
+      if (isCallActiveRef.current && !isSpeaking && !isThinking) {
+        startSpeechRecognitionLoop();
       }
     }
   };
 
+  // Format timer MM:SS
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // Text fallback statement submission
+  const handleSendTextFallback = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!textFallbackInput.trim() || !isCallActiveRef.current) return;
+    const msg = textFallbackInput.trim();
+    setTextFallbackInput("");
+    processUserVoiceStatement(msg);
+  };
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col justify-between selection:bg-rose-500 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-white flex flex-col justify-between selection:bg-emerald-500 selection:text-black">
       {/* Top Header */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
+      <header className="px-4 sm:px-6 py-4 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
         <Link
           href="/"
           className="flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-white transition-all"
         >
           <ArrowLeft size={16} />
-          <span>Back to Portfolio</span>
+          <span className="hidden sm:inline">Back to Portfolio</span>
         </Link>
 
         <div className="flex items-center gap-2">
           <div className="relative w-5 h-5 rounded-full overflow-hidden border border-emerald-500/50 shrink-0">
             <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
           </div>
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-300">
-            Obey WebRTC Voice Gateway
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-200">
+            Obey Free Voice Engine
+          </span>
+          <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            100% Free
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500">
           <ShieldCheck size={14} className="text-emerald-500" />
-          <span>Encrypted Voice</span>
+          <span className="hidden sm:inline">Encrypted Audio</span>
         </div>
       </header>
 
       {/* Main Center Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 max-w-xl mx-auto w-full text-center">
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 max-w-xl mx-auto w-full text-center">
         {/* User Greeting & Status Indicator */}
-        <div className="mb-6 space-y-2">
+        <div className="mb-4 sm:mb-6 space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-300">
             <div className="relative w-4 h-4 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
               <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
             </div>
-            <span>{bizInfo?.name ? `${bizInfo.name} AI Hotline` : "Femi Adeleke's AI Assistant"}</span>
+            <span>
+              {bizInfo?.name
+                ? `${bizInfo.name} AI Hotline`
+                : "Femi Adeleke's AI Voice Assistant"}
+            </span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
@@ -407,69 +672,91 @@ function CallInterface() {
           </h1>
 
           <p className="text-xs text-zinc-400 max-w-md mx-auto">
-            {callStatus === "idle" && "Tap the microphone below to begin your free live voice conversation."}
-            {callStatus === "connecting" && "Establishing high-definition WebRTC connection..."}
-            {callStatus === "active" && (isSpeaking ? "Obey is speaking..." : "Obey is listening to you...")}
-            {callStatus === "ended" && "Call completed. Summary and recording have been saved."}
-            {callStatus === "error" && (errorMessage || "Connection error occurred.")}
+            {callStatus === "idle" &&
+              "Tap the microphone below to begin your completely free live voice call."}
+            {callStatus === "connecting" &&
+              "Connecting to Obey Free Voice Engine..."}
+            {callStatus === "active" &&
+              (isSpeaking
+                ? "🎙️ Obey is speaking..."
+                : isThinking
+                ? "🧠 Obey is thinking..."
+                : isMuted
+                ? "🔇 Call is muted"
+                : "👂 Obey is listening to you...")}
+            {callStatus === "ended" &&
+              "Call ended. Executive transcript dispatched to your WhatsApp."}
+            {callStatus === "error" &&
+              (errorMessage || "Voice connection paused.")}
           </p>
         </div>
 
         {/* Pulsing Visualizer Orb with Obey Logo */}
-        <div className="relative my-8 flex items-center justify-center">
+        <div className="relative my-6 sm:my-8 flex items-center justify-center">
           {/* Outer Pulsing Rings */}
           {callStatus === "active" && (
             <>
               <div
                 className={`absolute rounded-full blur-2xl transition-all duration-150 ${
-                  isSpeaking ? "bg-emerald-500/30" : "bg-teal-500/20"
+                  isSpeaking
+                    ? "bg-emerald-500/40"
+                    : isThinking
+                    ? "bg-purple-500/30"
+                    : "bg-teal-500/25"
                 }`}
                 style={{
-                  width: `${190 + volumeLevel * 140}px`,
-                  height: `${190 + volumeLevel * 140}px`,
+                  width: `${180 + volumeLevel * 140}px`,
+                  height: `${180 + volumeLevel * 140}px`,
                 }}
               />
               <div
                 className={`absolute rounded-full border transition-all duration-150 animate-ping ${
-                  isSpeaking ? "border-emerald-500/40" : "border-teal-500/30"
+                  isSpeaking
+                    ? "border-emerald-500/40"
+                    : isThinking
+                    ? "border-purple-500/40"
+                    : "border-teal-500/30"
                 }`}
                 style={{
-                  width: `${150 + volumeLevel * 80}px`,
-                  height: `${150 + volumeLevel * 80}px`,
+                  width: `${145 + volumeLevel * 80}px`,
+                  height: `${145 + volumeLevel * 80}px`,
                 }}
               />
             </>
           )}
 
           {callStatus === "connecting" && (
-            <div className="absolute w-44 h-44 rounded-full border-2 border-dashed border-amber-500/60 animate-spin [animation-duration:10s]" />
+            <div className="absolute w-44 h-44 rounded-full border-2 border-dashed border-emerald-500/60 animate-spin [animation-duration:10s]" />
           )}
 
           {/* Central Orb with Obey Logo */}
           <div
-            className={`relative w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl overflow-hidden p-1.5 ${
+            className={`relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl overflow-hidden p-1.5 ${
               callStatus === "active"
                 ? isSpeaking
                   ? "ring-4 ring-emerald-500 shadow-emerald-500/50 scale-105"
+                  : isThinking
+                  ? "ring-4 ring-purple-500 shadow-purple-500/40 animate-pulse"
                   : "ring-2 ring-teal-500 shadow-teal-500/40 scale-100"
                 : callStatus === "connecting"
-                ? "ring-4 ring-amber-500/80 animate-pulse shadow-amber-500/30"
+                ? "ring-4 ring-emerald-500/80 animate-pulse"
                 : callStatus === "ended"
                 ? "ring-2 ring-zinc-700 opacity-80"
                 : "ring-2 ring-zinc-700 hover:ring-emerald-500 transition-all shadow-zinc-950/80 hover:scale-105"
             }`}
           >
-            {/* Obey Logo Image */}
             <div className="relative w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center">
               <img
                 src="/obey-logo.jpg"
                 alt="Obey AI"
                 className={`w-full h-full object-cover transition-transform duration-500 ${
-                  callStatus === "active" && isSpeaking ? "scale-110" : "scale-100"
+                  callStatus === "active" && (isSpeaking || isThinking)
+                    ? "scale-110"
+                    : "scale-100"
                 }`}
               />
 
-              {/* Status Overlay Badge */}
+              {/* Status Duration Badge */}
               {callStatus === "active" && (
                 <div className="absolute inset-x-0 bottom-0 py-1.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col items-center justify-end">
                   <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/30 backdrop-blur-md border border-emerald-500/40">
@@ -483,7 +770,7 @@ function CallInterface() {
 
               {callStatus === "connecting" && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center">
-                  <RefreshCw size={32} className="text-amber-400 animate-spin" />
+                  <RefreshCw size={32} className="text-emerald-400 animate-spin" />
                 </div>
               )}
             </div>
@@ -492,16 +779,19 @@ function CallInterface() {
 
         {/* Live Conversation Transcript Preview */}
         {transcripts.length > 0 && (
-          <div className="w-full max-h-36 overflow-y-auto mb-6 p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-left space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-zinc-500 tracking-wider">
-              <MessageSquare size={12} />
-              <span>Live Transcript</span>
+          <div className="w-full max-h-36 overflow-y-auto mb-5 p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-left space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-black uppercase text-zinc-500 tracking-wider">
+              <div className="flex items-center gap-1.5">
+                <MessageSquare size={12} />
+                <span>Live Spoken Transcript</span>
+              </div>
+              <span className="text-emerald-400 font-bold">100% Free Voice</span>
             </div>
             {transcripts.slice(-3).map((t, idx) => (
               <p key={idx} className="text-xs leading-relaxed">
                 <span
                   className={`font-black ${
-                    t.role === "assistant" ? "text-emerald-400" : "text-rose-400"
+                    t.role === "assistant" ? "text-emerald-400" : "text-amber-300"
                   }`}
                 >
                   {t.role === "assistant" ? "Obey: " : "You: "}
@@ -512,15 +802,41 @@ function CallInterface() {
           </div>
         )}
 
+        {/* Active Call In-Browser Text Input Fallback (for noisy rooms or older browsers) */}
+        {callStatus === "active" && (
+          <form
+            onSubmit={handleSendTextFallback}
+            className="w-full max-w-md mx-auto mb-4 flex items-center gap-2"
+          >
+            <input
+              type="text"
+              value={textFallbackInput}
+              onChange={(e) => setTextFallbackInput(e.target.value)}
+              placeholder="Or type anything here to talk..."
+              className="flex-1 px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-700 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="submit"
+              disabled={!textFallbackInput.trim()}
+              className="p-2 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 disabled:opacity-40 transition cursor-pointer"
+              title="Send spoken message"
+            >
+              <Send size={15} />
+            </button>
+          </form>
+        )}
+
         {/* Pre-Call Setup: WhatsApp Number & Name for Instant Report Delivery */}
         {callStatus === "idle" && (
           <div className="w-full max-w-md mx-auto mb-6 p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 text-left space-y-3 shadow-xl">
             <div className="flex items-center gap-2">
               <MessageSquare size={14} className="text-emerald-400" />
-              <span className="text-xs font-bold text-zinc-200">Get Your Call Recording on WhatsApp</span>
+              <span className="text-xs font-bold text-zinc-200">
+                Receive Summary on WhatsApp (Optional)
+              </span>
             </div>
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              Enter your WhatsApp number so Obey can send you your audio recording, transcript, and executive summary immediately after the call.
+              Enter your WhatsApp number so Obey can deliver the executive transcript and action points immediately after the call.
             </p>
             <div className="space-y-2">
               <input
@@ -549,7 +865,7 @@ function CallInterface() {
               <button
                 type="button"
                 onClick={toggleMute}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                   isMuted
                     ? "bg-amber-500/20 border border-amber-500 text-amber-400 hover:bg-amber-500/30"
                     : "bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white"
@@ -563,7 +879,7 @@ function CallInterface() {
               <button
                 type="button"
                 onClick={endCall}
-                className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-600/40 transition-all hover:scale-105"
+                className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-600/40 transition-all hover:scale-105 cursor-pointer"
                 title="End Call"
               >
                 <PhoneOff size={26} />
@@ -573,7 +889,7 @@ function CallInterface() {
             <button
               type="button"
               onClick={endCall}
-              className="px-6 py-3 rounded-2xl bg-zinc-800 text-zinc-400 font-bold text-xs hover:bg-zinc-700 hover:text-white transition-all"
+              className="px-6 py-3 rounded-2xl bg-zinc-800 text-zinc-400 font-bold text-xs hover:bg-zinc-700 hover:text-white transition-all cursor-pointer"
             >
               Cancel Connection
             </button>
@@ -581,7 +897,7 @@ function CallInterface() {
             <button
               type="button"
               onClick={() => startCall()}
-              className="px-7 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              className="px-7 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 cursor-pointer"
             >
               <PhoneCall size={18} />
               <span>Start New Call</span>
@@ -591,11 +907,10 @@ function CallInterface() {
               <button
                 type="button"
                 onClick={() => startCall()}
-                disabled={!vapiConfig}
-                className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+                className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 cursor-pointer"
               >
                 <RefreshCw size={17} />
-                <span>Retry Voice Call</span>
+                <span>Retry Free Voice Call</span>
               </button>
               <a
                 href={`https://wa.me/${(bizInfo?.phone || "2348120934828").replace(/\D/g, "")}?text=${encodeURIComponent(
@@ -603,7 +918,7 @@ function CallInterface() {
                 )}`}
                 target="_blank"
                 rel="noreferrer"
-                className="px-6 py-3.5 rounded-2xl bg-zinc-800 hover:bg-zinc-750 text-emerald-400 font-bold text-sm flex items-center gap-2 border border-emerald-500/30 transition-all hover:scale-105"
+                className="px-6 py-3.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-emerald-400 font-bold text-sm flex items-center gap-2 border border-emerald-500/30 transition-all hover:scale-105"
               >
                 <MessageSquare size={17} />
                 <span>Chat on WhatsApp</span>
@@ -613,8 +928,7 @@ function CallInterface() {
             <button
               type="button"
               onClick={() => startCall()}
-              disabled={!vapiConfig}
-              className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2.5 shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 disabled:opacity-50"
+              className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm flex items-center gap-2.5 shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 cursor-pointer"
             >
               <PhoneCall size={20} />
               <span>Start Voice Call with Obey</span>
@@ -629,8 +943,8 @@ function CallInterface() {
             </p>
             <p className="text-[11px] text-zinc-400">
               {inputPhone || rawPhone
-                ? `The summary transcript & audio recording are being sent to your WhatsApp (+${inputPhone || rawPhone}) and Femi Adeleke.`
-                : `The call summary and recording have been archived and dispatched to Femi Adeleke.`}
+                ? `The summary transcript is being sent to your WhatsApp (+${inputPhone || rawPhone}) and Femi Adeleke.`
+                : `The call summary has been archived and dispatched to Femi Adeleke.`}
             </p>
           </div>
         )}
@@ -644,13 +958,13 @@ function CallInterface() {
                   <MessageSquare size={18} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white">Receive Your Call Recording</h3>
-                  <p className="text-[11px] text-zinc-400">Audio note & summary sent to WhatsApp</p>
+                  <h3 className="text-sm font-black text-white">Receive Your Call Summary</h3>
+                  <p className="text-[11px] text-zinc-400">Action items sent directly to WhatsApp</p>
                 </div>
               </div>
 
               <p className="text-xs text-zinc-300 leading-relaxed">
-                Enter your WhatsApp number so Obey can send you your audio voice note and complete executive transcript right after the call!
+                Enter your WhatsApp number so Obey can send you your complete executive transcript right after the call!
               </p>
 
               <div className="space-y-2.5">
@@ -690,10 +1004,10 @@ function CallInterface() {
                     setInputName(modalName);
                     startCall(modalPhone, modalName);
                   }}
-                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02] cursor-pointer"
                 >
                   <PhoneCall size={14} />
-                  <span>Connect & Send Recording</span>
+                  <span>Connect & Send Summary</span>
                 </button>
 
                 <button
@@ -701,7 +1015,7 @@ function CallInterface() {
                   onClick={() => {
                     startCall("", modalName || inputName || "Friend");
                   }}
-                  className="w-full py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs transition-all"
+                  className="w-full py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs transition-all cursor-pointer"
                 >
                   Continue without WhatsApp Delivery
                 </button>
@@ -712,9 +1026,9 @@ function CallInterface() {
       </main>
 
       {/* Footer Info */}
-      <footer className="px-6 py-4 text-center border-t border-zinc-900 text-zinc-600 text-xs flex items-center justify-center gap-2">
-        <Sparkles size={14} className="text-amber-500" />
-        <span>Powered by Obey AI & Vapi WebRTC · 100% Free Live Voice</span>
+      <footer className="px-6 py-4 text-center border-t border-zinc-900 text-zinc-500 text-xs flex items-center justify-center gap-2">
+        <Sparkles size={14} className="text-emerald-500" />
+        <span>Powered by Obey Native Voice Engine · 100% Free Forever</span>
       </footer>
     </div>
   );

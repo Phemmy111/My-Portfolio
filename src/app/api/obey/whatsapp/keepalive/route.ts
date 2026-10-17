@@ -1,28 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbListWorkspaces, dbUpdateWorkspaceWhatsAppStatus } from "@/lib/db";
 
-export const maxDuration = 30;
+export const maxDuration = 45;
 export const dynamic = "force-dynamic";
 
 /**
  * 24/7 Keep-Alive & Auto-Reconnect Daemon for Evolution API (Render Free Web Service)
- * Prevents Render from sleeping after 15 minutes of inactivity and auto-heals Baileys socket disconnections.
+ * Prevents Render from sleeping and auto-heals Baileys socket disconnections for:
+ * 1. Main Obey instance ('obey')
+ * 2. ALL Business client workspaces (e.g. 'obey-autolearn-spot', 'obey-moonvibez', etc.)
  */
 export async function GET(req: NextRequest) {
   const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-  const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+  const mainInstance = process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
   try {
-    // 1. Fetch live instance state directly from Evolution API
-    const instRes = await fetch(`${evoUrl}/instance/fetchInstances`, {
+    // 1. Fetch live instances from Evolution API
+    let instRes = await fetch(`${evoUrl}/instance/fetchInstances`, {
       headers: { apikey: evoKey },
       cache: "no-store",
     });
 
     if (!instRes.ok) {
-      // If Render was asleep or cold starting, ping connect endpoint directly
+      // Wake up Render if asleep
       try {
-        await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
+        await fetch(`${evoUrl}/instance/connect/${mainInstance}`, {
           headers: { apikey: evoKey },
         });
       } catch {}
@@ -33,44 +36,89 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const instances = await instRes.json();
-    const inst = Array.isArray(instances) ? instances.find((i: any) => i.name === instanceName) : null;
-
-    const isConnected = Boolean(
-      inst &&
-      inst.connectionStatus === "open" &&
-      !inst.disconnectionReasonCode
+    const liveInstances: any[] = (await instRes.json()) || [];
+    const liveMap = new Map<string, any>(
+      Array.isArray(liveInstances) ? liveInstances.map((i: any) => [i.name?.toLowerCase(), i]) : []
     );
 
-    // 2. If disconnected or socket closed, auto-trigger connect immediately
-    let autoReconnected = false;
-    if (!isConnected) {
-      console.log(`[WA Keepalive] WhatsApp instance '${instanceName}' is disconnected (status: ${inst?.connectionStatus || 'offline'}). Auto-reconnecting...`);
-      try {
-        const connectRes = await fetch(`${evoUrl}/instance/connect/${instanceName}`, {
-          headers: { apikey: evoKey },
-        });
-        autoReconnected = connectRes.ok;
-      } catch (connErr) {
-        console.warn("[WA Keepalive] Auto-connect fetch error:", connErr);
+    // 2. Fetch all registered business workspaces from DB
+    const allWorkspaces = await dbListWorkspaces();
+    const instancesToMonitor = new Map<string, { workspaceId?: string; slug?: string }>();
+
+    // Always include Main Obey
+    instancesToMonitor.set(mainInstance.toLowerCase(), {});
+
+    // Include every registered workspace
+    for (const ws of allWorkspaces) {
+      const instName = (ws.whatsapp_instance_name || `obey-${ws.slug}`).toLowerCase().trim();
+      instancesToMonitor.set(instName, { workspaceId: ws.id, slug: ws.slug });
+    }
+
+    const report: Array<{
+      instance: string;
+      slug?: string;
+      status: string;
+      connected: boolean;
+      reconnected: boolean;
+    }> = [];
+
+    // 3. Keep alive and auto-heal every instance
+    for (const [instName, meta] of instancesToMonitor.entries()) {
+      const live = liveMap.get(instName);
+      const isConnected = Boolean(
+        live &&
+        live.connectionStatus === "open" &&
+        !live.disconnectionReasonCode
+      );
+
+      let reconnected = false;
+      if (!isConnected) {
+        console.log(`[WA Keepalive] Instance '${instName}' status: ${live?.connectionStatus || 'offline'}. Reconnecting...`);
+        try {
+          const connRes = await fetch(`${evoUrl}/instance/connect/${instName}`, {
+            headers: { apikey: evoKey },
+          });
+          reconnected = connRes.ok;
+        } catch (connErr) {
+          console.warn(`[WA Keepalive] Reconnect error for '${instName}':`, connErr);
+        }
       }
+
+      // Sync status to workspace in Neon DB
+      if (meta.workspaceId) {
+        try {
+          await dbUpdateWorkspaceWhatsAppStatus(
+            meta.workspaceId,
+            instName,
+            isConnected ? "connected" : "connecting"
+          );
+        } catch {}
+      }
+
+      report.push({
+        instance: instName,
+        slug: meta.slug,
+        status: isConnected ? "open" : live?.connectionStatus || "disconnected",
+        connected: isConnected,
+        reconnected,
+      });
     }
 
     return NextResponse.json({
       success: true,
-      connected: isConnected,
-      status: inst?.connectionStatus || "disconnected",
-      ownerJid: inst?.ownerJid || null,
-      autoReconnected,
-      keepAliveTimestamp: new Date().toISOString(),
+      instancesChecked: report.length,
+      report,
+      timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error("[WA Keepalive] Error pinging Evolution API:", err);
-    return NextResponse.json({
-      success: false,
-      connected: false,
-      error: err.message,
-    }, { status: 500 });
+    console.error("[WA Keepalive] Global error:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: err.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
