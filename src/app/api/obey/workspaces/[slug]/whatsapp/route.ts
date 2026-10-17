@@ -102,7 +102,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const action = body.action || "qr";
     const instanceName = `obey-${ws.slug}`;
-    const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
+    const origin = req.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
     const webhookUrl = `${origin}/api/obey/whatsapp/webhook/${instanceName}`;
 
     // DISCONNECT / UNLINK FLOW

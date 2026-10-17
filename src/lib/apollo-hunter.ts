@@ -151,7 +151,7 @@ export async function runB2BLeadHunter(options?: { industry?: string }) {
     try {
       const aiRes = await executeAICompletion({
         systemPrompt: `You are Obey, master cold outreach strategist for Femi Adeleke (Senior Full-Stack Engineer & Automation Architect).
-Femi's Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111
+Femi's Portfolio: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app) | GitHub: https://github.com/Phemmy111
 Key Proof of Work:
 - OKIKI Electronics Store (Sub-second headless e-commerce, 98 Lighthouse performance)
 - AutoLearn Spot (Automated platform & webhook pipelines)

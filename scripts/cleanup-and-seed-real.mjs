@@ -67,7 +67,7 @@ async function main() {
     ) VALUES (
       'inq-web-session-live',
       'Website Visitor (Live Web Chat)',
-      'visitor@femiadelekeportfolio.vercel.app',
+      'visitor@obeyai.vercel.app',
       'Custom Web Application',
       'Inbound live chat inquiry: "I need a custom web application. How can I book a discovery call with Femi to discuss architecture and MVP timeline?"',
       'unread',

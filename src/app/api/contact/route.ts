@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     triggerInstantProactiveAlert({
       title: "New Client Inquiry Received!",
       body: `**From:** ${name} (${email})\n**Service:** ${service || "General Inquiry"}\n**Message:**\n${message}`,
-      link: `${process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app"}/admin`,
+      link: `${process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app"}/admin`,
     }).catch((err) => console.warn("Proactive contact alert failed:", err));
 
     // 3. Send alerts via SMTP (only if SMTP is configured)

@@ -12,7 +12,7 @@ async function main() {
   const m = row[0];
   console.log('Sending message to webhook:', m.message.conversation);
 
-  const res = await fetch('https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook', {
+  const res = await fetch('https://obeyai.vercel.app/api/obey/whatsapp/webhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

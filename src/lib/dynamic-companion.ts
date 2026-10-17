@@ -127,7 +127,7 @@ ${reportedSpeech}
 *I am Obey, ${senderLabel}'s personal AI executive companion.* If you don't have me yet or would like my assistance, you can access me directly:
 • *WhatsApp:* https://wa.me/2349161488564
 • *Telegram:* https://t.me/ObeyAssistantBot
-• *Website:* https://femiadelekeportfolio.vercel.app
+• *Website:* https://obeyai.vercel.app
 
 Looking forward to assisting you too!`;
 }
@@ -965,7 +965,7 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
           await sendWhatsAppDocument(art.content, docFileName, userIdentifier, `📄 *${art.title}* (HTML File)`);
         }
 
-        const link = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+        const link = `https://obeyai.vercel.app/artifact/${saved.id}`;
         let cleanReply = stripArtifactBlocks(aiRes.text).trim();
         cleanReply = cleanReply.replace(/^(brief confirmation message:?|confirmation message:?|confirmation:?)\s*/i, "").trim();
         if (!cleanReply || cleanReply.length < 10 || cleanReply.includes("```") || cleanReply.includes("<!DOCTYPE") || cleanReply.includes("<html")) {
@@ -1032,7 +1032,7 @@ Return ONLY the complete HTML document starting with <!DOCTYPE html><html>...</h
         user_identifier: userIdentifier,
       });
 
-      const link = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+      const link = `https://obeyai.vercel.app/artifact/${saved.id}`;
 
       // If channel is WhatsApp, dispatch the .doc / .txt / .md file directly to the chat!
       if (channel === "whatsapp") {
@@ -1298,7 +1298,7 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
         user_identifier: userIdentifier,
       });
 
-      const artifactLink = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+      const artifactLink = `https://obeyai.vercel.app/artifact/${saved.id}`;
 
       // Dispatch .json file directly to WhatsApp as a document attachment!
       if (channel === "whatsapp") {
@@ -1348,7 +1348,7 @@ If you encounter any error or want to adjust or diagnose any node, send me a scr
   // Tool: Direct Voice Call WebRTC link
   if (decision.action === "direct_voice_call") {
     const cleanUserPhone = userIdentifier.replace(/\D/g, "");
-    const callUrl = `https://femiadelekeportfolio.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
+    const callUrl = `https://obeyai.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
     return {
       reply: cleanWhatsApp(
         `🎙️ *I'd love to speak with you live!* You have two ways to connect with me on voice right now:\n\n` +

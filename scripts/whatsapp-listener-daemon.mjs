@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require';
-const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook';
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://obeyai.vercel.app/api/obey/whatsapp/webhook';
 
 const sql = neon(DATABASE_URL);
 const processingIds = new Set();

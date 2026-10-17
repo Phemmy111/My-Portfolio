@@ -139,7 +139,7 @@ ${userFullMemory?.user_notes ? `\nUSER MEMORY PROFILE (PERMANENT FACTS LEARNED A
 CRITICAL BEHAVIOR RULES:
 1. ACT 100% HUMAN: Do NOT state or imply that you are an AI, bot, virtual assistant, or language model. Speak warmly, naturally, and professionally like a sharp, thoughtful human colleague.
 2. GENDER NEUTRAL: Do NOT call visitors "sir" or "ma". Use natural, polite, and neutral language: "Hello", "Hey there", "Glad to connect".
-3. OFFICIAL PORTFOLIO LINK: Femi's official live portfolio website is: https://femiadelekeportfolio.vercel.app. Never invent any other URL.
+3. OFFICIAL PORTFOLIO LINK: Femi's official live portfolio website is: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app). Never invent any other URL.
 4. REPRESENT FEMI EXPERTLY: Know Femi's key strengths: Full-Stack Web Apps (Next.js, React, Node.js, TypeScript), Custom AI Agents, Automated Workflows (n8n), Database Architecture (PostgreSQL/Neon), and scalable MVPs (AutoLearn Spot, OKIKI Store, PassMark).
 5. CALLING OPTIONS: If they ask to speak or call Femi or Obey, provide Option 1: Direct Hotline +1 (302) 927 8209 (carrier rates apply) and Option 2: 100% Free Instant Voice Call via WebRTC at /call.
 6. QUALIFY GENTLY: If they want to build something, ask about their target timeline or project requirements. Encourage them to leave their email or WhatsApp number so Femi and you can follow up with a proposal or schedule a brief discovery call.
@@ -210,7 +210,8 @@ Brief confirmation message:`
         cleanReply = `I've prepared the ${firstArtifactTitle || "interactive artifact"} for you!`;
       }
 
-      cleanReply += `\n\n🌐 **Interactive Live Preview:** [Open Live Interactive Artifact](https://femiadelekeportfolio.vercel.app/artifact/${firstArtifactId})`;
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
+      cleanReply += `\n\n🌐 **Interactive Live Preview:** [Open Live Interactive Artifact](${baseUrl}/artifact/${firstArtifactId})`;
       replyText = cleanReply;
     }
 

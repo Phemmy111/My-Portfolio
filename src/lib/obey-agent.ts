@@ -65,7 +65,7 @@ export async function createAgentTask(params: {
  */
 export async function sendApprovalEmail(task: AgentTask) {
   const adminEmail = process.env.ADMIN_ALERT_EMAIL || "femiadeleke2020@gmail.com";
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
 
   const approveUrl = `${appUrl}/api/obey/action?id=${task.id}&token=${task.approval_token}&action=approve`;
   const rejectUrl = `${appUrl}/api/obey/action?id=${task.id}&token=${task.approval_token}&action=reject`;
@@ -231,7 +231,7 @@ export async function runAutonomousLeadHunter(): Promise<AgentTask[]> {
       pain_point: "Slow load times and manual inventory updates across Shopify & TikTok Shop",
       service: "Next.js Storefront & n8n Automation",
       subject: "Quick idea on automating Aura Apparel's inventory sync & speed",
-      body: `Hi Marcus,\n\nI was looking into Aura Apparel's current catalog and noticed the latency on mobile checkout transitions.\n\nI recently engineered the OKIKI Electronics Store on Next.js with sub-second speeds and built automated inventory sync pipelines using n8n that eliminated 15+ hours of weekly manual reconciliation.\n\nI'd love to share a 3-minute video breakdown showing how we can apply the same architecture to Aura Apparel. Are you free for a brief chat this Wednesday?\n\nBest regards,\nFemi Adeleke\nFounder, AutoLearn Spot · https://femiadelekeportfolio.vercel.app`,
+      body: `Hi Marcus,\n\nI was looking into Aura Apparel's current catalog and noticed the latency on mobile checkout transitions.\n\nI recently engineered the OKIKI Electronics Store on Next.js with sub-second speeds and built automated inventory sync pipelines using n8n that eliminated 15+ hours of weekly manual reconciliation.\n\nI'd love to share a 3-minute video breakdown showing how we can apply the same architecture to Aura Apparel. Are you free for a brief chat this Wednesday?\n\nBest regards,\nFemi Adeleke\nFounder, AutoLearn Spot · https://obeyai.vercel.app`,
     },
     {
       name: "Chinedu Okafor",
@@ -241,7 +241,7 @@ export async function runAutonomousLeadHunter(): Promise<AgentTask[]> {
       pain_point: "Manual customer status updates via WhatsApp and lack of automated webhook tracking",
       service: "Automated WhatsApp Bot & n8n Tracking Pipeline",
       subject: "Automating Kora Logistics dispatch tracking on WhatsApp",
-      body: `Hello Chinedu,\n\nManaging driver status calls and manual tracking requests takes up enormous administrative bandwidth during peak dispatch hours.\n\nI specialize in workflow automation with n8n and webhook-driven WhatsApp chatbots. I've designed automated dispatch architectures that notify customers in real-time the second an order status changes in your database.\n\nWould you be open to a quick 5-minute Loom demo showing how this cuts customer support tickets by 60%?\n\nWarm regards,\nFemi Adeleke\nAutomation Engineer & Developer · https://femiadelekeportfolio.vercel.app`,
+      body: `Hello Chinedu,\n\nManaging driver status calls and manual tracking requests takes up enormous administrative bandwidth during peak dispatch hours.\n\nI specialize in workflow automation with n8n and webhook-driven WhatsApp chatbots. I've designed automated dispatch architectures that notify customers in real-time the second an order status changes in your database.\n\nWould you be open to a quick 5-minute Loom demo showing how this cuts customer support tickets by 60%?\n\nWarm regards,\nFemi Adeleke\nAutomation Engineer & Developer · https://obeyai.vercel.app`,
     },
     {
       name: "Elena Rostova",
@@ -251,7 +251,7 @@ export async function runAutonomousLeadHunter(): Promise<AgentTask[]> {
       pain_point: "Needs interactive cross-platform dashboards and AI workout prompt generation",
       service: "Full-Stack Web App & AI Integration",
       subject: "Scaling Pulse Fitness member analytics with AI workflows",
-      body: `Hi Elena,\n\nSaw Pulse Fitness Tech's recent expansion into personalized coaching regimens.\n\nI build intelligent web applications with Next.js, Flutter, and AI integrations (prompt engineering & automated workflow engines). I can build an interactive analytics dashboard and automated member check-in engine seamlessly connected to your backend.\n\nHere is my portfolio with case studies: https://femiadelekeportfolio.vercel.app\n\nLet me know if you'd like to explore this!\n\nBest,\nFemi Adeleke`,
+      body: `Hi Elena,\n\nSaw Pulse Fitness Tech's recent expansion into personalized coaching regimens.\n\nI build intelligent web applications with Next.js, Flutter, and AI integrations (prompt engineering & automated workflow engines). I can build an interactive analytics dashboard and automated member check-in engine seamlessly connected to your backend.\n\nHere is my portfolio with case studies: https://obeyai.vercel.app\n\nLet me know if you'd like to explore this!\n\nBest,\nFemi Adeleke`,
     }
   ];
 

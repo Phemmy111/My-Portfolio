@@ -16,7 +16,7 @@ async function main() {
     }
   };
 
-  const res = await fetch("https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook", {
+  const res = await fetch("https://obeyai.vercel.app/api/obey/whatsapp/webhook", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)

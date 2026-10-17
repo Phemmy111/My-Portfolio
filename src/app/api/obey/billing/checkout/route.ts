@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     };
 
     const amountInKobo = priceMap[plan.toLowerCase()] || 950000;
-    const origin = req.headers.get("origin") || "https://femiadelekeportfolio.vercel.app";
+    const origin = req.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
 
     if (!paystackSecret) {
       // Graceful fallback: return direct WhatsApp checkout confirmation link

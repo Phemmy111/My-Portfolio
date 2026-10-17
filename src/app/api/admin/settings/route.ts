@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
       // Auto-register webhook with Telegram so Obey receives all incoming messages from Femi's phone
       const cleanToken = token || (await getSetting("TELEGRAM_BOT_TOKEN"));
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app";
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
       if (cleanToken) {
         try {
           await fetch(`https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(`${appUrl}/api/obey/telegram/webhook`)}`);

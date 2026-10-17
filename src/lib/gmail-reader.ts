@@ -254,7 +254,7 @@ export async function sendEmailReply(
           <p style="font-size: 13px; color: #6b7280; margin: 0;">
             <strong>Femi Adeleke</strong><br/>
             Full-Stack Software Engineer & AI Automation Specialist<br/>
-            Founder, AutoLearn Spot · <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app"}" style="color: #2563eb;">Portfolio & Case Studies</a>
+            Founder, AutoLearn Spot · <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app"}" style="color: #2563eb;">Portfolio & Case Studies</a>
           </p>
         </div>
       `,

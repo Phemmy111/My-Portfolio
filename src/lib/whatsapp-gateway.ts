@@ -403,7 +403,7 @@ export async function getEvolutionInstanceQR(instanceName: string) {
   try {
     const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
       ? `${process.env.NEXT_PUBLIC_APP_URL}/api/obey/whatsapp/webhook`
-      : "https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook";
+      : "https://obeyai.vercel.app/api/obey/whatsapp/webhook";
     setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
     setEvolutionInstanceSettings(instanceName, { readStatus: true, readMessages: true, alwaysOnline: true }).catch(() => {});
 
@@ -437,7 +437,7 @@ export async function getEvolutionPairingCode(
 
     const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
       ? `${process.env.NEXT_PUBLIC_APP_URL}/api/obey/whatsapp/webhook`
-      : "https://femiadelekeportfolio.vercel.app/api/obey/whatsapp/webhook";
+      : "https://obeyai.vercel.app/api/obey/whatsapp/webhook";
 
     // 1. Check if instance already exists
     let stateRes = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {

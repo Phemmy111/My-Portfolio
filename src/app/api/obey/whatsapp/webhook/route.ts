@@ -351,7 +351,7 @@ async function handleObeyBusinessCustomerTurn(params: {
     }
   }
 
-  const voiceCallLink = `https://femiadelekeportfolio.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}&name=${encodeURIComponent(customerName)}`;
+  const voiceCallLink = `https://obeyai.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}&name=${encodeURIComponent(customerName)}`;
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|speak to (?:you|someone)|can (?:we|i) call)\b/i.test(userText);
 
   const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".

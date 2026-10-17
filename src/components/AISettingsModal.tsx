@@ -690,7 +690,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 `• Full Name: Femi Adeleke
 • Title: Full-Stack Developer & Automation Architect
 • Location & Timezone: Nigeria (West Africa Time, WAT / UTC+1)
-• Official Portfolio: https://femiadelekeportfolio.vercel.app
+• Official Portfolio: https://obeyai.vercel.app
 • GitHub Profile: https://github.com/Phemmy111
 • Direct Contact Line: +2348120934828 / 08120934828
 • Official Email: femiadeleke2020@gmail.com
@@ -742,7 +742,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       rows={8}
                       value={generalKeys.OBEY_BRAIN_KNOWLEDGE || ""}
                       onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OBEY_BRAIN_KNOWLEDGE: e.target.value }))}
-                      placeholder={`e.g.\n• Femi's direct WhatsApp phone line is +2348120934828.\n• Real portfolio link: https://femiadelekeportfolio.vercel.app\n• Standard web development projects start from $1,500 / ₦2,000,000.\n• PassMark UTME Prep App is an offline CBT study app built with Flutter and Supabase.\n• OKIKI Electronics Store was built with Next.js 16.`}
+                      placeholder={`e.g.\n• Femi's direct WhatsApp phone line is +2348120934828.\n• Real portfolio link: https://obeyai.vercel.app\n• Standard web development projects start from $1,500 / ₦2,000,000.\n• PassMark UTME Prep App is an offline CBT study app built with Flutter and Supabase.\n• OKIKI Electronics Store was built with Next.js 16.`}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed resize-y"
                     />
                   </div>
@@ -1613,7 +1613,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         <span className="text-[10px] text-emerald-400 font-mono">Auto-Recording & Transcription</span>
                       </div>
                       <div className="p-2 rounded-lg bg-black font-mono text-[11px] text-zinc-300 break-all select-all border border-zinc-800">
-                        https://femiadelekeportfolio.vercel.app/api/obey/calls/webhook
+                        https://obeyai.vercel.app/api/obey/calls/webhook
                       </div>
                       <p className="text-[10px] text-zinc-500">
                         Paste this into your Vapi Assistant Server URL. When Obey finishes a call, Vapi automatically sends the <span className="text-zinc-300 font-bold">full audio recording (.mp3) + transcription</span> to Obey, and Obey sends it straight into WhatsApp as a playable voice note!

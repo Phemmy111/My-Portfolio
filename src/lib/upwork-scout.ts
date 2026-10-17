@@ -168,7 +168,7 @@ export async function runUpworkLiveScout() {
     try {
       const aiRes = await executeAICompletion({
         systemPrompt: `You are Obey, senior proposal architect for Femi Adeleke (Senior Full-Stack Engineer & Automation Architect).
-Femi's Portfolio: https://femiadelekeportfolio.vercel.app | GitHub: https://github.com/Phemmy111
+Femi's Portfolio: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app) | GitHub: https://github.com/Phemmy111
 Key Projects:
 - OKIKI Electronics Store (Next.js 16, Tailwind, high-conversion headless e-commerce)
 - AutoLearn Spot (Automated learning lab & AI platform)

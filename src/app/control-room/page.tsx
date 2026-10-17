@@ -1769,7 +1769,7 @@ function ControlRoomContent() {
   const hotlineUrl = currentWs
     ? typeof window !== "undefined"
       ? `${window.location.origin}/call?biz=${currentWs.slug}`
-      : `https://femiadelekeportfolio.vercel.app/call?biz=${currentWs.slug}`
+      : `https://obeyai.vercel.app/call?biz=${currentWs.slug}`
     : "";
 
   const copyHotlineLink = () => {

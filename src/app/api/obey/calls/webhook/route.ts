@@ -183,7 +183,7 @@ YOUR VIBE & PERSONALITY:
 
         // Construct high-availability streaming proxy URL so WhatsApp downloads directly without 413 Payload Too Large
         const proxyAudioUrl = callId
-          ? `https://femiadelekeportfolio.vercel.app/api/obey/calls/recording/${callId}`
+          ? `${process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app"}/api/obey/calls/recording/${callId}`
           : null;
 
         let finalAudioPayload: string | null = proxyAudioUrl;

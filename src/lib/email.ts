@@ -162,7 +162,7 @@ export async function sendProactiveBriefingEmail(params: {
           ${formattedHtml}
         </div>
         <div style="margin-top: 24px; text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://femiadelekeportfolio.vercel.app"}/admin" style="display: inline-block; background: #10b981; color: #000000; font-weight: 800; text-decoration: none; padding: 10px 20px; border-radius: 10px; font-size: 13px;">Open Command Center</a>
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app"}/admin" style="display: inline-block; background: #10b981; color: #000000; font-weight: 800; text-decoration: none; padding: 10px 20px; border-radius: 10px; font-size: 13px;">Open Command Center</a>
         </div>
       </div>
     `,

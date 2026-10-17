@@ -107,8 +107,8 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${p.apiKey.trim()}`,
-            "HTTP-Referer": "https://femiadelekeportfolio.vercel.app",
-            "X-Title": "Femi Adeleke AI Agent Obey",
+            "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app",
+            "X-Title": "Obey AI Agent",
           },
           body: JSON.stringify({
             model: targetModel,

@@ -216,7 +216,7 @@ export default function ManualPage() {
         "Voice Accent & Gender: Choose between 'Nigerian Male (Warm Executive)', 'Nigerian Female', 'British Male/Female', or 'American Male/Female'.",
         "Personality & Tone: Pick between 'Professional', 'Friendly (Warm Brotherly)', 'Authentic Naija (Pidgin & sharp-sharp)', or 'Direct & Punchy'.",
         "Opening Greeting: Customize what Obey says when a caller connects (e.g. 'Hello! You have reached Havilah Touch. How can I assist you with our agricultural packages today?').",
-        "Zero-Airtime Call Link: Share your link (e.g. https://femiadelekeportfolio.vercel.app/call?biz=your-slug) in your Instagram bio, WhatsApp catalog, or website.",
+        "Zero-Airtime Call Link: Share your link (e.g. https://obeyai.vercel.app/call?biz=your-slug) in your Instagram bio, WhatsApp catalog, or website.",
         "Audio Recordings & Transcripts: Delivered straight to your WhatsApp as soon as each call ends (Pro and Enterprise tiers).",
       ],
       tips: [
