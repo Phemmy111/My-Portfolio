@@ -21,7 +21,8 @@ function cleanWhatsAppFormatting(text: string): string {
 export async function sendWhatsAppMessage(
   text: string,
   recipient?: string,
-  customInstance?: string
+  customInstance?: string,
+  quoted?: any
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoUrl =
@@ -43,6 +44,15 @@ export async function sendWhatsAppMessage(
 
     const targetPhone = cleaned;
 
+    const payload: Record<string, any> = {
+      number: targetPhone,
+      text: cleanWhatsAppFormatting(text),
+    };
+
+    if (quoted) {
+      payload.quoted = quoted;
+    }
+
     const res = await fetch(
       `${evoUrl}/message/sendText/${instanceName}`,
       {
@@ -51,10 +61,7 @@ export async function sendWhatsAppMessage(
           "Content-Type": "application/json",
           apikey: evoKey,
         },
-        body: JSON.stringify({
-          number: targetPhone,
-          text: cleanWhatsAppFormatting(text),
-        }),
+        body: JSON.stringify(payload),
       }
     );
 

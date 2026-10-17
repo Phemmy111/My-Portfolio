@@ -1165,7 +1165,17 @@ Output ONLY the comment text.`,
 
               const comment = aiRes.text.trim().replace(/^["']|["']$/g, "");
               if (comment && comment.length >= 3) {
-                await sendWhatsAppMessage(comment, posterPhone, instanceName);
+                // Construct quoted status story so comment appears directly attached under the status story in WhatsApp
+                const quotedStatus = {
+                  key: {
+                    remoteJid: "status@broadcast",
+                    id: msgObj.key?.id,
+                    participant: phoneJid || readParticipant || `${posterPhone}@s.whatsapp.net`,
+                  },
+                  message: msgObj.message,
+                };
+
+                await sendWhatsAppMessage(comment, posterPhone, instanceName, quotedStatus);
                 await dbRecordStatusComment({
                   workspace_id: currentWs?.id || null,
                   instance_name: instanceName,
@@ -1174,7 +1184,7 @@ Output ONLY the comment text.`,
                   status_text: statusText || (hasVisual ? "[Media Story]" : null),
                   comment_sent: comment,
                 });
-                console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}"`);
+                console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}" (quoted reply)`);
               }
             }
           }
