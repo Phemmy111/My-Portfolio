@@ -196,9 +196,10 @@ export async function handleOwnerContactOrBucketTurn(params: {
   // -------------------------------------------------------------
   // 4. Contact Name Search & Messaging ("help me message Femi", "message Chioma and Tunde")
   // -------------------------------------------------------------
-  // Strict guard: if the user is discussing creative assets, prompts, code, images, video, n8n, or asking for plain text, DO NOT treat as contact outreach!
+  // Strict guard: if the user is discussing automations, workflows, integrations, creative assets, prompts, code, images, video, n8n, or asking for plain text, DO NOT treat as contact outreach!
   const isCreativeOrTechnical =
-    /\b(prompt|image|video|clip|script|code|json|workflow|n8n|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
+    /\b(automation|pipeline|workflow|n8n|bot|chatbot|webhook|integration|paystack|airtable|supabase|sheets|google\s+sheets|stripe|crm|database|api|endpoint|auto-responder|invoice|prompt|image|video|clip|script|code|json|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
+    /\b(i want an automation|build an automation|create an automation|automate|when someone pays|when a user|records the transaction)\b/i.test(userText) ||
     /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text)\b/i.test(userText);
 
   const messageContactTrigger = !isCreativeOrTechnical
@@ -210,9 +211,9 @@ export async function handleOwnerContactOrBucketTurn(params: {
   if (messageContactTrigger) {
     const rawTargetsStr = messageContactTrigger[1].trim();
 
-    // Check if the user is asking about status or broadcast, or general pronouns
+    // Check if the user is asking about status, broadcast, general pronouns, or business entities
     if (
-      /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|someone|person|number|now|later|first)/i.test(rawTargetsStr) ||
+      /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|group|now|later|first)/i.test(rawTargetsStr) ||
       isCreativeOrTechnical
     ) {
       return { handled: false, reply: "" };
@@ -229,7 +230,12 @@ export async function handleOwnerContactOrBucketTurn(params: {
     const names = rawTargetsStr
       .split(/(?:\s+and\s+|\s*&\s*|\s*,\s*)/i)
       .map((n) => n.trim())
-      .filter((n) => n.length > 1 && !/^(him|her|them|someone|person|number)$/i.test(n));
+      .filter(
+        (n) =>
+          n.length > 1 &&
+          n.length <= 25 &&
+          !/^(him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|invoice)$/i.test(n)
+      );
 
     if (names.length === 0) {
       return { handled: false, reply: "" };
