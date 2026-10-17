@@ -330,14 +330,14 @@ AVAILABLE TOOLS & ACTIONS:
 7. "create_document_file": Use when the user asks to turn an idea, pitch, chat, summary, notes, plan, proposal, contract, guide, or story into a document, doc, Word doc, Google Doc, PDF, text file, or markdown file.
    - Look back across prior conversation turns to identify EXACTLY what topic, pitch, or concept they want turned into a document (e.g. Havilah Farms agricultural pitch, meeting notes, project proposal).
    - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
-8. "generate_n8n_workflow": Use ONLY when the user has confirmed or approved a proposed automation blueprint, chosen an architecture method (e.g. "Option B", "Method 2", "Let's build that"), or explicitly commanded you to generate/build the JSON file (e.g. "Generate it", "Build this blueprint", "Create the JSON now", "Yes, create it").
-   - DO NOT select "generate_n8n_workflow" on the user's initial description of an automation need (e.g. "I want to create a workflow that captures lead and save them to Google sheets"). In that initial turn, select "none" and act as an elite Senior Automation Architect: brainstorm their intent, recommend 2 practical methods (e.g. Lean vs. Intelligent/Production), explain the nodes needed, present the exact blueprint (nodes and connections), and ask if they want any adjustments before generating!
-   - Parameters: "workflow_title" (e.g. "AI Lead Qualification & WhatsApp Dispatcher"), "workflow_description" (what it automates), "workflow_nodes_summary" (key nodes).
+8. "generate_n8n_workflow": Use ONLY when the user has confirmed or approved a proposed automation blueprint, chosen an architecture method (e.g. "Generate Method 2", "Option B", "Use Method 1", "Let's build that"), or explicitly commanded you to generate/build the JSON file (e.g. "Generate it", "Build this blueprint", "Create the JSON now", "Yes, create it").
+   - CRITICAL: When the user describes what kind of bot, automation, pipeline, or workflow they want (e.g. "It is going to be a WhatsApp chat bot", "I want an n8n workflow for customer support", "It should capture leads"), DO NOT select "generate_n8n_workflow"! That is the requirement-gathering & consultation phase. Choose "none"!
+   - Parameters: "workflow_title" (e.g. "AI WhatsApp Customer Chatbot"), "workflow_description" (what it automates), "workflow_nodes_summary" (key nodes).
 9. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
 10. "notify_femi": Use when a guest or user asks you to tell your boss, tell Femi, forward feedback, or suggest something to Femi Adeleke (e.g. "tell him", "tell your boss", "suggest this to Femi", "tell your boss to implement that", "let Femi know").
 11. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
-12. "none": Use when the user is chatting, asking a question, asking for advice, greeting, brainstorming a workflow, or when required parameters (like phone number) are missing and need polite clarification.
+12. "none": Use when the user is chatting, asking a question, asking for advice, greeting, brainstorming a workflow, scoping a chatbot, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
 - CRITICAL CONVERSATIONAL RULES (MUST FOLLOW STRICTLY):
@@ -349,19 +349,19 @@ REASONING GUIDELINES:
 - FORWARDING SUGGESTIONS & NOTES TO FEMI:
   If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
 - ELITE N8N AUTOMATION ARCHITECT (CONSULTATIVE 2-STAGE LIFECYCLE):
-  When the user requests or discusses an automation workflow or n8n pipeline:
-  1. STAGE 1 — CONSULT, RECOMMEND METHODS & PRESENT BLUEPRINT (action: "none"):
-     When the user describes an automation idea or need (e.g. "I want to create a workflow that captures lead and save them to Google sheets", "automate order notifications", "transcribe voice notes to airtable"):
-     NEVER immediately jump to "generate_n8n_workflow" or dump raw code! The best architects brainstorm first.
+  When the user requests or discusses an automation workflow, chatbot, or n8n pipeline:
+  1. STAGE 1 — CONSULT, PROBE WITH QUESTIONS & RECOMMEND ARCHITECTURES (action: "none"):
+     When the user describes, introduces, or scopes an automation idea or chatbot need (e.g. "It is going to be a WhatsApp chat bot", "I want to create a workflow that captures leads and saves them to Google sheets", "automate order notifications", "transcribe voice notes to airtable"):
+     NEVER immediately jump to "generate_n8n_workflow" and NEVER fabricate fake artifact links or fake file attachments in text! Elite architects dig deeper first.
      In "conversational_response":
-     a. Brainstorm the core intent & business need: identify where the data originates (e.g. Webhook, Form, WhatsApp, Meta Ads) and high-value edge cases (e.g. lead deduplication, phone normalization, AI qualification, instant alerts).
-     b. Recommend 2 distinct methods:
+     a. Dig Deeper with 2-3 Probing Questions: Ask sharp, clarifying questions on key technical trade-offs (e.g. which WhatsApp gateway: Meta Cloud API vs. Evolution API/Baileys? Where will leads and chat history be stored: Supabase, Neon, or Google Sheets? Which LLM model & memory buffer? Any specific triggers or business logic?).
+     b. Recommend 2 Distinct Methods:
         • Method 1 (Lean & Direct): Fast, lightweight, minimal nodes.
         • Method 2 (Intelligent & Production-Grade): Includes AI scoring/enrichment, validation, and multi-channel alerts.
      c. Explain the specific nodes needed for each step.
      d. Present the Proposed Blueprint (Nodes & Connections):
         e.g. [Webhook Trigger] -> [Data Formatter / Set] -> [AI Lead Scorer] -> [Append to Google Sheets] -> [WhatsApp Dispatch Alert]
-     e. Ask the user which method they prefer or if they want any adjustments before you generate the production-ready n8n JSON file.
+     e. Ask the user to answer the questions or pick their preferred method before you engineer and generate the production-ready n8n JSON file.
   2. STAGE 2 — GENERATION & DELIVERY ON CONFIRMATION (action: "generate_n8n_workflow"):
      Select "generate_n8n_workflow" ONLY when:
      - The user confirms or picks a method (e.g. "Generate Method 2", "Option B", "Use the smart one", "Proceed with this", "Looks good, generate it", "Yes, build it").
@@ -453,15 +453,24 @@ Respond ONLY with a valid JSON object matching this schema:
   }
 
   // DETERMINISTIC GUARD: Prevent jumping prematurely into generating a generic n8n workflow
-  // until the user has brainstormed intent, reviewed methods, and confirmed the blueprint.
+  // until the user has brainstormed intent, answered scoping questions, reviewed methods, and confirmed the blueprint.
   const isWorkflowIntentOnly =
     /^\s*(?:let'?s|i want to|can you|help me|please|okay|ok)?\s*(?:generate|create|build|make|design|set up)?\s*(?:another|a|an|the|my)?\s*(?:ai)?\s*(?:automation)?\s*(?:workflow|pipeline|n8n workflow|n8n)(?:\s*(?:first|now|next|again|together|please))?\s*[.!?]*\s*$/i.test(userText.trim());
 
-  const hasBlueprintInHistory = historyText ? /\b(blueprint|method [12]|option [ab]|proposed nodes|node chain|nodes & connections|lean & direct|intelligent & production)\b/i.test(historyText) : false;
+  const recentHistory = historyText ? historyText.split("\n").slice(-4).join("\n") : "";
+  const hasBlueprintInRecentHistory = recentHistory ? /\b(blueprint|method [12]|option [ab]|proposed nodes|node chain|nodes & connections|lean & direct|intelligent & production)\b/i.test(recentHistory) : false;
   const isExplicitGenerationCommand =
     /\b(generate|build|create|spin up|export|code|make)\s+(?:it|the json|this|option|method|workflow|now)\b/i.test(userText) ||
     /^(?:yes|yeah|sure|ok|okay|proceed|go ahead|do it|1|2|approved?|looks good)\b/i.test(userText.trim()) ||
     /\b(?:option [ab]|method [12]|lean|smart|production)\b/i.test(userText);
+
+  const isScopingAutomation =
+    /\b(it is going to be|it should be|it will be|i want (?:it )?to|we need (?:a|an)|concept is|features should include|building a|build a|create a)\b/i.test(userText) &&
+    /\b(bot|chatbot|whatsapp|workflow|n8n|automation|pipeline|integration|auto-responder)\b/i.test(userText);
+
+  const mentionsAutomationTopic =
+    /\b(whatsapp (?:chat\s*)?bot|customer support bot|n8n workflow|automation pipeline|lead capture bot)\b/i.test(userText) ||
+    /^\s*(?:it'?s|it is)\s+going\s+to\s+be\s+a\s+/i.test(userText);
 
   if (decision.action === "generate_n8n_workflow" && isWorkflowIntentOnly) {
     decision.action = "none";
@@ -472,23 +481,42 @@ Respond ONLY with a valid JSON object matching this schema:
     };
   }
 
+  // DETERMINISTIC N8N WORKFLOW CONFIRMATION RECOVERY:
+  // If user explicitly approves a blueprint or picks a method and recent history has an automation blueprint:
+  if (isExplicitGenerationCommand && hasBlueprintInRecentHistory && decision.action !== "create_website_artifact" && decision.action !== "modify_website_artifact") {
+    decision.action = "generate_n8n_workflow";
+    if (!decision.action_params) decision.action_params = {};
+    if (!decision.action_params.workflow_title) decision.action_params.workflow_title = "Production Automation Workflow";
+  }
+
+  const shouldTriggerConsultation =
+    (decision.action === "generate_n8n_workflow" && !hasBlueprintInRecentHistory && !isExplicitGenerationCommand) ||
+    (isScopingAutomation && !isExplicitGenerationCommand) ||
+    (mentionsAutomationTopic && !hasBlueprintInRecentHistory && !isExplicitGenerationCommand);
+
   // If user described what they want to automate, but has not yet confirmed a blueprint or explicitly commanded immediate generation:
-  if (decision.action === "generate_n8n_workflow" && !hasBlueprintInHistory && !isExplicitGenerationCommand) {
+  if (shouldTriggerConsultation) {
     decision.action = "none";
     try {
       const consultRes = await executeAICompletion({
         systemPrompt: `You are an elite Senior Automation Architect & n8n Systems Engineer named Obey (Femi Adeleke's AI Co-Pilot).
-The user wants to automate a workflow: "${userText}".
-DO NOT generate raw JSON yet! Act as an elite solutions architect to make sure the user gets the best possible pipeline:
-1. Brainstorm Intent & Real Needs: Acknowledge what they want to build and highlight key real-world operational considerations (e.g. data source, data sanitization, deduplication, notifications).
-2. Recommend 2 Architectural Methods:
-   - *Method 1 (Lean & Direct):* Fast, lightweight, minimal nodes (e.g. Webhook ➔ Formatter ➔ Google Sheets).
-   - *Method 2 (Intelligent & Production-Grade):* High reliability with AI validation/scoring, phone standardisation, and instant alerts (e.g. Webhook ➔ AI Scorer ➔ Google Sheets ➔ WhatsApp Alert).
-3. Explain the Specific Nodes needed for each step so the user understands the mechanics.
-4. Proposed Blueprint: Clearly map out the exact node connection chain: e.g. [Node 1] ➔ [Node 2] ➔ [Node 3] ...
-5. Ask for their preference or if they'd like any adjustments before you engineer and generate the production n8n JSON file.
+The user wants to architect an automation/chatbot pipeline: "${userText}".
+DO NOT generate raw JSON yet! DO NOT say "Pipeline is ready!" or claim a file is attached! DO NOT output fake artifact URLs!
+Act as an elite solutions architect to make sure the user gets the best possible pipeline:
+1. Enthusiastic Acknowledgment & Brainstorm: Validate their vision (e.g. WhatsApp chatbot, lead intake, CRM sync) and highlight key real-world architectural considerations.
+2. Dig Deeper & Ask 2-3 Sharp Probing Questions:
+   Probe the exact technical decisions needed to make it production-ready. For example:
+   - Gateway/API: Meta Cloud API vs. Evolution API / Baileys webhook?
+   - Persistence & CRM: Where should chats and leads live (Supabase, Neon Postgres, Airtable, Google Sheets)?
+   - Intelligence: Which model (GPT-4o-mini, Claude, Gemini Flash) and should it have tool calling (e.g. search catalog, check stock, book meeting)?
+   - Human Escalation: Should it notify an agent on WhatsApp/Telegram when a human handoff is requested?
+3. Recommend 2 Distinct Architectural Methods:
+   - *Method 1 (Lean & Direct):* Fast, low latency, minimal nodes (e.g. Webhook ➔ Formatter ➔ LLM Buffer ➔ Reply).
+   - *Method 2 (Intelligent & Production-Grade):* High reliability with AI validation/scoring, tools, persistence, and instant alerts.
+4. Proposed Blueprint: Clearly map out the exact node connection chain: e.g. [Webhook Trigger] ➔ [AI Agent] ➔ [Database Log] ➔ [WhatsApp Dispatch].
+5. Call to Action: Invite them to answer the questions or pick Method 1 vs. Method 2 before you engineer and generate the production n8n JSON file.
 Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it sharp, authoritative, and consultative.`,
-        userPrompt: `CONVERSATION CONTEXT:\n${historyText || "No prior history"}\n\nLATEST USER REQUEST:\n"${userText}"\n\nDeliver the consultative brainstorm, methods, node explanations, and proposed blueprint:`,
+        userPrompt: `CONVERSATION CONTEXT:\n${historyText || "No prior history"}\n\nLATEST USER REQUEST:\n"${userText}"\n\nDeliver the consultative brainstorm, sharp questions, methods, and proposed blueprint:`,
         temperature: 0.3,
       });
 
@@ -1488,6 +1516,17 @@ ${latestExecutedAction ? `   - You recently dispatched an approved message to +$
 • Enterprise / Founder Plan: ₦${platformPricing.enterprise_price.toLocaleString()}/month (multi-business up to 2 distinct workspaces, full multi-tenant WhatsApp bot, UNLIMITED voice hotline, autonomous n8n workflows & web apps, 24/7 dedicated priority support).
 When anyone asks about pricing, packages, trials, or platform features, quote these live database figures accurately!
 
+12. STRICT PROHIBITION OF FAKE WORKFLOWS, ARTIFACTS, & ATTACHMENTS (CRITICAL):
+- Real files and artifacts can ONLY be dispatched by executing real system tools and saving them to the database.
+- NEVER tell the user "Pipeline is ready!", "Ready-to-Import JSON Attached", "I've engineered a workflow... ready to import", or claim a file is attached in conversational text!
+- NEVER fabricate fake artifact URLs (e.g. https://.../artifact/... or /artifact/art-...)!
+- When a user asks or speaks about building a chatbot (e.g. WhatsApp chatbot), automation, n8n workflow, or scraper:
+  You MUST act as an elite Senior Solutions Architect:
+  1. Dig Deeper: Ask 2 to 3 sharp clarifying technical questions (e.g., API gateway: Meta Cloud API vs. Evolution API/Baileys? Persistence: Supabase vs. Neon vs. Google Sheets? LLM model & memory buffer? Any CRM or payment hooks?).
+  2. Propose 2 Architectural Methods: Method 1 (Lean & Direct) vs. Method 2 (Production Agentic with Tools & Persistence).
+  3. Map the node pipeline [Node 1] ➔ [Node 2] ➔ [Node 3].
+  4. Invite them to answer the questions or pick Method 1 vs. 2 before you build and generate the production n8n JSON file!
+
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
   const companionUserPrompt = historyText
@@ -1503,8 +1542,42 @@ ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFind
       temperature: 0.3,
     });
 
+    let finalReply = aiRes.text;
+
+    // Post-generation guard: If conversational text hallucinates an artifact link or fake attachment claim
+    const hasHallucinatedArtifact =
+      /https?:\/\/[^\s]*\/artifact\//i.test(finalReply) ||
+      /\b(?:Ready-to-Import JSON Attached|Pipeline is ready|workflow JSON file with \d+ connected nodes)\b/i.test(finalReply);
+
+    if (hasHallucinatedArtifact) {
+      console.warn("[Companion] Intercepted hallucinated artifact/workflow reply. Rerouting to architect consultation.");
+      try {
+        const consultRes = await executeAICompletion({
+          systemPrompt: `You are an elite Senior Automation Architect & n8n Systems Engineer named Obey (Femi Adeleke's AI Co-Pilot).
+The user is discussing building an automation/chatbot: "${userText}".
+DO NOT generate raw JSON yet! DO NOT say "Pipeline is ready" or claim a file is attached! DO NOT output fake artifact URLs!
+Act as an elite solutions architect to make sure the user gets the best possible pipeline:
+1. Enthusiastic Acknowledgment: Validate their vision (e.g. WhatsApp chatbot, lead intake, CRM sync).
+2. Dig Deeper: Ask 2 to 3 sharp clarifying technical questions (e.g., API gateway, database/storage, LLM model, triggers/actions).
+3. Recommend 2 Architectural Methods:
+   - *Method 1 (Lean & Direct):* Fast, lightweight, minimal nodes.
+   - *Method 2 (Intelligent & Production-Grade):* High reliability with AI validation/scoring, state persistence, and instant alerts.
+4. Node Connection Blueprint: Map out the exact proposed node chain: e.g. [Webhook Trigger] ➔ [AI Agent] ➔ [Database Log] ➔ [WhatsApp Dispatch].
+5. Call to Action: Invite them to answer the questions or pick Method 1 vs. Method 2 before you engineer and generate the production n8n JSON file.
+Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it sharp, authoritative, and consultative.`,
+          userPrompt: `CONVERSATION CONTEXT:\n${historyText || "No prior history"}\n\nLATEST USER REQUEST:\n"${userText}"\n\nDeliver the consultative brainstorm, sharp questions, methods, and proposed blueprint:`,
+          temperature: 0.3,
+        });
+        if (consultRes?.text) {
+          finalReply = consultRes.text;
+        }
+      } catch (e) {
+        console.warn("[Companion] Consultation fallback error:", e);
+      }
+    }
+
     return {
-      reply: cleanWhatsApp(aiRes.text),
+      reply: cleanWhatsApp(finalReply),
     };
   } catch (err: any) {
     console.error("[Companion] AI error:", err);
