@@ -435,61 +435,74 @@ export default function AdminDashboardPage() {
           </nav>
 
           {/* Quick Tools & Shortcuts */}
-          <div className="space-y-1 pt-2 border-t border-zinc-300 dark:border-zinc-800">
+          <div className="space-y-1.5 pt-2 border-t border-zinc-300 dark:border-zinc-800">
             <div className="text-[10px] font-black uppercase text-zinc-500 dark:text-zinc-400 px-2 py-1 tracking-wider">
               Quick Controls
             </div>
+
+            {/* 1. Obey Brain */}
             <button
               onClick={() => {
                 setSettingsModalTab("brain");
                 setShowSettingsModal(true);
               }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20 hover:bg-purple-600 hover:text-white transition group cursor-pointer text-left"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-purple-500 hover:text-purple-600 dark:hover:text-purple-400 transition group cursor-pointer text-left shadow-2xs"
             >
               <div className="flex items-center gap-2">
-                <Brain size={14} className="text-purple-600 group-hover:text-white" />
+                <Brain size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
                 <span>🧠 Obey Brain</span>
               </div>
-              <span className="text-[10px] opacity-75">Config</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
+                Config
+              </span>
             </button>
 
+            {/* 2. AI Fallback Keys */}
             <button
               onClick={() => {
                 setSettingsModalTab("ai");
                 setShowSettingsModal(true);
               }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition group cursor-pointer text-left shadow-2xs"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition group cursor-pointer text-left shadow-2xs"
             >
               <div className="flex items-center gap-2">
-                <Zap size={14} className="text-emerald-600" />
+                <Zap size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>AI Fallback Keys</span>
               </div>
-              <span className="text-[10px] text-zinc-500">API</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                API
+              </span>
             </button>
 
+            {/* 3. Client Control Room */}
             <Link
               href="/control-room"
               target="_blank"
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition group text-left"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-teal-500 hover:text-teal-600 dark:hover:text-teal-400 transition group text-left shadow-2xs"
             >
               <div className="flex items-center gap-2">
-                <Building2 size={14} className="text-emerald-600" />
+                <Building2 size={14} className="text-teal-600 dark:text-teal-400 shrink-0" />
                 <span>Client Control Room</span>
               </div>
-              <ExternalLink size={12} className="opacity-70" />
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/40 flex items-center gap-1">
+                Open <ExternalLink size={10} />
+              </span>
             </Link>
 
+            {/* 4. View Portfolio */}
             <a
               href="/"
               target="_blank"
               rel="noreferrer"
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-400 hover:bg-zinc-200/80 dark:hover:bg-zinc-900 transition group text-left"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition group text-left shadow-2xs"
             >
               <div className="flex items-center gap-2">
-                <ExternalLink size={14} className="text-zinc-500" />
+                <ExternalLink size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>View Portfolio</span>
               </div>
-              <span className="text-[10px] text-zinc-500">Live</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40">
+                Live
+              </span>
             </a>
           </div>
         </div>
@@ -619,19 +632,25 @@ export default function AdminDashboardPage() {
                 <Link
                   href="/control-room"
                   target="_blank"
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-teal-500 transition shadow-2xs"
                 >
-                  <span>Client Control Room</span>
-                  <ExternalLink size={13} />
+                  <div className="flex items-center gap-2">
+                    <Building2 size={14} className="text-teal-600 dark:text-teal-400" />
+                    <span>Client Control Room</span>
+                  </div>
+                  <ExternalLink size={13} className="text-zinc-400" />
                 </Link>
                 <a
                   href="/"
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-900"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-blue-500 transition shadow-2xs"
                 >
-                  <span>View Portfolio</span>
-                  <ExternalLink size={13} />
+                  <div className="flex items-center gap-2">
+                    <ExternalLink size={14} className="text-blue-600 dark:text-blue-400" />
+                    <span>View Portfolio</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-500 font-bold">Live</span>
                 </a>
               </div>
             </div>
