@@ -567,7 +567,7 @@ export async function dbGetPendingUserAction(userIdentifier: string) {
   }
 }
 
-export async function dbUpdateUserActionStatus(id: string, status: "executed" | "rejected" | "failed") {
+export async function dbUpdateUserActionStatus(id: string, status: "executed" | "rejected" | "failed" | "expired" | "cancelled") {
   const db = getSql();
   if (!db) return null;
   try {

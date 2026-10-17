@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Eye, Code, Copy, Check, Download, RefreshCw } from "lucide-react";
+import { Eye, Code, Copy, Check, Download, RefreshCw, Workflow, ArrowRight, FileJson, Zap, Layers } from "lucide-react";
 import { Artifact } from "@/lib/artifact-engine";
 
 interface Props {
@@ -9,11 +9,19 @@ interface Props {
 }
 
 export default function ArtifactViewerClient({ artifact }: Props) {
+  const isN8n = artifact.type === "n8n_workflow" || (artifact.content.includes('"nodes"') && artifact.content.includes('"connections"'));
   const [activeTab, setActiveTab] = useState<"preview" | "code">(
     artifact.type === "code" || artifact.type === "markdown" ? "code" : "preview"
   );
   const [copied, setCopied] = useState(false);
   const [key, setKey] = useState(0);
+
+  let n8nData: any = null;
+  if (isN8n) {
+    try {
+      n8nData = JSON.parse(artifact.content);
+    } catch {}
+  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(artifact.content);
@@ -22,8 +30,19 @@ export default function ArtifactViewerClient({ artifact }: Props) {
   };
 
   const handleDownload = () => {
-    const ext = artifact.type === "html" ? "html" : artifact.type === "svg" ? "svg" : artifact.type === "markdown" ? "md" : "txt";
-    const blob = new Blob([artifact.content], { type: "text/plain;charset=utf-8" });
+    const ext = isN8n
+      ? "json"
+      : artifact.type === "html"
+      ? "html"
+      : artifact.type === "svg"
+      ? "svg"
+      : artifact.type === "markdown"
+      ? "md"
+      : artifact.type === "document"
+      ? "doc"
+      : "txt";
+    const mime = isN8n ? "application/json;charset=utf-8" : "text/plain;charset=utf-8";
+    const blob = new Blob([artifact.content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -168,15 +187,142 @@ export default function ArtifactViewerClient({ artifact }: Props) {
       {/* Main Content Area */}
       <div className="flex-1 min-h-[500px] flex flex-col relative bg-zinc-950">
         {activeTab === "preview" ? (
-          <div className="flex-1 w-full h-full flex flex-col p-4 bg-white dark:bg-zinc-950">
-            <iframe
-              key={key}
-              srcDoc={sandboxedHtml}
-              title={artifact.title}
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
-              className="w-full flex-1 min-h-[550px] border border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 shadow-inner"
-            />
-          </div>
+          isN8n && n8nData?.nodes ? (
+            <div className="flex-1 w-full h-full p-4 sm:p-6 overflow-y-auto space-y-6 text-white max-w-5xl mx-auto">
+              {/* Workflow Banner */}
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border border-zinc-800 space-y-4 shadow-xl text-left">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-black text-sm">
+                      n8n
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-white">{artifact.title}</h2>
+                      <p className="text-xs text-zinc-400">
+                        {artifact.description || "Production-Ready n8n AI Agent Workflow Blueprint"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                      <Zap size={12} />
+                      <span>{n8nData.nodes.length} Nodes Connected</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition cursor-pointer"
+                    >
+                      {copied ? <Check size={14} /> : <Copy size={14} />}
+                      <span>{copied ? "Copied!" : "Copy Raw n8n JSON"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center gap-1.5 border border-zinc-700 transition cursor-pointer"
+                    >
+                      <Download size={14} />
+                      <span>Download .json</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Import Instructions */}
+                <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs text-zinc-300 space-y-1.5">
+                  <p className="font-bold text-emerald-400 flex items-center gap-1.5">
+                    <Workflow size={14} />
+                    <span>How to import this workflow into your n8n canvas:</span>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-zinc-400">
+                    <li>Click <strong>Copy Raw n8n JSON</strong> above (or download the <strong>.json</strong> file).</li>
+                    <li>Open your n8n workspace canvas and simply press <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-white border border-zinc-700 font-mono">Ctrl + V</kbd> (or Cmd+V on Mac).</li>
+                    <li>Or click the three dots (⋮) in the top-right of n8n ➔ <strong>Import from File</strong>.</li>
+                    <li>Add your credentials in any highlighted nodes, test the trigger, and switch to <strong>Active</strong>!</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Visual Flow Pipeline */}
+              <div className="space-y-3 text-left">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                    <Layers size={14} className="text-emerald-400" />
+                    <span>Visual Node Architecture ({n8nData.nodes.length} Nodes)</span>
+                  </h3>
+                  <span className="text-[10px] text-zinc-500">Auto-configured pipeline</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {n8nData.nodes.map((node: any, idx: number) => {
+                    const isTrigger = node.type.includes("webhook") || node.type.includes("trigger") || node.type.includes("cron");
+                    const isAi = node.type.includes("openAi") || node.type.includes("agent") || node.type.includes("langchain");
+                    const isStorage = node.type.includes("supabase") || node.type.includes("database") || node.type.includes("sheets");
+
+                    return (
+                      <div
+                        key={node.id || idx}
+                        className={`p-4 rounded-xl border text-left space-y-2.5 transition-all relative ${
+                          isTrigger
+                            ? "bg-amber-500/5 border-amber-500/30"
+                            : isAi
+                            ? "bg-purple-500/5 border-purple-500/30"
+                            : isStorage
+                            ? "bg-blue-500/5 border-blue-500/30"
+                            : "bg-zinc-900/60 border-zinc-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                            Step #{idx + 1}
+                          </span>
+                          <span
+                            className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full ${
+                              isTrigger
+                                ? "bg-amber-500/20 text-amber-300"
+                                : isAi
+                                ? "bg-purple-500/20 text-purple-300"
+                                : isStorage
+                                ? "bg-blue-500/20 text-blue-300"
+                                : "bg-emerald-500/20 text-emerald-300"
+                            }`}
+                          >
+                            {isTrigger ? "Trigger" : isAi ? "AI Engine" : isStorage ? "Data Store" : "Action"}
+                          </span>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-black text-white truncate">{node.name}</p>
+                          <p className="text-[10px] font-mono text-zinc-400 truncate">
+                            {node.type.replace(/^.*[./]/, "")}
+                          </p>
+                        </div>
+
+                        {node.parameters && Object.keys(node.parameters).length > 0 && (
+                          <div className="p-2 rounded-lg bg-zinc-950/80 border border-zinc-900 text-[10px] text-zinc-400 font-mono space-y-0.5 max-h-20 overflow-hidden">
+                            {Object.entries(node.parameters).slice(0, 3).map(([k, v]) => (
+                              <p key={k} className="truncate">
+                                <span className="text-zinc-500">{k}:</span> {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 w-full h-full flex flex-col p-4 bg-white dark:bg-zinc-950">
+              <iframe
+                key={key}
+                srcDoc={sandboxedHtml}
+                title={artifact.title}
+                sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
+                className="w-full flex-1 min-h-[550px] border border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 shadow-inner"
+              />
+            </div>
+          )
         ) : (
           <div className="flex-1 p-5 overflow-auto font-mono text-xs text-zinc-300 leading-relaxed bg-zinc-950">
             <pre className="whitespace-pre-wrap select-all font-mono">

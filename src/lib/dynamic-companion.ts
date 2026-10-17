@@ -8,6 +8,7 @@ import {
   dbGetLatestExecutedUserAction,
   dbGetWorkspaceSettings,
   dbGetWorkspaceBySlug,
+  dbGetPlatformPricing,
 } from "./db";
 import { executePendingUserAction } from "./agent-dispatcher";
 import { getNigerianTime, formatToWAT } from "./utils";
@@ -150,20 +151,58 @@ export async function processDynamicCompanionTurn(params: {
 
   // 1. FETCH MULTI-TURN MEMORY CONTEXT IN PARALLEL
   const [
-    pendingAction,
+    rawPendingAction,
     latestExecutedAction,
     userImageMemory,
     userFullMemory,
     recentArtifacts,
+    platformPricing,
   ] = await Promise.all([
     dbGetPendingUserAction(userIdentifier),
     dbGetLatestExecutedUserAction(userIdentifier),
     getUserImageMemory(userIdentifier),
     getUserFullMemory(userIdentifier),
     getUserArtifacts(userIdentifier, 6),
+    dbGetPlatformPricing(),
   ]);
 
   const latestArtifact = recentArtifacts.length > 0 ? recentArtifacts[0] : null;
+
+  // Extract last Obey line in conversation history to verify confirmation context
+  const historyLines = (historyText || "").split("\n");
+  let lastObeyLine = "";
+  for (let i = historyLines.length - 1; i >= 0; i--) {
+    if (historyLines[i].startsWith("Obey:")) {
+      lastObeyLine = historyLines[i].replace(/^Obey:\s*/, "").trim();
+      break;
+    }
+  }
+
+  // 1.2 STALE PENDING ACTION EXPIRATION & DISCARD SAFEGUARDS
+  let pendingAction = rawPendingAction;
+  if (pendingAction) {
+    const actionAgeMs = Date.now() - new Date(pendingAction.created_at).getTime();
+    // Auto-expire pending actions older than 5 minutes to prevent stale triggers
+    if (actionAgeMs > 5 * 60 * 1000) {
+      await dbUpdateUserActionStatus(pendingAction.id, "expired");
+      pendingAction = null;
+    }
+  }
+
+  // Discard pending action if user changes topic or commands a new post/status/broadcast
+  if (pendingAction && (/^(?:post|broadcast|status)[:\s]/i.test(userText.trim()))) {
+    await dbUpdateUserActionStatus(pendingAction.id, "cancelled");
+    pendingAction = null;
+  }
+
+  // Verify Obey actually prompted for action confirmation in the immediate last turn
+  if (pendingAction) {
+    const obeyAskedToConfirm = /\b(reply yes|type yes|should i send|confirm|want me to message|dispatch this|send this to|ready to send|approve)\b/i.test(lastObeyLine);
+    if (!obeyAskedToConfirm) {
+      // Obey was asking an unrelated question (e.g. broadcast vs status); do NOT hijack conversation!
+      pendingAction = null;
+    }
+  }
 
   // 1.5 USER PERSONAL MEMORY & DIRECTIVE LISTENER
   const declaresFemale = /\b(i am (?:a )?(?:lady|woman|girl|female)|i'm (?:a )?(?:lady|woman|girl|female)|i am her|i'm her|she\/her|call me (?:a )?lady)\b/i.test(userText);
@@ -201,7 +240,7 @@ export async function processDynamicCompanionTurn(params: {
     };
   }
 
-  // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL FIRST
+  // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL (STRICTLY VALIDATED)
   if (pendingAction) {
     const isAffirmative = /^(yes|send|approve|confirm|proceed|ok|1|do it|go ahead|dispatch|sure)\b/i.test(lower);
     const isNegative = /^(no|cancel|reject|stop|2|don't|dont|discard)\b/i.test(lower);
@@ -239,8 +278,17 @@ ${recentArtifacts.length > 0 ? recentArtifacts.map((a, i) => `  ${i + 1}. "${a.t
 - Active Current Artifact: ${latestArtifact ? `"${latestArtifact.title}" (${latestArtifact.id})` : "None"}
 - Last Dispatched Action: ${latestExecutedAction ? `Dispatched WhatsApp message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}` : "None"}
 
+LIVE REAL-TIME OBEY PLATFORM PRICING & COMMERCIAL PACKAGES (ACTIVE IN DATABASE):
+• Starter Plan: ₦${platformPricing.starter_price.toLocaleString()}/month
+  - 1 Single Business Workspace, up to 250 auto-saved customer leads, 10 Keyword Auto-responders, 15h/month WebRTC Voice Hotline, CSV & Phone vCard Export.
+• Pro Business Plan (Most Popular): ₦${platformPricing.pro_price.toLocaleString()}/month
+  - Includes a ${platformPricing.trial_days}-Day 100% Free Trial.
+  - 1 Dedicated Business Workspace, UNLIMITED auto-saved customer leads, 50 Keyword Auto-responders, 50h/month WebRTC Voice Hotline, Audio recordings & full executive transcripts delivered on WhatsApp, Custom Business Catalog & Bank Payment Details, Personalized WhatsApp Broadcasts.
+• Enterprise / Founder Plan: ₦${platformPricing.enterprise_price.toLocaleString()}/month
+  - Multi-Business: Add and manage up to 2 distinct brand workspaces simultaneously, Full Multi-tenant WhatsApp Bot, UNLIMITED Voice Hotline minutes, Autonomous Web App, Document & n8n Workflow Architect, Priority 24/7 dedicated support.
+
 AVAILABLE TOOLS & ACTIONS:
-1. "check_action_status": Use when the user asks whether their message, email, or request was sent, delivered, or performed (e.g., "Have you delivered the message to the person?", "Did you send it?", "Has it gone through?", "Did you text her?").
+1. "check_action_status": Use when the user asks about an action, message, or delivery (e.g. "What did you tell her?", "What is the name of the person you sent it to?", "Are you sure?", "Did you text her?", "Did it go through?").
 2. "draft_whatsapp_message": Use when the user asks you to message, text, or relay words to any phone number or person.
    - Look back across prior turns to recover recipient phone and message content if shared across multiple messages.
    - Parameters: "recipient_phone" (digits only, e.g. 234...), "message_content" (the core message or request).
@@ -255,11 +303,15 @@ AVAILABLE TOOLS & ACTIONS:
 7. "create_document_file": Use when the user asks to turn an idea, pitch, chat, summary, notes, plan, proposal, contract, guide, or story into a document, doc, Word doc, Google Doc, PDF, text file, or markdown file.
    - Look back across prior conversation turns to identify EXACTLY what topic, pitch, or concept they want turned into a document (e.g. Havilah Farms agricultural pitch, meeting notes, project proposal).
    - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
-8. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
+8. "generate_n8n_workflow": Use when the user asks to build, create, design, or generate a ready-made n8n workflow, automation pipeline, webhook automation, or JSON workflow that can be imported into n8n.
+   - If user asks for "any simple workflow" or doesn't specify nodes, autonomously architect a complete, high-value, production-ready workflow (such as AI Lead Qualification & Multi-Channel Alert).
+   - If user asks for specific nodes (e.g. Webhook, OpenAI, Supabase, Gmail, WhatsApp), include all of them properly wired.
+   - Parameters: "workflow_title" (e.g. "AI Lead Qualification & WhatsApp Dispatcher"), "workflow_description" (what it automates), "workflow_nodes_summary" (key nodes).
+9. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
    - Parameters: "search_query".
-9. "notify_femi": Use when a guest or user asks you to tell your boss, tell Femi, forward feedback, or suggest something to Femi Adeleke (e.g. "tell him", "tell your boss", "suggest this to Femi", "tell your boss to implement that", "let Femi know").
-10. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
-11. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
+10. "notify_femi": Use when a guest or user asks you to tell your boss, tell Femi, forward feedback, or suggest something to Femi Adeleke (e.g. "tell him", "tell your boss", "suggest this to Femi", "tell your boss to implement that", "let Femi know").
+11. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
+12. "none": Use when the user is chatting, asking a question, asking for advice, greeting, or when required parameters (like phone number) are missing and need polite clarification.
 
 REASONING GUIDELINES:
 - CRITICAL CONVERSATIONAL RULES (MUST FOLLOW STRICTLY):
@@ -270,6 +322,11 @@ REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
 - FORWARDING SUGGESTIONS & NOTES TO FEMI:
   If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
+- AUTONOMOUS N8N WORKFLOW CREATION:
+  When the user asks for an n8n workflow, a workflow JSON, an automation pipeline, or asks to automate a process in n8n (e.g. "can you create a ready made n8n workflow", "is that a ready made workflow I can import to n8n", "create any simple workflow", "generate n8n json for webhook to supabase"):
+  1. ALWAYS select "generate_n8n_workflow"!
+  2. NEVER refuse or say "give me the exact nodes" if the user tells you to be creative or create any workflow — autonomously architect an awesome, production-ready n8n workflow!
+  3. Set "workflow_title", "workflow_description", and "workflow_nodes_summary".
 - CRITICAL DOCUMENT & FILE CONTINUITY:
   When the user says "Can you turn it to docs?", "turn into doc", "make it a doc", "put it in google doc", "turn it to PDF", "export as document", "the pitch nau", "this":
   1. DO NOT ask "What is this?" or "Which idea are we revisiting?" if a pitch, concept, business idea, outline, story, or project was discussed anywhere in recent turns!
@@ -288,14 +345,14 @@ REASONING GUIDELINES:
   If the user asks any question about current facts, news in Nigeria or globally, real-time sports, politics, prices, or questions where factual certainty is needed, ALWAYS choose "search_live_web" with a specific "search_query" so you give verified, accurate answers!
 - NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
-- If the user asks whether a message was delivered, ALWAYS choose "check_action_status".
+- If the user asks whether a message was delivered, what you told someone, who it was sent to, or questions about a recent dispatch, ALWAYS choose "check_action_status".
 - If the user wants to text someone but hasn't provided the phone number yet and no number exists in recent history, choose "none" and ask warmly for their phone number in "conversational_response".
-- For general questions (like business advice, study questions, facts), choose "none" and provide a sharp, concise answer directly in "conversational_response".
+- For general questions (like business advice, study questions, facts, prices, Obey packages), choose "none" and provide a sharp, concise answer directly in "conversational_response".
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "thought": "1-sentence executive reasoning analyzing what the user is asking and which tool applies",
-  "action": "check_action_status" | "draft_whatsapp_message" | "notify_femi" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "create_document_file" | "search_live_web" | "direct_voice_call" | "none",
+  "action": "check_action_status" | "draft_whatsapp_message" | "notify_femi" | "generate_new_image" | "modify_existing_image" | "create_website_artifact" | "modify_website_artifact" | "create_document_file" | "generate_n8n_workflow" | "search_live_web" | "direct_voice_call" | "none",
   "action_params": {
     "recipient_phone": "phone number or null",
     "message_content": "message or null",
@@ -307,6 +364,9 @@ Respond ONLY with a valid JSON object matching this schema:
     "document_title": "title or null",
     "document_topic": "topic or null",
     "document_format": "doc" | "pdf" | "txt" | "md" | null,
+    "workflow_title": "title or null",
+    "workflow_description": "description or null",
+    "workflow_nodes_summary": "nodes or null",
     "search_query": "query or null"
   },
   "conversational_response": "Concise, warm, direct response if action is none or clarifying"
@@ -328,16 +388,6 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   } catch (e) {
     console.warn("[Companion] Autonomous decision parse fallback:", e);
-  }
-
-  // Find last Obey line in conversation history
-  const historyLines = (historyText || "").split("\n");
-  let lastObeyLine = "";
-  for (let i = historyLines.length - 1; i >= 0; i--) {
-    if (historyLines[i].startsWith("Obey:")) {
-      lastObeyLine = historyLines[i].replace(/^Obey:\s*/, "").trim();
-      break;
-    }
   }
 
   // Check if previous delegation task was already completed / closed:
@@ -575,18 +625,42 @@ Respond ONLY with a valid JSON object matching this schema:
 
     if (latestExecutedAction) {
       const elapsedMinutes = Math.round((Date.now() - new Date(latestExecutedAction.executed_at || latestExecutedAction.created_at).getTime()) / 60000);
-      if (elapsedMinutes > 25) {
-        return {
-          reply: cleanWhatsApp(
-            `The last message I dispatched on your behalf was to *+${latestExecutedAction.target_recipient}* about ${elapsedMinutes} minutes ago. If you want me to message someone new or pass a note to Femi, just let me know!`
-          ),
-        };
-      }
       const timePhrase = elapsedMinutes <= 1 ? "just now" : `${elapsedMinutes} minute${elapsedMinutes > 1 ? "s" : ""} ago`;
+      const recipient = latestExecutedAction.target_recipient;
+      const dispatchedText = latestExecutedAction.payload || "(Message content)";
+
+      // Use AI reasoning to answer the user's specific question naturally without robotic templates
+      const statusPrompt = `You are Obey, the AI executive companion for Femi Adeleke.
+The user is asking a follow-up question or seeking clarification regarding a message/action you dispatched on their behalf.
+
+RECENT ACTION DISPATCH LOG:
+• Target Recipient: +${recipient}
+• Exact Dispatched Message Content: "${dispatchedText}"
+• Execution Time: ${timePhrase} (${latestExecutedAction.executed_at || latestExecutedAction.created_at})
+• Current Status: Successfully dispatched
+
+CONVERSATION CONTEXT:
+${historyText || "No prior history"}
+
+LATEST USER MESSAGE:
+"${userText}"
+
+INSTRUCTIONS:
+1. Answer the user's specific question naturally, accurately, and honestly based on the action log above:
+   - If they ask "What did you tell her / him?", quote the exact dispatched message ("${dispatchedText}").
+   - If they ask "What is the name / number of the person you sent it to?", state the recipient phone number (+${recipient}) and any contact details from context.
+   - If they say "Are you sure?", "It was another thing you said", or express surprise or dissatisfaction, explain with humility and clarity what was in the record, apologize if there was any misunderstanding, and offer to send a correction immediately.
+   - If they are simply asking "Did you send it?", confirm that it went through ${timePhrase}.
+2. Speak with natural human warmth, zero robotic repetition, and zero corporate fluff. Keep it direct and helpful.`;
+
+      const statusRes = await executeAICompletion({
+        systemPrompt: "You are Obey, a perceptive, transparent, and direct AI executive companion. Answer questions about dispatched actions truthfully and with human clarity.",
+        userPrompt: statusPrompt,
+        temperature: 0.2,
+      });
+
       return {
-        reply: cleanWhatsApp(
-          `Yes! I have delivered your message to *+${latestExecutedAction.target_recipient}* (${timePhrase}). Everything went through successfully.`
-        ),
+        reply: cleanWhatsApp(statusRes.text),
         actionExecuted: true,
       };
     } else {
@@ -892,6 +966,195 @@ Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.
     }
   }
 
+  // Tool: Generate Production-Ready n8n Workflow JSON (.json)
+  if (decision.action === "generate_n8n_workflow") {
+    try {
+      const flowTitle = decision.action_params?.workflow_title || "n8n AI Automation Workflow";
+      const flowDesc = decision.action_params?.workflow_description || userText;
+      const nodesSummary = decision.action_params?.workflow_nodes_summary || "Webhook, AI Agent, Data Store, Notifications";
+
+      const n8nSystemPrompt = `You are an elite n8n Automation Architect & Senior Workflow Engineer.
+Generate a 100% syntactically valid, production-ready n8n Workflow JSON file that can be imported directly into n8n canvas via "Import from File" or copied and pasted directly via Ctrl+V.
+
+CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
+1. Output MUST be ONLY valid JSON matching the official n8n workflow schema.
+2. The root object MUST have:
+   - "name": "${flowTitle}"
+   - "nodes": array of node objects
+   - "connections": connections mapping object
+   - "active": false
+   - "settings": { "executionOrder": "v1" }
+3. Each node MUST have:
+   - "parameters": object with realistic parameters, expressions like "={{ $json.body.email }}", or prompts
+   - "id": unique string UUID (e.g. "uuid-1", "uuid-2")
+   - "name": human-readable unique string (e.g. "Webhook Trigger", "AI Qualifier", "Save to Supabase", "Send WhatsApp Notification")
+   - "type": valid standard n8n node type (e.g. "n8n-nodes-base.webhook", "@n8n/n8n-nodes-langchain.agent", "@n8n/n8n-nodes-langchain.openAi", "n8n-nodes-base.supabase", "n8n-nodes-base.httpRequest", "n8n-nodes-base.googleSheets", "n8n-nodes-base.gmail", "n8n-nodes-base.if", "n8n-nodes-base.set")
+   - "typeVersion": number (e.g. 2 or 1)
+   - "position": [x, y] coordinates spaced 240px apart horizontally (e.g. [240, 300], [480, 300], [720, 300], [960, 300])
+4. The "connections" object MUST properly link the outputs of earlier nodes to the inputs of subsequent nodes.
+5. Provide clear, helpful parameter values so the user only needs to paste their API key/credentials to run it.
+6. NO markdown backticks, NO explanations, NO surrounding text. Output ONLY the raw JSON object.`;
+
+      const n8nUserPrompt = `Workflow Title: ${flowTitle}\nObjectives: ${flowDesc}\nKey Nodes & Integrations: ${nodesSummary}\nConversation Context: ${historyText || "User requested an n8n workflow."}\n\nGenerate the complete, valid n8n Workflow JSON:`;
+
+      const aiRes = await executeAICompletion({
+        systemPrompt: n8nSystemPrompt,
+        userPrompt: n8nUserPrompt,
+        temperature: 0.2,
+      });
+
+      let jsonText = aiRes.text.trim();
+      jsonText = jsonText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+      let parsedWorkflow: any = null;
+      try {
+        parsedWorkflow = JSON.parse(jsonText);
+      } catch (jsonErr) {
+        const match = jsonText.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            parsedWorkflow = JSON.parse(match[0]);
+            jsonText = JSON.stringify(parsedWorkflow, null, 2);
+          } catch {}
+        }
+      }
+
+      if (!parsedWorkflow || !Array.isArray(parsedWorkflow.nodes)) {
+        parsedWorkflow = {
+          name: flowTitle,
+          nodes: [
+            {
+              parameters: {
+                httpMethod: "POST",
+                path: "lead-intake",
+                responseMode: "responseNode",
+                options: {}
+              },
+              id: "node-1",
+              name: "Webhook Intake Trigger",
+              type: "n8n-nodes-base.webhook",
+              typeVersion: 2,
+              position: [240, 300]
+            },
+            {
+              parameters: {
+                promptType: "define",
+                text: "={{ $json.body.message || $json.body.lead_text }}",
+                options: {
+                  systemMessage: "You are an AI Lead Scoring agent. Score lead quality from 1-10 and extract contact details."
+                }
+              },
+              id: "node-2",
+              name: "AI Lead Scoring Agent",
+              type: "@n8n/n8n-nodes-langchain.agent",
+              typeVersion: 1.7,
+              position: [480, 300]
+            },
+            {
+              parameters: {
+                operation: "append",
+                schema: "public",
+                table: "leads",
+                columns: "name, phone, score, summary"
+              },
+              id: "node-3",
+              name: "Supabase Lead Storage",
+              type: "n8n-nodes-base.supabase",
+              typeVersion: 1,
+              position: [720, 300]
+            },
+            {
+              parameters: {
+                method: "POST",
+                url: "https://api.whatsapp.com/send",
+                sendHeaders: true,
+                headerParameters: {
+                  parameters: [{ name: "Content-Type", value: "application/json" }]
+                }
+              },
+              id: "node-4",
+              name: "Dispatch WhatsApp Alert",
+              type: "n8n-nodes-base.httpRequest",
+              typeVersion: 4.2,
+              position: [960, 300]
+            }
+          ],
+          connections: {
+            "Webhook Intake Trigger": {
+              main: [[{ node: "AI Lead Scoring Agent", type: "main", index: 0 }]]
+            },
+            "AI Lead Scoring Agent": {
+              main: [[{ node: "Supabase Lead Storage", type: "main", index: 0 }]]
+            },
+            "Supabase Lead Storage": {
+              main: [[{ node: "Dispatch WhatsApp Alert", type: "main", index: 0 }]]
+            }
+          },
+          active: false,
+          settings: { executionOrder: "v1" }
+        };
+        jsonText = JSON.stringify(parsedWorkflow, null, 2);
+      }
+
+      const formattedJson = JSON.stringify(parsedWorkflow, null, 2);
+      const safeTitle = flowTitle.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_") || "n8n_workflow";
+
+      // Save as artifact with type "n8n_workflow"
+      const saved = await saveArtifact({
+        title: flowTitle,
+        type: "n8n_workflow",
+        content: formattedJson,
+        description: flowDesc,
+        user_identifier: userIdentifier,
+      });
+
+      const artifactLink = `https://femiadelekeportfolio.vercel.app/artifact/${saved.id}`;
+
+      // Dispatch .json file directly to WhatsApp as a document attachment!
+      if (channel === "whatsapp") {
+        await sendWhatsAppDocument(
+          formattedJson,
+          `${safeTitle}.json`,
+          userIdentifier,
+          `⚡ *${flowTitle}* (Ready-to-Import n8n JSON)`,
+          "application/json"
+        );
+      }
+
+      const nodeCount = parsedWorkflow.nodes.length;
+      const nodeNames = parsedWorkflow.nodes.map((n: any) => `• *${n.name}* (${n.type.replace(/^.*[./]/, "")})`).join("\n");
+
+      return {
+        reply: cleanWhatsApp(
+          `🚀 *${flowTitle} is ready!*
+
+I've engineered a complete, production-ready n8n workflow JSON file with *${nodeCount} connected nodes* ready to import directly into your n8n canvas.
+
+📦 *Included Nodes & Architecture:*
+${nodeNames}
+
+🌐 *Interactive Flow & 1-Click Copy:*
+${artifactLink}
+
+📁 *Ready-to-Import JSON Attached:*
+I've attached the *${safeTitle}.json* file directly below.
+
+⚡ *How to import into n8n:*
+1. Download the *${safeTitle}.json* file attached above (or copy the raw JSON from the link).
+2. In your n8n workspace, click the three dots (⋮) in the top-right ➔ *Import from File* (or simply press *Ctrl + V* directly on an empty canvas).
+3. The nodes will appear fully wired! Insert your API keys in the marked credential slots and click *Active*!
+
+If you encounter any error or want to adjust or diagnose any node, send me a screenshot or description and I'll debug it with you immediately!`
+        ),
+        artifactId: saved.id,
+        artifactTitle: flowTitle,
+        artifactContent: formattedJson,
+      };
+    } catch (err) {
+      console.error("[Companion] n8n workflow generation error:", err);
+    }
+  }
+
   // Tool: Direct Voice Call WebRTC link
   if (decision.action === "direct_voice_call") {
     const cleanUserPhone = userIdentifier.replace(/\D/g, "");
@@ -1014,8 +1277,16 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - NEVER tell the user 'Initiating the call to your line right now', 'Ringing your line', 'Connecting you now', or claim you are calling them on WhatsApp.
    - Obey does NOT place unprompted outbound phone calls. When the user says casual greetings or words like 'Alright', 'Hello', 'Thanks', answer their chat directly like a normal human.
 
-10. RECENT ACTIVITY & ACTION STATUS:
-${latestExecutedAction ? `   - You recently dispatched an approved message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}. If the user asks if you delivered or sent it, confirm directly that you already did!` : "   - No actions recently dispatched."}
+10. RECENT ACTIVITY & ACTION DISPATCH LOG:
+${latestExecutedAction ? `   - You recently dispatched an approved message to +${latestExecutedAction.target_recipient} at ${latestExecutedAction.executed_at || latestExecutedAction.created_at}.
+   - Exact message text dispatched: "${latestExecutedAction.payload || ""}".
+   - If the user asks who you messaged, what you said, or why it was sent, refer directly to these exact details with honesty and warmth!` : "   - No actions recently dispatched."}
+
+11. LIVE PLATFORM PRICING & OBEY COMMERCIAL PACKAGES (ACTIVE FROM DATABASE):
+• Starter Plan: ₦${platformPricing.starter_price.toLocaleString()}/month (1 single workspace, 250 auto-saved customer leads, 10 auto-responders, 15h WebRTC voice).
+• Pro Business Plan (Most Popular): ₦${platformPricing.pro_price.toLocaleString()}/month (${platformPricing.trial_days}-day 100% free trial, UNLIMITED customer leads, 50 auto-responders, 50h WebRTC voice, audio recordings & transcripts on WhatsApp, custom catalog).
+• Enterprise / Founder Plan: ₦${platformPricing.enterprise_price.toLocaleString()}/month (multi-business up to 2 distinct workspaces, full multi-tenant WhatsApp bot, UNLIMITED voice hotline, autonomous n8n workflows & web apps, 24/7 dedicated priority support).
+When anyone asks about pricing, packages, trials, or platform features, quote these live database figures accurately!
 
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 

@@ -4,7 +4,7 @@ export interface Artifact {
   id: string;
   identifier?: string;
   title: string;
-  type: "html" | "react" | "svg" | "mermaid" | "markdown" | "code";
+  type: "html" | "react" | "svg" | "mermaid" | "markdown" | "code" | "document" | "n8n_workflow";
   content: string;
   description?: string;
   user_identifier?: string;

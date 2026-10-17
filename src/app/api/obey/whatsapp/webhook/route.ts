@@ -476,27 +476,27 @@ async function processMessage(params: ProcessMessageParams) {
     return;
   }
 
-  // Handle Multimodal Vision (Photos, Screenshots, Invoices, Receipts)
+  // Handle Multimodal Vision (Photos, Screenshots, n8n Canvas, UI Errors, Invoices)
   if (visionMedia?.base64) {
     try {
       const activeArtifact = await getLatestUserArtifact(replyTo);
       const artifactMemoryNote = activeArtifact
-        ? `\n\nACTIVE ARTIFACT IN MEMORY:\n• Title: "${activeArtifact.title}" (ID: ${activeArtifact.id})\n• Note: You (Obey) created this website artifact. If the user's screenshot shows this website, a modal, or browser console errors (such as localStorage, form submission, or sandbox issues), analyze the bug and explicitly tell the user that you already have the complete code saved in memory and can update and rebuild it for them right away. NEVER ask the user to paste or provide code snippets since you already have their artifact stored.`
+        ? `\n\nACTIVE ARTIFACT IN MEMORY:\n• Title: "${activeArtifact.title}" (ID: ${activeArtifact.id})\n• Note: You (Obey) created this artifact. If the user's screenshot shows this website, n8n workflow, or console errors, analyze the issue and tell them you already have the complete code/blueprint saved in memory and can update and rebuild it for them right away. NEVER ask them to paste code.`
         : "";
 
       const visionPrompt = `${historyText ? `PRIOR CONVERSATION CONTEXT:\n${historyText}\n\n` : ""}CURRENT ACTION: The user sent this image${userText && userText !== "[Image Received]" ? ` with note/question: "${userText}"` : ""}.${artifactMemoryNote}
 
-Analyze this image thoroughly in relation to our ongoing conversation, extract any key details or text, and assist them directly with clarity and warmth.`;
+Analyze this image thoroughly in relation to our ongoing conversation, extract any key details or text, diagnose any error or workflow stage shown, and assist them directly with clarity, engineering precision, and warmth.`;
 
       const aiRes = await executeAICompletionWithMedia({
-        systemPrompt: "You are Obey, an autonomous AI executive companion equipped with computer vision. Analyze user screenshots, photos, documents, receipts, code, and diagrams with high precision, human warmth, and actionable clarity, connecting them directly with your ongoing conversation context.",
+        systemPrompt: "You are Obey, an autonomous AI executive companion, senior engineer, and automation architect for Femi Adeleke. You are equipped with computer vision. Analyze user screenshots, photos, n8n workflow canvases, node errors, receipts, and diagrams with high precision, human warmth, and actionable clarity, connecting them directly with your ongoing conversation context. If you spot an n8n error, diagnose the exact node and provide the immediate fix. Speak naturally and directly as Obey without rigid headers.",
         userPrompt: visionPrompt,
         mediaBase64: visionMedia.base64,
         mimeType: visionMedia.mimetype || "image/jpeg",
-        temperature: 0.4,
+        temperature: 0.3,
       });
 
-      const visionReply = `👁️ *Image Analysis:*\n\n${aiRes.text}`;
+      const visionReply = aiRes.text.trim();
       await reply(visionReply);
 
       try {
