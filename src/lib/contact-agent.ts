@@ -196,15 +196,25 @@ export async function handleOwnerContactOrBucketTurn(params: {
   // -------------------------------------------------------------
   // 4. Contact Name Search & Messaging ("help me message Femi", "message Chioma and Tunde")
   // -------------------------------------------------------------
-  const messageContactTrigger = userText.match(
-    /(?:help\s+me\s+message|message|send\s+(?:a\s+)?message\s+to|text|deliver\s+(?:a\s+)?message\s+to)\s+([^:.]+)/i
-  );
+  // Strict guard: if the user is discussing creative assets, prompts, code, images, video, n8n, or asking for plain text, DO NOT treat as contact outreach!
+  const isCreativeOrTechnical =
+    /\b(prompt|image|video|clip|script|code|json|workflow|n8n|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
+    /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text)\b/i.test(userText);
+
+  const messageContactTrigger = !isCreativeOrTechnical
+    ? userText.match(
+        /(?:^|\b)(?:help\s+me\s+(?:message|text)|(?:send|deliver)\s+(?:a\s+)?(?:message|text)\s+to|\bmessage\s+|\btext\s+)\s*([^:.]+)/i
+      )
+    : null;
 
   if (messageContactTrigger) {
     const rawTargetsStr = messageContactTrigger[1].trim();
 
-    // Check if the user is asking about status or broadcast
-    if (/^(status|broadcast|everyone|all|bucket)/i.test(rawTargetsStr)) {
+    // Check if the user is asking about status or broadcast, or general pronouns
+    if (
+      /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|someone|person|number|now|later|first)/i.test(rawTargetsStr) ||
+      isCreativeOrTechnical
+    ) {
       return { handled: false, reply: "" };
     }
 

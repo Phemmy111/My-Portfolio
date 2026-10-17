@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { executeAICompletion } from "./ai-orchestrator";
 import { searchTavily } from "./tavily-search";
 import { runUpworkLiveScout } from "./upwork-scout";
@@ -347,11 +348,22 @@ REASONING GUIDELINES:
 - Understand natural human intent regardless of whether the user speaks in slang, colloquial phrasing, Pidgin, or formal English.
 - FORWARDING SUGGESTIONS & NOTES TO FEMI:
   If a guest or user says "Tell your boss", "Tell him to do this", "Suggest this to Femi", or "Let Femi know", select "notify_femi" so Obey dispatches a real WhatsApp alert directly to Femi Adeleke's personal phone (+2348120934828).
-- AUTONOMOUS N8N WORKFLOW CREATION:
-  When the user asks for an n8n workflow, a workflow JSON, an automation pipeline, or asks to automate a process in n8n (e.g. "can you create a ready made n8n workflow", "is that a ready made workflow I can import to n8n", "create any simple workflow", "generate n8n json for webhook to supabase"):
-  1. ALWAYS select "generate_n8n_workflow"!
-  2. NEVER refuse or say "give me the exact nodes" if the user tells you to be creative or create any workflow — autonomously architect an awesome, production-ready n8n workflow!
-  3. Set "workflow_title", "workflow_description", and "workflow_nodes_summary".
+- AUTONOMOUS N8N WORKFLOW CREATION (INTENT VS. EXECUTION):
+  When the user mentions an n8n workflow, automation pipeline, or asks about building one:
+  1. IF THE USER ONLY STATES A BROAD OR INITIAL INTENT (e.g. "I want to quickly generate AI Automation workflow first", "let's build an automation", "can you help me with an n8n workflow?"):
+     DO NOT immediately fabricate an arbitrary 4-node pipeline! Choose "none" and ask conversational clarifying questions to understand what they actually want to automate:
+     - What triggers the workflow? (e.g. Webhook, Schedule, Google Sheet, Form, WhatsApp)
+     - What AI or business logic is needed?
+     - Where should the final data/notification go? (e.g. Supabase, CRM, Email, WhatsApp)
+  2. IF THE USER SPECIFIES THE WORKFLOW DETAILS, PROCESS, OR SAYS "surprise me" / "create any workflow you like" / "build a lead qualification workflow with webhook and supabase":
+     Select "generate_n8n_workflow"!
+     Set "workflow_title", "workflow_description", and "workflow_nodes_summary".
+- STRICT NEGATIVE RULE (NO ARTIFACTS FOR CREATIVE PROMPTS, SCRIPTS, OR SCENE PROMPTS):
+  NEVER select "create_website_artifact" or "modify_website_artifact" when the user is asking for:
+  - Image generation prompts, video generation prompts, clip prompts, or camera angle directions (e.g. "give me prompt that fit in clip one visual reference", "prompt for clip 1", "image prompt for officer suberu")
+  - Movie scripts, skit scripts, dialogue, scene breakdowns, story concepts
+  - Plain text prompts or guidelines
+  These are conversational text outputs! Deliver them directly in "conversational_response" with action: "none". Web artifacts are EXCLUSIVELY for interactive web apps, dashboards, calculators, and HTML/CSS/JS frontend tools.
 - CRITICAL DOCUMENT & FILE CONTINUITY:
   When the user says "Can you turn it to docs?", "turn into doc", "make it a doc", "put it in google doc", "turn it to PDF", "export as document", "the pitch nau", "this":
   1. DO NOT ask "What is this?" or "Which idea are we revisiting?" if a pitch, concept, business idea, outline, story, or project was discussed anywhere in recent turns!
@@ -1009,15 +1021,32 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
    - "nodes": array of node objects
    - "connections": connections mapping object
    - "active": false
+   - "pinData": {}
    - "settings": { "executionOrder": "v1" }
+   - "versionId": string UUID
+   - "meta": { "templateCredsSetupCompleted": true }
 3. Each node MUST have:
-   - "parameters": object with realistic parameters, expressions like "={{ $json.body.email }}", or prompts
-   - "id": unique string UUID (e.g. "uuid-1", "uuid-2")
-   - "name": human-readable unique string (e.g. "Webhook Trigger", "AI Qualifier", "Save to Supabase", "Send WhatsApp Notification")
-   - "type": valid standard n8n node type (e.g. "n8n-nodes-base.webhook", "@n8n/n8n-nodes-langchain.agent", "@n8n/n8n-nodes-langchain.openAi", "n8n-nodes-base.supabase", "n8n-nodes-base.httpRequest", "n8n-nodes-base.googleSheets", "n8n-nodes-base.gmail", "n8n-nodes-base.if", "n8n-nodes-base.set")
-   - "typeVersion": number (e.g. 2 or 1)
+   - "id": a valid RFC4122 UUID v4 string (e.g. "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
+   - "name": human-readable unique string (e.g. "Webhook Intake", "AI Lead Scoring", "Save to Supabase", "Dispatch WhatsApp Alert")
+   - "type": valid standard n8n node type from "n8n-nodes-base.*" (e.g. "n8n-nodes-base.webhook", "n8n-nodes-base.openAi", "n8n-nodes-base.httpRequest", "n8n-nodes-base.supabase", "n8n-nodes-base.googleSheets", "n8n-nodes-base.gmail", "n8n-nodes-base.if", "n8n-nodes-base.set", "n8n-nodes-base.code", "n8n-nodes-base.scheduleTrigger")
+   - CRITICAL: DO NOT use "@n8n/n8n-nodes-langchain.*" sub-nodes in linear workflows because LangChain nodes require secondary subgraph connections and will cause canvas validation/import errors. Use "n8n-nodes-base.openAi" or "n8n-nodes-base.httpRequest" instead!
+   - "typeVersion": number (e.g. 1 or 2)
    - "position": [x, y] coordinates spaced 240px apart horizontally (e.g. [240, 300], [480, 300], [720, 300], [960, 300])
-4. The "connections" object MUST properly link the outputs of earlier nodes to the inputs of subsequent nodes.
+   - "parameters": object with realistic parameters, expressions like "={{ $json.body.email }}", or prompts
+4. The "connections" object:
+   - Keys MUST match the exact "name" of source nodes.
+   - Values link output ports to target nodes:
+     "Source Node Name": {
+       "main": [
+         [
+           {
+             "node": "Target Node Name",
+             "type": "main",
+             "index": 0
+           }
+         ]
+       ]
+     }
 5. Provide clear, helpful parameter values so the user only needs to paste their API key/credentials to run it.
 6. NO markdown backticks, NO explanations, NO surrounding text. Output ONLY the raw JSON object.`;
 
@@ -1045,7 +1074,12 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
         }
       }
 
-      if (!parsedWorkflow || !Array.isArray(parsedWorkflow.nodes)) {
+      if (!parsedWorkflow || !Array.isArray(parsedWorkflow.nodes) || parsedWorkflow.nodes.length === 0) {
+        const id1 = randomUUID();
+        const id2 = randomUUID();
+        const id3 = randomUUID();
+        const id4 = randomUUID();
+
         parsedWorkflow = {
           name: flowTitle,
           nodes: [
@@ -1056,7 +1090,7 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
                 responseMode: "responseNode",
                 options: {}
               },
-              id: "node-1",
+              id: id1,
               name: "Webhook Intake Trigger",
               type: "n8n-nodes-base.webhook",
               typeVersion: 2,
@@ -1064,16 +1098,26 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
             },
             {
               parameters: {
-                promptType: "define",
-                text: "={{ $json.body.message || $json.body.lead_text }}",
-                options: {
-                  systemMessage: "You are an AI Lead Scoring agent. Score lead quality from 1-10 and extract contact details."
+                resource: "chat",
+                operation: "complete",
+                model: "gpt-4o-mini",
+                prompt: {
+                  messages: [
+                    {
+                      role: "system",
+                      content: "You are an AI Lead Scoring agent. Score lead quality from 1-10 and extract contact details."
+                    },
+                    {
+                      role: "user",
+                      content: "={{ $json.body.message || $json.body.lead_text }}"
+                    }
+                  ]
                 }
               },
-              id: "node-2",
+              id: id2,
               name: "AI Lead Scoring Agent",
-              type: "@n8n/n8n-nodes-langchain.agent",
-              typeVersion: 1.7,
+              type: "n8n-nodes-base.openAi",
+              typeVersion: 1,
               position: [480, 300]
             },
             {
@@ -1083,7 +1127,7 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
                 table: "leads",
                 columns: "name, phone, score, summary"
               },
-              id: "node-3",
+              id: id3,
               name: "Supabase Lead Storage",
               type: "n8n-nodes-base.supabase",
               typeVersion: 1,
@@ -1098,7 +1142,7 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
                   parameters: [{ name: "Content-Type", value: "application/json" }]
                 }
               },
-              id: "node-4",
+              id: id4,
               name: "Dispatch WhatsApp Alert",
               type: "n8n-nodes-base.httpRequest",
               typeVersion: 4.2,
@@ -1116,10 +1160,72 @@ CRITICAL N8N SCHEMA RULES (MUST FOLLOW STRICTLY):
               main: [[{ node: "Dispatch WhatsApp Alert", type: "main", index: 0 }]]
             }
           },
-          active: false,
-          settings: { executionOrder: "v1" }
+          pinData: {},
+          settings: { executionOrder: "v1" },
+          versionId: randomUUID(),
+          meta: { templateCredsSetupCompleted: true },
+          tags: [],
+          active: false
         };
-        jsonText = JSON.stringify(parsedWorkflow, null, 2);
+      }
+
+      // Ensure standard n8n v1+ root properties
+      parsedWorkflow.name = flowTitle;
+      parsedWorkflow.active = false;
+      parsedWorkflow.pinData = parsedWorkflow.pinData || {};
+      parsedWorkflow.settings = { executionOrder: "v1", ...(parsedWorkflow.settings || {}) };
+      parsedWorkflow.versionId = parsedWorkflow.versionId || randomUUID();
+      parsedWorkflow.meta = { templateCredsSetupCompleted: true, ...(parsedWorkflow.meta || {}) };
+      parsedWorkflow.tags = parsedWorkflow.tags || [];
+
+      // Validate & sanitize nodes to ensure valid RFC4122 UUIDs and standard node types
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validNodeNames = new Set<string>();
+
+      parsedWorkflow.nodes = parsedWorkflow.nodes.map((node: any, idx: number) => {
+        const nodeId = (node.id && uuidRegex.test(node.id)) ? node.id : randomUUID();
+        const nodeName = typeof node.name === "string" && node.name.trim() ? node.name.trim() : `Node ${idx + 1}`;
+        validNodeNames.add(nodeName);
+
+        let nodeType = node.type || "n8n-nodes-base.httpRequest";
+        // Convert incompatible langchain nodes to standard n8n-nodes-base.openAi
+        if (nodeType.includes("langchain")) {
+          nodeType = "n8n-nodes-base.openAi";
+        }
+
+        const position = Array.isArray(node.position) && node.position.length === 2 && typeof node.position[0] === "number" && typeof node.position[1] === "number"
+          ? node.position
+          : [240 + idx * 240, 300];
+
+        return {
+          parameters: node.parameters || {},
+          id: nodeId,
+          name: nodeName,
+          type: nodeType,
+          typeVersion: typeof node.typeVersion === "number" ? node.typeVersion : 1,
+          position,
+        };
+      });
+
+      // Validate connections: ensure source and target exist in validNodeNames
+      if (parsedWorkflow.connections && typeof parsedWorkflow.connections === "object") {
+        const sanitizedConnections: Record<string, any> = {};
+        for (const [sourceName, conn] of Object.entries(parsedWorkflow.connections)) {
+          if (!validNodeNames.has(sourceName)) continue;
+          if (conn && typeof conn === "object" && Array.isArray((conn as any).main)) {
+            const cleanMain = (conn as any).main.map((group: any) => {
+              if (!Array.isArray(group)) return [];
+              return group.filter((target: any) => target && typeof target.node === "string" && validNodeNames.has(target.node));
+            }).filter((group: any[]) => group.length > 0);
+
+            if (cleanMain.length > 0) {
+              sanitizedConnections[sourceName] = { main: cleanMain };
+            }
+          }
+        }
+        parsedWorkflow.connections = sanitizedConnections;
+      } else {
+        parsedWorkflow.connections = {};
       }
 
       const formattedJson = JSON.stringify(parsedWorkflow, null, 2);
