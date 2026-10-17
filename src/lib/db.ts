@@ -88,6 +88,16 @@ export async function dbGetLeads() {
   return await sql`SELECT * FROM leads ORDER BY created_at DESC`;
 }
 
+export async function dbGetLeadById(id: string) {
+  try {
+    const [row] = await sql`SELECT * FROM leads WHERE id = ${id} LIMIT 1`;
+    return row || null;
+  } catch (err) {
+    console.warn("dbGetLeadById error:", err);
+    return null;
+  }
+}
+
 export async function dbAddLead(lead: {
   id: string;
   name: string;

@@ -143,53 +143,74 @@ html:not(.dark) .admin-root code {
   border-color: #cbd5e1 !important;
 }
 
-/* Status Badges & Pills in Light Mode matching Admin */
-html:not(.dark) [class*="bg-emerald-500/10"],
-html:not(.dark) [class*="bg-emerald-600/10"],
-html:not(.dark) [class*="bg-emerald-500/20"],
-html:not(.dark) [class*="bg-emerald-600/20"],
-html:not(.dark) [class*="bg-emerald-950"] {
+/* Status Badges & Pills in Light Mode matching Admin & Control Room */
+html:not(.dark) .control-room-root [class*="bg-emerald-500/10"],
+html:not(.dark) .control-room-root [class*="bg-emerald-600/10"],
+html:not(.dark) .control-room-root [class*="bg-emerald-500/20"],
+html:not(.dark) .control-room-root [class*="bg-emerald-600/20"],
+html:not(.dark) .control-room-root [class*="bg-emerald-950"],
+html:not(.dark) .admin-root [class*="bg-emerald-500/10"],
+html:not(.dark) .admin-root [class*="bg-emerald-600/10"],
+html:not(.dark) .admin-root [class*="bg-emerald-500/20"],
+html:not(.dark) .admin-root [class*="bg-emerald-600/20"],
+html:not(.dark) .admin-root [class*="bg-emerald-950"] {
   background-color: #ecfdf5 !important;
   color: #047857 !important;
   border-color: #a7f3d0 !important;
 }
 
-html:not(.dark) [class*="bg-amber-500/10"],
-html:not(.dark) [class*="bg-amber-500/20"],
-html:not(.dark) [class*="bg-amber-950"] {
+html:not(.dark) .control-room-root [class*="bg-amber-500/10"],
+html:not(.dark) .control-room-root [class*="bg-amber-500/20"],
+html:not(.dark) .control-room-root [class*="bg-amber-950"],
+html:not(.dark) .admin-root [class*="bg-amber-500/10"],
+html:not(.dark) .admin-root [class*="bg-amber-500/20"],
+html:not(.dark) .admin-root [class*="bg-amber-950"] {
   background-color: #fffbeb !important;
   color: #b45309 !important;
   border-color: #fde68a !important;
 }
 
-html:not(.dark) [class*="bg-purple-500/10"],
-html:not(.dark) [class*="bg-purple-500/20"],
-html:not(.dark) [class*="bg-purple-950"] {
+html:not(.dark) .control-room-root [class*="bg-purple-500/10"],
+html:not(.dark) .control-room-root [class*="bg-purple-500/20"],
+html:not(.dark) .control-room-root [class*="bg-purple-950"],
+html:not(.dark) .admin-root [class*="bg-purple-500/10"],
+html:not(.dark) .admin-root [class*="bg-purple-500/20"],
+html:not(.dark) .admin-root [class*="bg-purple-950"] {
   background-color: #faf5ff !important;
   color: #7e22ce !important;
   border-color: #e9d5ff !important;
 }
 
-html:not(.dark) [class*="bg-rose-500/10"],
-html:not(.dark) [class*="bg-rose-500/20"],
-html:not(.dark) [class*="bg-rose-950"],
-html:not(.dark) [class*="bg-red-950"] {
+html:not(.dark) .control-room-root [class*="bg-rose-500/10"],
+html:not(.dark) .control-room-root [class*="bg-rose-500/20"],
+html:not(.dark) .control-room-root [class*="bg-rose-950"],
+html:not(.dark) .control-room-root [class*="bg-red-950"],
+html:not(.dark) .admin-root [class*="bg-rose-500/10"],
+html:not(.dark) .admin-root [class*="bg-rose-500/20"],
+html:not(.dark) .admin-root [class*="bg-rose-950"],
+html:not(.dark) .admin-root [class*="bg-red-950"] {
   background-color: #fff1f2 !important;
   color: #be123c !important;
   border-color: #fecdd3 !important;
 }
 
-html:not(.dark) [class*="bg-teal-500/10"],
-html:not(.dark) [class*="bg-teal-600/20"],
-html:not(.dark) [class*="bg-teal-950"] {
+html:not(.dark) .control-room-root [class*="bg-teal-500/10"],
+html:not(.dark) .control-room-root [class*="bg-teal-600/20"],
+html:not(.dark) .control-room-root [class*="bg-teal-950"],
+html:not(.dark) .admin-root [class*="bg-teal-500/10"],
+html:not(.dark) .admin-root [class*="bg-teal-600/20"],
+html:not(.dark) .admin-root [class*="bg-teal-950"] {
   background-color: #f0fdfa !important;
   color: #0f766e !important;
   border-color: #99f6e4 !important;
 }
 
-html:not(.dark) [class*="bg-blue-500/10"],
-html:not(.dark) [class*="bg-blue-500/20"],
-html:not(.dark) [class*="bg-blue-950"] {
+html:not(.dark) .control-room-root [class*="bg-blue-500/10"],
+html:not(.dark) .control-room-root [class*="bg-blue-500/20"],
+html:not(.dark) .control-room-root [class*="bg-blue-950"],
+html:not(.dark) .admin-root [class*="bg-blue-500/10"],
+html:not(.dark) .admin-root [class*="bg-blue-500/20"],
+html:not(.dark) .admin-root [class*="bg-blue-950"] {
   background-color: #eff6ff !important;
   color: #1d4ed8 !important;
   border-color: #bfdbfe !important;
@@ -308,31 +329,55 @@ html:not(.dark) button[class*="bg-purple-600"]:not([class*="bg-purple-600/"]),
 html:not(.dark) button[class*="bg-purple-500"]:not([class*="bg-purple-500/"]),
 html:not(.dark) a[class*="bg-purple-600"]:not([class*="bg-purple-600/"]),
 html:not(.dark) button[class*="bg-purple-600"]:not([class*="bg-purple-600/"]) *,
-html:not(.dark) button.bg-black,
-html:not(.dark) button.bg-zinc-950,
-html:not(.dark) button.bg-black *,
-html:not(.dark) button.bg-zinc-950 * {
+html:not(.dark) .control-room-root button.bg-black,
+html:not(.dark) .control-room-root button.bg-zinc-950,
+html:not(.dark) .control-room-root button.bg-black *,
+html:not(.dark) .control-room-root button.bg-zinc-950 *,
+html:not(.dark) .admin-root button.bg-black,
+html:not(.dark) .admin-root button.bg-zinc-950,
+html:not(.dark) .admin-root button.bg-black *,
+html:not(.dark) .admin-root button.bg-zinc-950 * {
   color: #ffffff !important;
 }
 
 /* Tinted / outlined pill buttons MUST keep their high-contrast accent text */
-html:not(.dark) [class*="bg-rose-500/"],
-html:not(.dark) [class*="bg-rose-500/"] *,
-html:not(.dark) [class*="bg-rose-100"] *,
-html:not(.dark) [class*="bg-rose-50"] * {
+html:not(.dark) .control-room-root [class*="bg-rose-500/"],
+html:not(.dark) .control-room-root [class*="bg-rose-500/"] *,
+html:not(.dark) .control-room-root [class*="bg-rose-100"] *,
+html:not(.dark) .control-room-root [class*="bg-rose-50"] *,
+html:not(.dark) .admin-root [class*="bg-rose-500/"],
+html:not(.dark) .admin-root [class*="bg-rose-500/"] *,
+html:not(.dark) .admin-root [class*="bg-rose-100"] *,
+html:not(.dark) .admin-root [class*="bg-rose-50"] * {
   color: #be123c !important;
 }
 
-html:not(.dark) [class*="bg-emerald-500/"],
-html:not(.dark) [class*="bg-emerald-500/"] *,
-html:not(.dark) [class*="bg-emerald-50"] * {
+html:not(.dark) .control-room-root [class*="bg-emerald-500/"],
+html:not(.dark) .control-room-root [class*="bg-emerald-500/"] *,
+html:not(.dark) .control-room-root [class*="bg-emerald-50"] *,
+html:not(.dark) .admin-root [class*="bg-emerald-500/"],
+html:not(.dark) .admin-root [class*="bg-emerald-500/"] *,
+html:not(.dark) .admin-root [class*="bg-emerald-50"] * {
   color: #047857 !important;
 }
 
-html:not(.dark) [class*="bg-amber-500/"],
-html:not(.dark) [class*="bg-amber-500/"] *,
-html:not(.dark) [class*="bg-amber-50"] * {
+html:not(.dark) .control-room-root [class*="bg-amber-500/"],
+html:not(.dark) .control-room-root [class*="bg-amber-500/"] *,
+html:not(.dark) .control-room-root [class*="bg-amber-50"] *,
+html:not(.dark) .admin-root [class*="bg-amber-500/"],
+html:not(.dark) .admin-root [class*="bg-amber-500/"] *,
+html:not(.dark) .admin-root [class*="bg-amber-50"] * {
   color: #b45309 !important;
+}
+
+/* Obey Customer Care Live Widget Pill Badge — Ultra Crisp & Visible in Light & Dark Mode */
+.obey-care-badge {
+  background-color: #10b981 !important;
+  color: #022c22 !important;
+  border: 1px solid #34d399 !important;
+  font-weight: 800 !important;
+  display: inline-flex !important;
+  align-items: center !important;
 }
 
 /* Control Room Active Nav Button in Light Mode matching Admin */

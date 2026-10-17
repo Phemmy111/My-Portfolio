@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
-import { dbAddGuestMessage, dbGetGuestMessages, dbAddLead, dbGetPlatformPricing } from "@/lib/db";
+import {
+  dbAddGuestMessage,
+  dbGetGuestMessages,
+  dbAddLead,
+  dbGetLeadById,
+  dbUpdateLead,
+  dbGetPlatformPricing,
+} from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { formatToWAT } from "@/lib/utils";
@@ -23,6 +30,10 @@ import {
 import { getObeyBusinessManualKnowledge } from "@/lib/obey-manual-knowledge";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
+
+// Throttling: remember alerted sessions for 12 hours so the same visitor never triggers duplicate WhatsApp alerts
+const webSessionAlertCooldown = new Map<string, number>();
+const SESSION_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -257,17 +268,27 @@ Brief confirmation message:`
       intent: "Website Live Chat",
     });
 
-    // 6. Proactive Executive Alert to Femi's WhatsApp (Triggers as soon as visitor engages or asks to connect)
-    const isLeadInquiry =
-      /\b(connect|femi|speak|talk|reach|call|meet|zoom|schedule|appointment|book|hire|work with|collaborate)\b/i.test(userText) ||
-      /\b(build|develop|app|website|ecommerce|platform|system|bot|agent|software|price|pricing|cost|charge|how much|budget|quote|\$|₦|naira|dollars)\b/i.test(userText) ||
-      /@|(\+?\d{10,14})/i.test(userText) ||
-      pastMessages.length >= 2;
+    // 6. Proactive Executive Alert to Boss's WhatsApp (STRICT DEDUPLICATION: Alert ONCE per visitor session)
+    const leadId = `lead-web-${sessionId.slice(0, 16)}`;
+    const hasContactInfo = /@|(\+?\d{10,14})/.test(userText) || Boolean(visitorEmail);
+    const lastAlertedAt = webSessionAlertCooldown.get(sessionId) || 0;
+    const isMemoryAlerted = Date.now() - lastAlertedAt < SESSION_ALERT_COOLDOWN_MS;
 
-    if (isLeadInquiry) {
+    // Check if lead already exists in DB
+    const existingLead = await dbGetLeadById(leadId);
+    const alreadyAlerted = isMemoryAlerted || Boolean(existingLead);
+
+    // Initial alert criteria: only genuine contact requests or explicit business inquiries
+    const isExplicitInquiry =
+      hasContactInfo ||
+      /\b(connect|femi|speak|talk|reach|call|meet|zoom|schedule|appointment|book|hire|work with|collaborate)\b/i.test(userText) ||
+      /\b(custom|enterprise|partnership|contract)\b/i.test(userText);
+
+    if (!alreadyAlerted && isExplicitInquiry) {
       try {
         const summaryRes = await executeAICompletion({
-          systemPrompt: "You are Obey. Synthesize a 2-line executive briefing for Femi about this website visitor inquiry: what they want to build, their goal or question, and contact details if provided.",
+          systemPrompt:
+            "You are Obey. Synthesize a 2-line executive briefing for Femi about this website visitor inquiry: what they want to achieve, their goal, and contact details if provided.",
           userPrompt: `Web Chat with ${displayName} (Email: ${visitorEmail || "Not provided yet"}):\n${historyText}\nLatest: "${userText}"`,
           temperature: 0.4,
         });
@@ -279,17 +300,18 @@ Brief confirmation message:`
           `• *Visitor:* ${displayName} ${visitorEmail ? `(${visitorEmail})` : ""}\n` +
           `• *Time:* ${timeWAT} (WAT)\n` +
           `• *Executive Briefing:*\n${summaryRes.text}\n\n` +
-          `_View full live dialogue & reply in your Admin Omnichannel Inbox!_`;
+          `_View live dialogue & manage in your Admin Omnichannel Inbox!_`;
 
         await sendWhatsAppMessage(alertMsg, FEMI_PERSONAL_NUMBER);
+        webSessionAlertCooldown.set(sessionId, Date.now());
       } catch (err) {
         console.error("[Web Chat Alert Error]:", err);
       }
 
-      // Log/Update Lead in Neon DB
+      // Record lead in Neon DB (Only once)
       try {
         await dbAddLead({
-          id: `lead-web-${sessionId.slice(0, 12)}`,
+          id: leadId,
           name: displayName,
           email: visitorEmail || `web-visitor-${sessionId.slice(0, 8)}@femiadeleke.site`,
           notes: `Web Chat Inquiry: "${userText.slice(0, 200)}"`,
@@ -297,6 +319,35 @@ Brief confirmation message:`
           service_needed: "Web / AI Consultation",
         });
       } catch {}
+    } else if (alreadyAlerted && hasContactInfo) {
+      // If already alerted, but the visitor just provided their real email or phone number for the first time:
+      const hadRealContact = existingLead?.email && !existingLead.email.includes("@femiadeleke.site");
+      if (!hadRealContact) {
+        try {
+          const emailMatch = userText.match(/[\w.-]+@[\w.-]+\.\w+/)?.[0];
+          const phoneMatch = userText.match(/\+?\d{10,14}/)?.[0];
+          const contactDetails = visitorEmail || emailMatch || phoneMatch || userText;
+
+          const updateAlertMsg =
+            `📞 *Visitor Contact Info Captured, Boss!*\n\n` +
+            `• *Visitor:* ${displayName}\n` +
+            `• *Contact:* ${contactDetails}\n` +
+            `• *Time:* ${formatToWAT(new Date())} (WAT)\n\n` +
+            `_Updated in your Admin Omnichannel Inbox!_`;
+
+          await sendWhatsAppMessage(updateAlertMsg, FEMI_PERSONAL_NUMBER);
+          webSessionAlertCooldown.set(sessionId, Date.now());
+
+          if (existingLead) {
+            await dbUpdateLead(leadId, {
+              email: visitorEmail || emailMatch || existingLead.email,
+              notes: `Captured contact: "${contactDetails}". Message: "${userText.slice(0, 150)}"`,
+            });
+          }
+        } catch (err) {
+          console.error("[Web Chat Contact Update Error]:", err);
+        }
+      }
     }
 
     return NextResponse.json({ ok: true, reply: replyText });
