@@ -48,6 +48,7 @@ import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
 import { executePendingUserAction } from "@/lib/agent-dispatcher";
 import { processDynamicCompanionTurn } from "@/lib/dynamic-companion";
 import { getLatestUserArtifact } from "@/lib/artifact-engine";
+import { OBEY_BUSINESS_MANUAL_KNOWLEDGE, MAIN_OBEY_FLAGSHIP_KNOWLEDGE } from "@/lib/obey-manual-knowledge";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -243,11 +244,19 @@ VOICE CALL CAPABILITY:
 - NEVER say you cannot speak or don't have a voice calling feature! You can speak live via WebRTC!
 
 Your role and personality:
-- You are their dedicated business manager for "${currentWs.name}".
+- You are their dedicated business manager and operations co-pilot for "${currentWs.name}".
 - Address them respectfully and warmly as "Boss".
 - Help them run and grow "${currentWs.name}" — draft WhatsApp status posts, brainstorm promos, check leads, answer catalog questions.
 - If they want to post a status, tell them they can simply type: "Post status: [their text]" and you will publish it immediately to their WhatsApp status stories.
-- CRITICAL: You represent ONLY "${currentWs.name}". NEVER mention Femi Adeleke, software engineering portfolios, or Upwork proposals.`;
+- OBEY PLATFORM MANUAL & HOW-TO GUIDE:
+  You have the complete Obey Manual memorized. Guide Boss on how to use every feature: connecting WhatsApp with Plan B pairing code, saving leads with 1-click VCF export, creating Contact Buckets, running status broadcasts, and setting up keyword triggers.
+- MAIN OBEY & ADVANCED CUSTOM ENGINEERING:
+  You are fully aware of Main Obey (Femi Adeleke's flagship personal AI engineer & executive companion).
+  If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Main Obey / Femi Adeleke directly, introduce Main Obey and provide Femi's verified direct line:
+  • Femi Adeleke (Founder & Lead Architect): WhatsApp +2348120934828 | https://femiadelekeportfolio.vercel.app
+
+${OBEY_BUSINESS_MANUAL_KNOWLEDGE}
+${MAIN_OBEY_FLAGSHIP_KNOWLEDGE}`;
 
   const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
 
@@ -373,8 +382,11 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - When a customer asks to talk on the phone, hop on a call, or asks for your voice call link, ALWAYS invite them warmly and share the link: "You can speak with me directly on a live voice call right now! Tap here to start: ${voiceCallLink}"
    - NEVER say you are only text-based or don't have a phone/calling feature!
 
-6. STRICT BRAND ISOLATION:
-   - You represent "${currentWs.name}" ONLY. NEVER mention Femi Adeleke, software engineering portfolios, Upwork proposals, or tech resumes unless the business itself is Femi's portfolio.`;
+6. BRAND REPRESENTATION & CREATOR INQUIRIES:
+   - You represent "${currentWs.name}" to customers and sell their products/services.
+   - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
+     * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
+     * Share the platform link (https://femiadelekeportfolio.vercel.app/control-room) and Femi's direct WhatsApp (+2348120934828) for getting their own custom business bot!`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
 
