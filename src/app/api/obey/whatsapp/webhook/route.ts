@@ -27,6 +27,8 @@ import {
   dbRemoveStatusExclusion,
   dbGetStatusExclusions,
   dbGetPlatformPricing,
+  dbSetWorkspaceBotBypass,
+  dbGetWorkspaceBotBypass,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -397,7 +399,7 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - You represent "${currentWs.name}" to customers and sell their products/services.
    - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
      * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
-     * Share the platform link (https://obeyai.vercel.app/control-room) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
+     * Share the official website homepage link (https://obeyai.vercel.app) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
      * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!`;
 
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
@@ -477,7 +479,7 @@ async function processMessage(params: ProcessMessageParams) {
   const ownerClean = (currentWs?.owner_phone || FEMI_PERSONAL_NUMBER).replace(/\D/g, "");
   const isOwner = isDefaultFemi
     ? replyTo === FEMI_PERSONAL_NUMBER
-    : replyTo.endsWith(ownerClean.slice(-10));
+    : (replyTo.endsWith(ownerClean.slice(-10)) || replyTo === FEMI_PERSONAL_NUMBER);
 
   const isFemi = isDefaultFemi && (replyTo === FEMI_PERSONAL_NUMBER);
 
@@ -494,6 +496,63 @@ async function processMessage(params: ProcessMessageParams) {
           content: formatted,
         });
       } catch {}
+    }
+  }
+
+  // 0. OWNER COMMANDS: BOT BYPASS TOGGLE (/stop, /start, /status)
+  if (isOwner && userText) {
+    const trimmedCommand = userText.trim();
+    const isStopCommand = /^\s*(?:\/stop|stop\s+bot|pause\s+bot|\/pause|\/bypass\s+on)\s*$/i.test(trimmedCommand);
+    const isStartCommand = /^\s*(?:\/start|start\s+bot|resume\s+bot|\/resume|\/bypass\s+off)\s*$/i.test(trimmedCommand);
+    const isStatusQueryCommand = /^\s*(?:\/status|bot\s+status|bypass\s+status)\s*$/i.test(trimmedCommand);
+
+    if (isStopCommand) {
+      const targetId = currentWs?.id || (isDefaultFemi ? "ws_femi_default" : "default");
+      await dbSetWorkspaceBotBypass(targetId, true);
+      if (currentWs?.slug) {
+        await dbSetWorkspaceBotBypass(currentWs.slug, true);
+      }
+      if (currentWs) currentWs.bot_bypass = true;
+
+      const wsName = currentWs?.name || "your workspace";
+      const stopReply =
+        `🛑 *Bot Bypass Activated! (Bot Paused)*\n\n` +
+        `Obey has stopped auto-replying to incoming customer messages for *${wsName}*.\n\n` +
+        `• *Control Room Status:* Paused (Real-time synced)\n` +
+        `• You can now chat manually with your customers on WhatsApp without any AI replies.\n\n` +
+        `💡 *To resume autonomous AI replies:* Send */start* here or toggle Bot Bypass OFF in your Control Room.`;
+      await reply(stopReply);
+      return;
+    }
+
+    if (isStartCommand) {
+      const targetId = currentWs?.id || (isDefaultFemi ? "ws_femi_default" : "default");
+      await dbSetWorkspaceBotBypass(targetId, false);
+      if (currentWs?.slug) {
+        await dbSetWorkspaceBotBypass(currentWs.slug, false);
+      }
+      if (currentWs) currentWs.bot_bypass = false;
+
+      const wsName = currentWs?.name || "your workspace";
+      const startReply =
+        `⚡ *Bot Bypass Deactivated! (Bot Active)*\n\n` +
+        `Obey is back online and actively handling customer conversations and inquiries for *${wsName}* 24/7!\n\n` +
+        `• *Control Room Status:* Active (Real-time synced)\n` +
+        `• AI auto-replies, keyword triggers, and lead capture are operational.\n\n` +
+        `💡 *To pause auto-replies anytime:* Send */stop* here or toggle Bot Bypass ON in your Control Room.`;
+      await reply(startReply);
+      return;
+    }
+
+    if (isStatusQueryCommand) {
+      const isBypassed = Boolean(currentWs?.bot_bypass);
+      const wsName = currentWs?.name || "Obey";
+      const statusReply =
+        `ℹ️ *Bot Operational Status for ${wsName}:*\n\n` +
+        `• *Bot Bypass:* ${isBypassed ? "🛑 ON (Bot is Paused / Silent)" : "⚡ OFF (Bot is Active 24/7)"}\n` +
+        `• *Controls:* Send */stop* to pause auto-replies, or */start* to resume.`;
+      await reply(statusReply);
+      return;
     }
   }
 
@@ -575,6 +634,12 @@ async function processMessage(params: ProcessMessageParams) {
     } catch (leadErr) {
       console.warn("[WA] Auto-save contact lead capture error:", leadErr);
     }
+  }
+
+  // 1a. If Bot Bypass is ON, suppress autonomous AI replies for non-owners (customer chats)
+  if (!isOwner && currentWs?.bot_bypass) {
+    console.log(`[WA Bot Bypass] Auto-reply suppressed for ${replyTo} because Bot Bypass is ON for ${currentWs?.name}`);
+    return;
   }
 
   // 1b. Check if contact is complaining or requesting to stop status comments
@@ -1360,6 +1425,12 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
             } else if (mainRateSetting === "24h") {
               rateLimitHours = 24;
             }
+          }
+
+          // Check if Bot Bypass is ON for this workspace
+          if (currentWs?.bot_bypass) {
+            console.log(`[WA Status] Skipping status comment because Bot Bypass is ON for ${currentWs.name}`);
+            return;
           }
 
           // Check daily quota for workspaces

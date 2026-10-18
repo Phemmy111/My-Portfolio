@@ -63,6 +63,8 @@ import {
   Folder,
   FolderCheck,
   Target,
+  ShieldAlert,
+  Power,
 } from "lucide-react";
 
 const WHATSAPP_STATUS_COLORS = [
@@ -118,6 +120,7 @@ interface Workspace {
   trial_ends_at?: string | null;
   whatsapp_instance_name?: string | null;
   whatsapp_status?: string | null;
+  bot_bypass?: boolean;
 }
 
 interface WorkspaceSettings {
@@ -220,6 +223,10 @@ function ControlRoomContent() {
   const [savingOwnerProfile, setSavingOwnerProfile] = useState<boolean>(false);
   const [ownerProfileSuccess, setOwnerProfileSuccess] = useState<boolean>(false);
   const [ownerProfileError, setOwnerProfileError] = useState<string>("");
+
+  // Bot Bypass states (Controls autonomous WhatsApp replies)
+  const [botBypass, setBotBypass] = useState<boolean>(false);
+  const [togglingBypass, setTogglingBypass] = useState<boolean>(false);
 
   // UI states
   const [loading, setLoading] = useState(true);
@@ -546,6 +553,7 @@ function ControlRoomContent() {
         setCurrentWs(data.workspace);
         setOwnerEditName(data.workspace.owner_name || "");
         setOwnerEditPhone(data.workspace.owner_phone || "");
+        setBotBypass(Boolean(data.workspace.bot_bypass));
         try {
           localStorage.setItem("obey_current_workspace", data.workspace.slug);
         } catch {}
@@ -1479,6 +1487,59 @@ function ControlRoomContent() {
     loadWorkspaceDetails(slug);
   };
 
+  // Real-time synchronization of Bot Bypass status (reflects WhatsApp /start and /stop commands in real-time)
+  useEffect(() => {
+    if (!currentWs?.slug) return;
+    const checkBypass = async () => {
+      try {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+        const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/bypass`);
+        const data = await res.json();
+        if (data.success && typeof data.bot_bypass === "boolean") {
+          setBotBypass((prev) => {
+            if (prev !== data.bot_bypass) {
+              setCurrentWs((ws) => (ws ? { ...ws, bot_bypass: data.bot_bypass } : null));
+            }
+            return data.bot_bypass;
+          });
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(checkBypass, 3000);
+    return () => clearInterval(interval);
+  }, [currentWs?.slug]);
+
+  const handleToggleBotBypass = async () => {
+    if (!currentWs?.slug || togglingBypass) return;
+    const newBypassState = !botBypass;
+    setTogglingBypass(true);
+    setBotBypass(newBypassState);
+    setCurrentWs((ws) => (ws ? { ...ws, bot_bypass: newBypassState } : null));
+
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/bypass`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot_bypass: newBypassState }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBotBypass(data.bot_bypass);
+        setCurrentWs((ws) => (ws ? { ...ws, bot_bypass: data.bot_bypass } : null));
+      } else {
+        setBotBypass(!newBypassState);
+        setCurrentWs((ws) => (ws ? { ...ws, bot_bypass: !newBypassState } : null));
+      }
+    } catch (err) {
+      console.error("Failed to toggle bot bypass:", err);
+      setBotBypass(!newBypassState);
+      setCurrentWs((ws) => (ws ? { ...ws, bot_bypass: !newBypassState } : null));
+    } finally {
+      setTogglingBypass(false);
+    }
+  };
+
   const handleSaveOwnerProfile = async (overrideName?: string, overridePhone?: string) => {
     if (!currentWs) return;
     setSavingOwnerProfile(true);
@@ -2081,9 +2142,21 @@ function ControlRoomContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleToggleBotBypass}
+            disabled={togglingBypass}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+              botBypass
+                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+            }`}
+            title={botBypass ? "Bypass is ON (Bot Paused). Tap to activate." : "Bot is Active 24/7. Tap to pause."}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${botBypass ? "bg-amber-400" : "bg-emerald-400 animate-pulse"}`} />
+            <span>{botBypass ? "Bypass ON" : "Bot Active"}</span>
+          </button>
           <ThemeToggle showLabel={false} />
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <button
             onClick={handleAddBusinessClick}
             className="px-2 py-1 rounded-lg bg-emerald-500 text-slate-950 font-bold text-[11px] cursor-pointer"
@@ -2096,12 +2169,12 @@ function ControlRoomContent() {
 
       {/* Mobile Slide-over Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[70] md:hidden flex animate-in fade-in duration-200">
           <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative w-72 max-w-[85vw] bg-[#060d1a] border-r border-slate-800 h-full p-4 flex flex-col justify-between z-10 overflow-y-auto animate-in slide-in-from-left duration-200">
+          <div className="relative w-72 max-w-[85vw] bg-[#060d1a] border-r border-slate-800 h-full p-4 flex flex-col justify-between z-10 overflow-y-auto animate-in slide-in-from-left duration-200 pb-28">
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
@@ -2136,6 +2209,39 @@ function ControlRoomContent() {
                 </div>
               )}
 
+              {/* Bot Bypass Card in Drawer */}
+              <div className="bg-[#0b1424] border border-slate-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className={`w-4 h-4 ${botBypass ? "text-amber-400" : "text-emerald-400"}`} />
+                    <span className="text-xs font-bold text-white">Bot Bypass</span>
+                  </div>
+                  <button
+                    onClick={handleToggleBotBypass}
+                    disabled={togglingBypass}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      botBypass ? "bg-amber-500" : "bg-slate-700"
+                    }`}
+                    title="Toggle Bot Bypass"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        botBypass ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                  <span>Status:</span>
+                  <span className={`font-semibold ${botBypass ? "text-amber-400" : "text-emerald-400"}`}>
+                    {botBypass ? "Bypass ON (Paused)" : "Active (24/7)"}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Send <code className="text-emerald-400 font-mono">/stop</code> or <code className="text-emerald-400 font-mono">/start</code> on WhatsApp to control anytime.
+                </div>
+              </div>
+
               {/* Navigation Links in Drawer */}
               <nav className="space-y-1">
                 {navTabs.map((tab) => {
@@ -2169,14 +2275,14 @@ function ControlRoomContent() {
               </nav>
             </div>
 
-            <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="pt-4 border-t border-slate-800 space-y-3 shrink-0 pb-8">
               <div className="flex items-center justify-between px-1">
                 <span className="text-xs text-slate-400 font-medium">Appearance</span>
                 <ThemeToggle showLabel={true} />
               </div>
               <button
                 onClick={handleLogout}
-                className="w-full py-2 rounded-xl bg-rose-500/10 text-rose-400 text-xs font-bold border border-rose-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold border border-rose-500/20 flex items-center justify-center gap-2 cursor-pointer transition shadow-sm"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Log Out</span>
@@ -2205,6 +2311,19 @@ function ControlRoomContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleBotBypass}
+              disabled={togglingBypass}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                botBypass
+                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30"
+                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+              }`}
+              title={botBypass ? "Bot Bypass is ON: Obey is paused. Click to activate." : "Bot Bypass is OFF: Obey is active 24/7. Click to pause."}
+            >
+              <span className={`w-2 h-2 rounded-full ${botBypass ? "bg-amber-400" : "bg-emerald-400 animate-pulse"}`} />
+              <span>{botBypass ? "Bypass ON (Bot Paused)" : "Bot Active (24/7)"}</span>
+            </button>
             <button
               onClick={copyHotlineLink}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
@@ -2495,6 +2614,63 @@ function ControlRoomContent() {
         {/* ============================================================== */}
         {activeTab === "whatsapp" && currentWs && (
           <div className="space-y-6">
+            {/* Bot Bypass Card */}
+            <div className={`border rounded-2xl p-5 sm:p-6 transition ${
+              botBypass ? "bg-amber-950/20 border-amber-500/30" : "bg-slate-900 border-slate-800"
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`p-2.5 rounded-xl border ${
+                    botBypass ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  }`}>
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white">Bot Bypass Toggle</h3>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                        botBypass
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                      }`}>
+                        {botBypass ? "Bypass ON (Bot Paused)" : "Bypass OFF (Bot Active)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xl">
+                      {botBypass
+                        ? "🛑 Obey has stopped auto-replying to incoming messages. You can chat manually with your customers on WhatsApp without AI interference."
+                        : "⚡ Obey is active 24/7, answering customer inquiries, taking orders, and capturing leads automatically."}
+                    </p>
+                    <div className="mt-2 text-[11px] text-slate-400 flex flex-wrap items-center gap-1.5">
+                      <span className="font-semibold text-slate-300">WhatsApp Chat Commands:</span>
+                      <span>Send</span>
+                      <code className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono text-[11px] border border-slate-700">/stop</code>
+                      <span>to pause or</span>
+                      <code className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono text-[11px] border border-slate-700">/start</code>
+                      <span>to resume anytime. Automatically updates this dashboard in real-time!</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={handleToggleBotBypass}
+                    disabled={togglingBypass}
+                    className={`relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      botBypass ? "bg-amber-500" : "bg-emerald-500"
+                    }`}
+                    title={botBypass ? "Click to deactivate bypass (activate bot)" : "Click to activate bypass (pause bot)"}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        botBypass ? "translate-x-6" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
@@ -6786,7 +6962,9 @@ function ControlRoomContent() {
       )}
 
       {/* Mobile-First Bottom Navigation Bar (md:hidden) */}
-      <nav className="fixed bottom-0 inset-x-0 z-50 bg-[#060d1a]/95 backdrop-blur-xl border-t border-slate-800/90 py-1 px-3 flex items-center justify-around md:hidden">
+      <nav className={`fixed bottom-0 inset-x-0 z-40 bg-[#060d1a]/95 backdrop-blur-xl border-t border-slate-800/90 py-1 px-3 flex items-center justify-around md:hidden transition-all duration-200 ${
+        mobileMenuOpen ? "hidden opacity-0 pointer-events-none" : "opacity-100"
+      }`}>
         {[
           { id: "overview", label: "Overview", icon: TrendingUp },
           { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, alert: waState !== "connected" },

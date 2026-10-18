@@ -19,7 +19,10 @@ export function getObeyBusinessManualKnowledge(pricing?: PlatformPricingContext,
 
   return `
 OBEY BUSINESS PLATFORM MANUAL & ARCHITECTURE:
-Obey Business (${domain}/control-room) is an autonomous 24/7 AI operations and WhatsApp sales platform engineered for founders, business owners, and creators.
+Obey Business (${domain}) is an autonomous 24/7 AI operations and WhatsApp sales platform engineered for founders, business owners, and creators.
+• Official Website (Homepage): ${domain}
+• Control Room (Workspace Dashboard): ${domain}/control-room
+• Platform User Manual: ${domain}/manual
 
 1. DYNAMIC COMMERCIAL SUBSCRIPTION TIERS:
 • Starter Plan (₦${starter}/month): 1 business workspace, 250 auto-saved leads, 10 keyword auto-responders, 15 hrs/month WebRTC voice calls, 2 contact buckets, 1-tap VCF / CSV contact export.

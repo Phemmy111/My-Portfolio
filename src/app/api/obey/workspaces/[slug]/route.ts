@@ -8,6 +8,7 @@ import {
   dbGetWorkspaceLeads,
   dbGetWorkspaceCallLogs,
   dbUpdateWorkspaceProfile,
+  dbSetWorkspaceBotBypass,
 } from "@/lib/db";
 
 export async function GET(
@@ -70,6 +71,7 @@ export async function PATCH(
       owner_name,
       owner_phone,
       name,
+      bot_bypass,
       business_bio,
       catalog_summary,
       voice_greeting,
@@ -89,6 +91,14 @@ export async function PATCH(
       if (refreshed) {
         updatedWorkspace = refreshed;
       }
+    }
+
+    if (bot_bypass !== undefined) {
+      await dbSetWorkspaceBotBypass(ws.id, Boolean(bot_bypass));
+      updatedWorkspace = {
+        ...updatedWorkspace,
+        bot_bypass: Boolean(bot_bypass),
+      };
     }
 
     const updatedSettings = await dbUpsertWorkspaceSettings(ws.id, {

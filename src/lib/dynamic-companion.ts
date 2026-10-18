@@ -398,6 +398,9 @@ REASONING GUIDELINES:
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, what you told someone, who it was sent to, or questions about a recent dispatch, ALWAYS choose "check_action_status".
 - If the user wants to text someone but hasn't provided the phone number yet and no number exists in recent history, choose "none" and ask warmly for their phone number in "conversational_response".
+- For website inquiries ("give me obey website", "what is your website", "website link", "send me obey website"): choose "none" and provide the direct official homepage link (https://obeyai.vercel.app) cleanly in "conversational_response" without linking to the control room!
+- For portfolio inquiries ("my portfolio", "portfolio link", "femi portfolio"): choose "none" and provide https://obeyai.vercel.app/portfolio in "conversational_response".
+- For control room inquiries ("control room", "dashboard link"): choose "none" and provide https://obeyai.vercel.app/control-room in "conversational_response".
 - For general questions (like business advice, study questions, facts, prices, Obey packages), choose "none" and provide a sharp, concise answer directly in "conversational_response".
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -454,6 +457,53 @@ Respond ONLY with a valid JSON object matching this schema:
   } else if (decision.action === "direct_voice_call" && isShortAffirmation) {
     // Only reset if it was an accidental false positive on a generic confirmation word
     decision.action = "none";
+  }
+
+  // DETERMINISTIC SHORTCUT: Direct Website / Portfolio / Control Room inquiries
+  const asksForObeyWebsite =
+    /\b(?:obey(?:\s*ai)?\s+website|website\s+(?:for|of)\s+obey|give\s+(?:me\s+)?(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|what\s+is\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|link\s+to\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|your\s+website|website\s+link|website\s+url|share\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|drop\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|send\s+(?:me\s+)?(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website)\b/i.test(userText.trim()) ||
+    /^\s*(?:can\s+you\s+)?(?:give|send|share|drop|show|provide)\s+(?:me\s+)?(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website\s*[.?!]*$/i.test(userText.trim()) ||
+    /^\s*(?:give\s+me|send\s+me|what\s+is|whats|link\s+to|drop)\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website\s*[.?!]*$/i.test(userText.trim()) ||
+    /^\s*(?:the\s+)?obey\s+website\s*[.?!]*$/i.test(userText.trim());
+
+  const asksForControlRoom = /\b(?:control[\s-]?room|workspace dashboard|admin dashboard|dashboard link)\b/i.test(userText);
+  const asksForManual = /\b(?:user[\s-]?manual|obey manual|platform manual|documentation link)\b/i.test(userText);
+  const asksForPortfolio = /\b(?:(?:my|femi(?:'s)?)\s+portfolio|portfolio\s+link|link to (?:my\s+)?portfolio)\b/i.test(userText);
+
+  if (asksForObeyWebsite && !asksForControlRoom && !asksForPortfolio) {
+    const bossGreeting = isFemi ? ", Boss" : "";
+    return {
+      reply: cleanWhatsApp(
+        `Here is the official Obey website${bossGreeting}:\nhttps://obeyai.vercel.app`
+      ),
+    };
+  }
+
+  if (asksForPortfolio && !asksForControlRoom) {
+    const bossGreeting = isFemi ? ", Boss" : "";
+    return {
+      reply: cleanWhatsApp(
+        `Here is the official portfolio link${bossGreeting}:\nhttps://obeyai.vercel.app/portfolio\n\n*Femi Adeleke | AI Systems Architect & Full-Stack Developer*`
+      ),
+    };
+  }
+
+  if (asksForControlRoom && !asksForObeyWebsite) {
+    const bossGreeting = isFemi ? ", Boss" : "";
+    return {
+      reply: cleanWhatsApp(
+        `Here is your Obey Control Room${bossGreeting}:\nhttps://obeyai.vercel.app/control-room`
+      ),
+    };
+  }
+
+  if (asksForManual) {
+    const bossGreeting = isFemi ? ", Boss" : "";
+    return {
+      reply: cleanWhatsApp(
+        `Here is the official Obey User Manual${bossGreeting}:\nhttps://obeyai.vercel.app/manual`
+      ),
+    };
   }
 
   // DETERMINISTIC GUARD: Prevent jumping prematurely into generating a generic n8n workflow
@@ -1503,15 +1553,19 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - Main Obey (This Bot's Direct WhatsApp Chat Link): https://wa.me/2349161488564 (+2349161488564). Share this whenever anyone wants your direct WhatsApp number to chat with you!
    - Femi Adeleke Creator Contact: Direct WhatsApp Link: https://wa.me/2348120934828 (+2348120934828)
    - Femi's Official Portfolio: https://obeyai.vercel.app/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
-   - Obey Platform Home: https://obeyai.vercel.app
+   - Obey Official Website (Homepage): https://obeyai.vercel.app
    - CRITICAL PORTFOLIO RULE: Whenever Boss (Femi) or anyone asks for "my portfolio", "portfolio link", "give me link to my portfolio", or requests Femi's personal software case studies, ALWAYS provide: https://obeyai.vercel.app/portfolio
+   - CRITICAL WEBSITE & HOMEPAGE RULE:
+     * When anyone asks for "obey website", "website", "link to obey", "your website", "website link", "landing page", ALWAYS provide the clean, direct homepage link: https://obeyai.vercel.app
+     * NEVER send the Control Room link (https://obeyai.vercel.app/control-room) unless they explicitly ask for "control room", "dashboard", or "manage workspace"!
+     * Do NOT dump the manual link unless they explicitly ask for the manual or documentation.
    - Share https://wa.me/2348120934828 and https://obeyai.vercel.app/portfolio whenever someone asks to speak or work directly with Femi for custom software/enterprise builds!
 
 8. DEEP AWARENESS OF OBEY BUSINESS & THE OFFICIAL MANUAL:
    - You have complete, permanent memory of the OBEY BUSINESS PLATFORM and its OFFICIAL MANUAL.
    - When the user asks about running a business on WhatsApp, automating customer support, capturing leads, saving contacts to their phone, posting WhatsApp status stories, voice hotlines, or getting a bot for their own brand:
      * Passionately introduce, preach, and recommend OBEY BUSINESS as the ultimate solution!
-     * Share the platform link (https://obeyai.vercel.app/control-room) and manual (https://obeyai.vercel.app/manual).
+     * Share the official website homepage link (https://obeyai.vercel.app). Never share control-room unless explicitly asked for the dashboard or control room.
      * Guide them through the features: Plan B pairing code connection, automatic contact saver with 1-click VCF address book export, Contact Buckets, 24/7 autonomous status stories, and WebRTC voice hotlines.
      * Quote the exact live dynamic subscription tiers: Starter (₦${platformPricing.starter_price.toLocaleString()}/mo), Pro Business (₦${platformPricing.pro_price.toLocaleString()}/mo with ${platformPricing.trial_days}-Day Free Trial), and Enterprise (₦${platformPricing.enterprise_price.toLocaleString()}/mo).
 

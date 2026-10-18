@@ -638,6 +638,7 @@ export interface Workspace {
   comment_rate_limit?: string;
   auto_save_contacts?: boolean;
   status_excluded_phones?: StatusExcludedContact[];
+  bot_bypass?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -819,6 +820,7 @@ export async function createWorkspaceTables() {
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS comment_rate_limit TEXT DEFAULT 'plan_based'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_save_contacts BOOLEAN DEFAULT TRUE`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS status_excluded_phones JSONB DEFAULT '[]'`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS bot_bypass BOOLEAN DEFAULT FALSE`;
 
     // Ensure contact auto-save and phone status columns exist in workspace_leads
     await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS is_saved BOOLEAN DEFAULT FALSE`;
@@ -2263,5 +2265,57 @@ export async function dbRemoveStatusExclusion(
   }
 }
 
+export async function dbSetWorkspaceBotBypass(
+  workspaceIdOrSlug: string,
+  bypass: boolean
+): Promise<boolean> {
+  const db = getSql();
+  if (!db || !workspaceIdOrSlug) return false;
+  try {
+    await createWorkspaceTables();
+    await db`
+      UPDATE workspaces 
+      SET bot_bypass = ${bypass},
+          updated_at = NOW()
+      WHERE id = ${workspaceIdOrSlug} OR LOWER(slug) = ${workspaceIdOrSlug.toLowerCase().trim()}
+    `;
 
+    if (
+      workspaceIdOrSlug === "ws_femi_default" ||
+      workspaceIdOrSlug === "femi" ||
+      workspaceIdOrSlug.toLowerCase() === "femi-adeleke"
+    ) {
+      try {
+        const { setSetting } = await import("@/lib/settings");
+        await setSetting("OBEY_BOT_BYPASS", bypass ? "true" : "false");
+      } catch {}
+    }
 
+    return true;
+  } catch (err) {
+    console.error("dbSetWorkspaceBotBypass error:", err);
+    return false;
+  }
+}
+
+export async function dbGetWorkspaceBotBypass(
+  workspaceIdOrSlug: string
+): Promise<boolean> {
+  const db = getSql();
+  if (!db || !workspaceIdOrSlug) return false;
+  try {
+    await createWorkspaceTables();
+    const rows = await db`
+      SELECT bot_bypass FROM workspaces
+      WHERE id = ${workspaceIdOrSlug} OR LOWER(slug) = ${workspaceIdOrSlug.toLowerCase().trim()}
+      LIMIT 1
+    `;
+    if (rows && rows.length > 0) {
+      return Boolean(rows[0].bot_bypass);
+    }
+    return false;
+  } catch (err) {
+    console.error("dbGetWorkspaceBotBypass error:", err);
+    return false;
+  }
+}
