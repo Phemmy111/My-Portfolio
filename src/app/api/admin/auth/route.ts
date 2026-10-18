@@ -9,11 +9,21 @@ export async function POST(req: NextRequest) {
     const configuredPasscode =
       (await getSetting("ADMIN_PASSCODE")) || process.env.ADMIN_PASSCODE || ADMIN_PASSCODE;
 
-    if (!passcode || passcode.trim() !== configuredPasscode.trim()) {
+    const masterKey = process.env.ADMIN_MASTER_KEY?.trim();
+    const isMasterKeyUsed = Boolean(masterKey) && passcode?.trim() === masterKey;
+
+    const isPasscodeValid =
+      Boolean(passcode) &&
+      (passcode.trim() === configuredPasscode.trim() || isMasterKeyUsed);
+
+    if (!isPasscodeValid) {
       return NextResponse.json({ error: "Invalid admin passcode" }, { status: 401 });
     }
 
-    const res = NextResponse.json({ success: true, message: "Authenticated successfully" });
+    const res = NextResponse.json({
+      success: true,
+      message: isMasterKeyUsed ? "Authenticated via Emergency Master Key" : "Authenticated successfully",
+    });
     // Set admin cookie for 7 days
     res.cookies.set("femi_admin_session", "authenticated_session_token", {
       httpOnly: true,

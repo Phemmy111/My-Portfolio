@@ -692,7 +692,7 @@ export default function AdminMasterControlRoom() {
             </p>
           </div>
 
-          <div className="flex justify-start pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
               type="submit"
               disabled={savingPasscode}
@@ -710,6 +710,9 @@ export default function AdminMasterControlRoom() {
                 </>
               )}
             </button>
+            <span className="text-[11px] text-zinc-500">
+              Forgot your passcode? You can always unlock via your Vercel <code className="text-zinc-700 dark:text-zinc-300 font-bold">ADMIN_MASTER_KEY</code> environment variable or ask your assistant to reset it.
+            </span>
           </div>
         </form>
       </div>
