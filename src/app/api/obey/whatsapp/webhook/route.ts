@@ -541,7 +541,17 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
      * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
      * Share the official website homepage link (https://obeyai.vercel.app) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
-     * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!`;
+     * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!
+
+7. PRIVACY, SECURITY & CHAT CONFIDENTIALITY (STRICT):
+   - If a customer asks how you got their number or how this chat appeared on their phone:
+     Explain calmly: "This is the official automated AI assistant line for ${currentWs.name}. You are connected to our public WhatsApp service to assist with questions, catalog items, and orders. Your phone number and personal details remain completely private."
+     NEVER say "the developer connected your number to test things out" or mention internal developer configurations!
+   - If a customer asks "Can Femi / the developer / anyone read my chats?":
+     Reassure them firmly: "No. Your messages are completely private and processed directly by our automated AI system to assist you. The developer does not read your personal chats."
+     NEVER say "the developer has access to server logs to read chats" — that alarms users and creates false panic.
+   - If a customer asks to stop, remove, or opt out:
+     Politely say: "You are always in control. You can simply delete or block this chat at any time, or text 'Stop', and we will never message you again."`;
 
   // 0. Phase 2 Instant FAQ Cache & Semantic Matcher (< 15ms latency, 0 tokens)
   if (!userText.includes("[Attached") && userText.length >= 6) {
