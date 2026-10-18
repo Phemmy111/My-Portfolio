@@ -1,15 +1,49 @@
 import { neon } from "@neondatabase/serverless";
 
-function getSql() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    return null;
+/**
+ * Resolves a PgBouncer-pooled connection string for Neon PostgreSQL.
+ * Multiplexes thousands of serverless queries through Neon's connection pooler
+ * so high concurrency never exhausts PostgreSQL max connection limits.
+ */
+export function getPooledConnectionString(rawUrl?: string): string | null {
+  const target =
+    rawUrl ||
+    process.env.DATABASE_URL_POOLED ||
+    process.env.POSTGRES_URL_POOLED ||
+    process.env.DATABASE_URL;
+  if (!target) return null;
+
+  if (target.includes("-pooler.") || target.includes("pgbouncer=true")) {
+    return target;
   }
-  return neon(url);
+
+  try {
+    const parsed = new URL(target);
+    if (parsed.hostname.endsWith(".neon.tech") && !parsed.hostname.includes("-pooler.")) {
+      const parts = parsed.hostname.split(".");
+      parts[0] = `${parts[0]}-pooler`;
+      parsed.hostname = parts.join(".");
+      if (!parsed.searchParams.has("sslmode")) {
+        parsed.searchParams.set("sslmode", "require");
+      }
+      return parsed.toString();
+    }
+  } catch {}
+
+  return target;
 }
 
-// Fallback/standard sql tagged template helper
-export const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null!;
+export function getSql() {
+  const pooled = getPooledConnectionString();
+  if (!pooled) {
+    return null;
+  }
+  return neon(pooled);
+}
+
+// Fallback/standard sql tagged template helper with automatic PgBouncer connection pooling
+const defaultPooledUrl = getPooledConnectionString();
+export const sql = defaultPooledUrl ? neon(defaultPooledUrl) : null!;
 
 // ==============================================================
 // DATABASE SCHEMA SETUP
@@ -886,6 +920,26 @@ export async function createWorkspaceTables() {
       )
     `;
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_buckets_ws ON workspace_contact_buckets(workspace_id)`;
+
+    // Ensure workspace_message_queue table exists for resilient asynchronous processing
+    await db`
+      CREATE TABLE IF NOT EXISTS workspace_message_queue (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        instance_name TEXT NOT NULL,
+        sender_phone TEXT NOT NULL,
+        message_id TEXT,
+        payload JSONB NOT NULL,
+        status TEXT DEFAULT 'pending',
+        attempts INT DEFAULT 0,
+        error_log TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        processed_at TIMESTAMPTZ
+      )
+    `;
+    await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_status_created ON workspace_message_queue(status, created_at ASC)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_instance ON workspace_message_queue(instance_name)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_msgid ON workspace_message_queue(message_id)`;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
   }
@@ -2454,3 +2508,177 @@ export async function dbGetWorkspaceBotBypass(
     return false;
   }
 }
+
+// ==============================================================
+// ASYNCHRONOUS WORKSPACE MESSAGE QUEUE (PHASE 3 SCALE)
+// ==============================================================
+
+export interface QueuedWorkspaceMessage {
+  id: string;
+  workspace_id?: string | null;
+  instance_name: string;
+  sender_phone: string;
+  message_id?: string | null;
+  payload: any;
+  status: "pending" | "processing" | "completed" | "failed";
+  attempts?: number;
+  error_log?: string | null;
+  created_at?: string;
+  processed_at?: string | null;
+}
+
+export async function dbEnqueueWorkspaceMessage(params: {
+  id?: string;
+  workspaceId?: string | null;
+  instanceName: string;
+  senderPhone: string;
+  messageId?: string | null;
+  payload: any;
+  status?: "pending" | "processing" | "completed" | "failed";
+}): Promise<string | null> {
+  const db = getSql();
+  if (!db) return null;
+  const id = params.id || `msgq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  try {
+    await db`
+      INSERT INTO workspace_message_queue (
+        id, workspace_id, instance_name, sender_phone, message_id, payload, status, attempts, created_at
+      ) VALUES (
+        ${id},
+        ${params.workspaceId || null},
+        ${params.instanceName},
+        ${params.senderPhone},
+        ${params.messageId || null},
+        ${JSON.stringify(params.payload || {})}::jsonb,
+        ${params.status || "processing"},
+        1,
+        NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        attempts = workspace_message_queue.attempts + 1,
+        processed_at = NOW()
+    `;
+    return id;
+  } catch (err) {
+    console.warn("dbEnqueueWorkspaceMessage warning:", err);
+    return null;
+  }
+}
+
+export async function dbUpdateWorkspaceMessageQueueStatus(
+  id: string,
+  status: "pending" | "processing" | "completed" | "failed",
+  errorLog?: string | null
+): Promise<void> {
+  const db = getSql();
+  if (!db || !id) return;
+  try {
+    await db`
+      UPDATE workspace_message_queue
+      SET status = ${status},
+          error_log = ${errorLog || null},
+          processed_at = NOW()
+      WHERE id = ${id}
+    `;
+  } catch (err) {
+    console.warn("dbUpdateWorkspaceMessageQueueStatus warning:", err);
+  }
+}
+
+export async function dbGetQueueMetrics(): Promise<{
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  total24h: number;
+}> {
+  const db = getSql();
+  if (!db) return { pending: 0, processing: 0, completed: 0, failed: 0, total24h: 0 };
+  try {
+    const rows = await db`
+      SELECT 
+        status, 
+        COUNT(*)::int as count 
+      FROM workspace_message_queue 
+      WHERE created_at > NOW() - INTERVAL '24 hours'
+      GROUP BY status
+    `;
+    let pending = 0;
+    let processing = 0;
+    let completed = 0;
+    let failed = 0;
+    for (const r of rows) {
+      if (r.status === "pending") pending = Number(r.count);
+      else if (r.status === "processing") processing = Number(r.count);
+      else if (r.status === "completed") completed = Number(r.count);
+      else if (r.status === "failed") failed = Number(r.count);
+    }
+    return {
+      pending,
+      processing,
+      completed,
+      failed,
+      total24h: pending + processing + completed + failed,
+    };
+  } catch {
+    return { pending: 0, processing: 0, completed: 0, failed: 0, total24h: 0 };
+  }
+}
+
+export interface WorkspaceInstanceHealthRecord {
+  instanceName: string;
+  connectionStatus: "open" | "close" | "connecting" | "unknown";
+  ownerJid: string | null;
+  updatedAt: string | null;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  ownerName: string | null;
+  ownerPhone: string | null;
+  needsAttention: boolean;
+}
+
+export async function dbGetAllWorkspaceInstancesHealth(): Promise<WorkspaceInstanceHealthRecord[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    const rows = await db`
+      SELECT 
+        i."name" AS instance_name,
+        COALESCE(i."connectionStatus"::text, 'unknown') AS connection_status,
+        i."ownerJid" AS owner_jid,
+        i."updatedAt"::text AS updated_at,
+        w.id AS workspace_id,
+        w.name AS workspace_name,
+        w.owner_name,
+        w.owner_phone
+      FROM evolution."Instance" i
+      LEFT JOIN workspaces w 
+        ON (i.name = 'obey' AND (w.id = 'ws_femi_default' OR w.slug = 'femi' OR w.slug = 'femi-adeleke'))
+        OR (i.name = 'obey-' || w.slug)
+      ORDER BY i."updatedAt" DESC
+    `;
+
+    return rows.map((r) => {
+      const status = (r.connection_status || "unknown").toLowerCase();
+      const needsAttention = status !== "open";
+      return {
+        instanceName: r.instance_name,
+        connectionStatus: (["open", "close", "connecting"].includes(status)
+          ? status
+          : "unknown") as any,
+        ownerJid: r.owner_jid || null,
+        updatedAt: r.updated_at || null,
+        workspaceId: r.workspace_id || null,
+        workspaceName: r.workspace_name || null,
+        ownerName: r.owner_name || null,
+        ownerPhone: r.owner_phone || null,
+        needsAttention,
+      };
+    });
+  } catch (err) {
+    console.error("dbGetAllWorkspaceInstancesHealth error:", err);
+    return [];
+  }
+}
+

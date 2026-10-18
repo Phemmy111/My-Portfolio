@@ -29,6 +29,8 @@ import {
   dbGetPlatformPricing,
   dbSetWorkspaceBotBypass,
   dbGetWorkspaceBotBypass,
+  dbEnqueueWorkspaceMessage,
+  dbUpdateWorkspaceMessageQueueStatus,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -48,6 +50,7 @@ import { getAgentTasks, executeAgentTask } from "@/lib/obey-agent";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
 import { formatToWAT, formatDateTimeWAT, getNigerianTime } from "@/lib/utils";
 import { getObeyBrainContext, getSetting, setSetting } from "@/lib/settings";
+import { checkCustomerSpamRateLimit } from "@/lib/rate-limiter";
 import { executePendingUserAction } from "@/lib/agent-dispatcher";
 import { processDynamicCompanionTurn } from "@/lib/dynamic-companion";
 import { getLatestUserArtifact } from "@/lib/artifact-engine";
@@ -88,14 +91,15 @@ function cleanWhatsAppFormatting(text: string): string {
     .replace(/\*\s*\*/g, "*")
     .trim();
 }
+// Enterprise scale sliding-window deduplication (up to 10,000 entries, 5-minute TTL)
 const recentlyProcessedWebhookMessageIds = new Map<string, number>();
 
 function isDuplicateWebhookMessage(messageId: string): boolean {
   if (!messageId) return false;
   const now = Date.now();
-  if (recentlyProcessedWebhookMessageIds.size > 200) {
+  if (recentlyProcessedWebhookMessageIds.size > 5000) {
     for (const [id, ts] of recentlyProcessedWebhookMessageIds.entries()) {
-      if (now - ts > 180000) {
+      if (now - ts > 300000) {
         recentlyProcessedWebhookMessageIds.delete(id);
       }
     }
@@ -850,6 +854,23 @@ async function processMessage(params: ProcessMessageParams) {
   if (currentWs?.bot_bypass) {
     console.log(`[WA Bot Bypass] Auto-reply suppressed for ${replyTo} because Bot Bypass is ON for ${currentWs?.name}`);
     return;
+  }
+
+  // 1a-2. Sliding-Window Anti-Spam & Abuse Protection (Phase 3 Enterprise Scale)
+  if (!isOwner && currentWs) {
+    const spamCheck = checkCustomerSpamRateLimit({
+      workspaceId: currentWs.id,
+      phone: replyTo,
+      businessName: currentWs.name,
+    });
+
+    if (!spamCheck.allowed) {
+      console.warn(`[WA Anti-Spam] Throttled rapid spam burst from ${replyTo} on ${currentWs.name}`);
+      if (spamCheck.sendWarning && spamCheck.warningMessage) {
+        await reply(spamCheck.warningMessage);
+      }
+      return;
+    }
   }
 
   // 1b. Check if contact is complaining or requesting to stop status comments
@@ -1931,7 +1952,25 @@ Output ONLY the comment text.`,
   console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : isSticker ? '[Sticker]' : '[Doc]')}"`);
 
   after(async () => {
+    let queueId: string | null = null;
+    const msgId = msgObj.key?.id;
     try {
+      // Step 3B: Asynchronous Message Queue tracking
+      queueId = await dbEnqueueWorkspaceMessage({
+        instanceName,
+        senderPhone: senderNumber,
+        messageId: msgId,
+        payload: {
+          pushName: msgObj.pushName,
+          textSample: (userText || "").slice(0, 160),
+          isAudio,
+          isImage,
+          isDoc,
+          isSticker,
+        },
+        status: "processing",
+      });
+
       let activeText = userText;
       let isVoiceNote = false;
       let visionMedia: { base64: string; mimetype: string } | null = null;
@@ -1971,15 +2010,22 @@ Output ONLY the comment text.`,
         pushName: msgObj.pushName,
         isVoiceNote,
         isSticker,
-        messageId: msgObj.key?.id,
+        messageId: msgId,
         visionMedia,
         docMedia,
         documentFileName: msgObj.message?.documentMessage?.fileName,
         instanceName,
         connectedOwner,
       });
-    } catch (err) {
+
+      if (queueId) {
+        await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
+      }
+    } catch (err: any) {
       console.error("[WA] processMessage background task error:", err);
+      if (queueId) {
+        await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
+      }
     }
   });
 
