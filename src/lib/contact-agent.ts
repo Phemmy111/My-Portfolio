@@ -101,9 +101,10 @@ export async function handleOwnerContactOrBucketTurn(params: {
   // ("can you access my contact list", "how many contacts do i have", "show my contacts", "list contacts")
   // -------------------------------------------------------------
   const isContactAccessOrCount =
-    /\b(can you access my contact|can you see (?:through )?my contact|access my contact|see my contact|do you have (?:access to )?my contact|how many contacts|count (?:my )?contacts|list (?:my )?contacts|show (?:my )?contacts|view (?:my )?contacts|check (?:my )?contacts|who is (?:on|in) my contact|my contact list|my contacts)\b/i.test(
+    /\b(can you access|can you see|can you view|access|see through|look through|do you have access to|show|view|check|list|count|how many)\b.*\b(contact|contacts|contact list|address book|phone book)\b/i.test(
       lower
-    ) || /^(contacts|contact list|all contacts)$/i.test(lower);
+    ) ||
+    /^(contacts|contact list|all contacts|my contacts|my contact list)$/i.test(lower);
 
   if (isContactAccessOrCount) {
     const overview = await dbGetContactsOverview({ workspaceId, instanceName });
