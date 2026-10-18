@@ -61,6 +61,11 @@ import {
   handleScheduledTaskConversation,
   dispatchDueScheduledTasks,
 } from "@/lib/scheduled-task-engine";
+import {
+  matchInstantFAQIntent,
+  getCachedFAQResponse,
+  setCachedFAQResponse,
+} from "@/lib/faq-cache";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -442,6 +447,48 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
      * Share the official website homepage link (https://obeyai.vercel.app) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
      * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!`;
 
+  // 0. Phase 2 Instant FAQ Cache & Semantic Matcher (< 15ms latency, 0 tokens)
+  if (!userText.includes("[Attached") && userText.length >= 6) {
+    const instantMatch = matchInstantFAQIntent({
+      userQuery: userText,
+      businessName: currentWs.name,
+      bioContext: businessBio,
+      catalogSummary: typeof catalog === "string" ? catalog : JSON.stringify(catalog),
+      ownerName: currentWs.owner_name,
+    });
+
+    if (instantMatch.hit && instantMatch.response) {
+      console.log(`[FAQ Cache] Instant intent hit for ${currentWs.name}: "${userText.slice(0, 40)}"`);
+      await reply(instantMatch.response);
+      try {
+        await dbAddGuestMessage({
+          id: `guest-asst-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: currentWs.name,
+          role: "assistant",
+          content: instantMatch.response,
+        });
+      } catch {}
+      return;
+    }
+
+    const cachedFAQ = await getCachedFAQResponse(currentWs.id, userText);
+    if (cachedFAQ.hit && cachedFAQ.response) {
+      console.log(`[FAQ Cache] DB cache hit for ${currentWs.name}: "${userText.slice(0, 40)}"`);
+      await reply(cachedFAQ.response);
+      try {
+        await dbAddGuestMessage({
+          id: `guest-asst-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: currentWs.name,
+          role: "assistant",
+          content: cachedFAQ.response,
+        });
+      } catch {}
+      return;
+    }
+  }
+
   const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
 
   const aiRes = await executeAICompletion({
@@ -455,6 +502,15 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
     replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
   }
   await reply(replyText);
+
+  // Store in semantic FAQ cache asynchronously for subsequent identical customer questions
+  if (userText.length >= 6 && replyText && !asksVoiceCall) {
+    setCachedFAQResponse({
+      workspaceId: currentWs.id,
+      userQuery: userText,
+      response: replyText,
+    }).catch(() => {});
+  }
 
   // Save assistant reply to guest DB
   try {

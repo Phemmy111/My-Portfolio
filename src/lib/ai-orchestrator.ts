@@ -36,6 +36,32 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   const pool = await getAIProvidersPool();
   const activeProviders = pool.filter((p) => p.enabled && p.apiKey?.trim());
 
+  // Auto-inject OpenAI fallback from environment if not explicitly in pool
+  const hasOpenAI = activeProviders.some((p) => p.provider === "openai");
+  if (!hasOpenAI && process.env.OPENAI_API_KEY?.trim()) {
+    activeProviders.push({
+      id: "openai-env-fallback",
+      provider: "openai",
+      name: "OpenAI Fallback (Env)",
+      apiKey: process.env.OPENAI_API_KEY.trim(),
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      enabled: true,
+    });
+  }
+
+  // Auto-inject Groq fallback from environment if not explicitly in pool
+  const hasGroq = activeProviders.some((p) => p.provider === "groq");
+  if (!hasGroq && process.env.GROQ_API_KEY?.trim()) {
+    activeProviders.push({
+      id: "groq-env-fallback",
+      provider: "groq",
+      name: "Groq Llama Fallback (Env)",
+      apiKey: process.env.GROQ_API_KEY.trim(),
+      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      enabled: true,
+    });
+  }
+
   for (let i = 0; i < activeProviders.length; i++) {
     const p = activeProviders[i];
 
@@ -49,7 +75,6 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           "gemini-2.5-flash",
           "gemini-3.5-flash-lite",
           "gemini-flash-latest",
-          "gemini-3.8-flash",
         ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
@@ -70,6 +95,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${p.apiKey.trim()}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              signal: AbortSignal.timeout(9000),
               body: JSON.stringify({
                 contents: [{ role: "user", parts: userParts }],
                 systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -92,6 +118,11 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             } else {
               const errText = await res.text();
               errors.push(`${p.name} (${m}) HTTP ${res.status}: ${errText.slice(0, 100)}`);
+              // If rate limited (429) or quota exhausted, immediately break and try next provider!
+              if (res.status === 429) {
+                console.warn(`[AI Orchestrator] Provider ${p.name} rate-limited (HTTP 429). Fast-failing to next provider.`);
+                break;
+              }
             }
           } catch (modelErr: any) {
             errors.push(`${p.name} (${m}) error: ${modelErr.message}`);
