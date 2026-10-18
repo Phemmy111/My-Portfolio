@@ -880,7 +880,7 @@ async function processMessage(params: ProcessMessageParams) {
     .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
     .join("\n");
 
-  // Check if recent conversation turns discussed status updates or stories
+  // Check if recent assistant messages explicitly engaged with a WhatsApp status story
   const recentAssistantMessages = pastMessages
     .filter((m) => m.role === "assistant")
     .slice(-3)
@@ -888,33 +888,40 @@ async function processMessage(params: ProcessMessageParams) {
     .join(" ");
 
   const wasRecentStatusTopic =
-    recentAssistantMessages.includes("status") ||
-    recentAssistantMessages.includes("story") ||
-    recentAssistantMessages.includes("replied to your");
+    recentAssistantMessages.includes("[obey replied to your whatsapp status") ||
+    recentAssistantMessages.includes("saw your status update") ||
+    recentAssistantMessages.includes("status comment exclusion list");
 
-  // 1b. Check if contact is complaining, opting out, or asking to stop status viewing/commenting
+  // Status opt-out complaints are short direct messages (never long paragraphs or assignment queries)
+  const isShortMessage = lower.trim().length <= 140;
+
+  // 1b. Check if contact is explicitly requesting to stop status viewing/commenting
   const isDirectStatusOptOut =
-    /\b(stop|don'?t|never|quit|cease)\s+(checking|viewing|watching|looking\s+at)\s*(it|my\s+status|my\s+story|status|story)?\b/i.test(lower) ||
-    /\bstop\s+checking\b/i.test(lower) ||
-    /\bstop\s+viewing\b/i.test(lower) ||
-    /\bstop\s+watching\b/i.test(lower) ||
-    /\bdon'?t\s+(check|view|watch|look\s+at)\s*(it|my\s+status|my\s+story)?\b/i.test(lower) ||
-    /\bwhy\s+(are\s+you|u|do\s+you)\s+(checking|viewing|watching|looking\s+at)\b/i.test(lower) ||
-    /\b(stop|don'?t|quit|never)\s+(comment|commenting|reply|replying|react|reacting)\b/i.test(lower) ||
-    /\b(remove|exclude)\s+(me|my\s+number)\s*(from\s+(status|story|stories|updates?))?\b/i.test(lower) ||
-    /\b(opt\s*-?\s*out|unsubscribe)\b/i.test(lower);
+    isShortMessage && (
+      /\b(stop|don'?t|never|quit|cease)\s+(checking|viewing|watching|looking\s+at)\s+(it|my\s+status|my\s+story|status|story)\b/i.test(lower) ||
+      /\bstop\s+checking\s+(it|my\s+status|my\s+story|status|story)?\b/i.test(lower) ||
+      /\bstop\s+viewing\s+(it|my\s+status|my\s+story|status|story)?\b/i.test(lower) ||
+      /\bstop\s+watching\s+(it|my\s+status|my\s+story|status|story)?\b/i.test(lower) ||
+      /\bdon'?t\s+(check|view|watch|look\s+at)\s+(it|my\s+status|my\s+story)\b/i.test(lower) ||
+      /\bwhy\s+(are\s+you|u|do\s+you)\s+(checking|viewing|watching|looking\s+at)\s*(my\s+status|my\s+story|it)?\b/i.test(lower) ||
+      /\b(stop|don'?t|quit|never)\s+(comment|commenting|reply|replying|react|reacting)\s+(on\s+)?(my\s+)?(status|story|stories)\b/i.test(lower) ||
+      /\b(remove|exclude)\s+(me|my\s+number)\s+from\s+(status|story|stories)\b/i.test(lower) ||
+      /^\s*(opt\s*-?\s*out|unsubscribe)\s*$/i.test(lower.trim())
+    );
 
   const isContextualStatusOptOut =
+    isShortMessage &&
     wasRecentStatusTopic &&
-    /\b(stop\s+checking|stop\s+viewing|stop\s+watching|stop\s+it|don'?t\s+check|don'?t\s+view|leave\s+me\s+alone|don'?t|stop)\b/i.test(lower.trim());
+    /^\s*(stop\s+checking\s*it?|stop\s+viewing\s*it?|stop\s+watching\s*it?|don'?t\s+check\s*it?|don'?t\s+view\s*it?|stop\s+it|leave\s+me\s+alone)\s*$/i.test(lower.trim());
 
   const isStatusComplaint = isDirectStatusOptOut || isContextualStatusOptOut;
 
   // 1c. Check if contact is requesting complete data deletion / erasure (GDPR & Privacy Compliance)
   const isDataDeletionRequest =
-    /\b(delete|clear|erase|remove|wipe)\s+(everything|all\s+data|all\s+my\s+data|my\s+data|my\s+chats?|my\s+messages?|all\s+records?)\b/i.test(lower) ||
-    /\b(cleared|deleted|erased|wiped)\s+(in|from)\s+(your\s+)?database\b/i.test(lower) ||
-    /\bdelete\s+my\s+information\b/i.test(lower);
+    isShortMessage && (
+      /\b(delete|clear|erase|remove|wipe)\s+(everything|all\s+data|all\s+my\s+data|my\s+data|my\s+chats?|my\s+messages?|all\s+records?)\b/i.test(lower) ||
+      /\b(cleared|deleted|erased|wiped)\s+(in|from)\s+(your\s+)?database\b/i.test(lower)
+    );
 
   if (isDataDeletionRequest && !isOwner) {
     const contactName = pushName || `User ${replyTo.slice(-4)}`;
