@@ -697,13 +697,17 @@ export async function sendWhatsAppStatusPost(params: {
     });
 
     // Build proper Evolution API v2 sendStatus payload
+    // If jidList has contacts (including botOwnerNumber), do not set allContacts: true
+    // so Evolution API does not discard our custom list that includes the bot phone for 'My status' sync.
+    const useAllContacts = jidList.length === 0;
+
     const payload: any = cleanMediaUrl
       ? {
           type: params.mediaType || "image",
           content: cleanMediaUrl,
           caption: cleanWhatsAppFormatting(params.text),
-          allContacts: true,
-          statusJidList: jidList,
+          allContacts: useAllContacts,
+          statusJidList: jidList.length > 0 ? jidList : undefined,
         }
       : {
           type: "text",
@@ -711,9 +715,10 @@ export async function sendWhatsAppStatusPost(params: {
           backgroundColor: params.backgroundColor || "#075E54",
           textColor: params.textColor || "#FFFFFF",
           font: params.font || 1,
-          allContacts: true,
-          statusJidList: jidList,
+          allContacts: useAllContacts,
+          statusJidList: jidList.length > 0 ? jidList : undefined,
         };
+
 
     // Execute with automatic retry for 502/503/504 (handling Render cold-starts gracefully)
     let lastError = "";
