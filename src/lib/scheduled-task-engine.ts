@@ -444,23 +444,38 @@ export async function handleScheduledTaskConversation(params: {
   const { userText, historyText = "", recipientPhone, workspaceId, instanceName, senderName } = params;
   const lower = userText.toLowerCase().trim();
 
-  // Fast pre-filter: Check if message has task/reminder keywords
+  // 1. Check if user is querying tasks/reminders list (e.g. "So, what are the tasks I've given to you", "what tasks do i have")
   const isListQuery =
-    /^(?:what(?:'s|\s+are)?\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|show\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|list\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|do\s+i\s+have\s+any\s+(?:reminders|scheduled\s+tasks))\b/i.test(lower);
+    /\b(what(?:'s|\s+are)?\s+(?:all\s+|the\s+|my\s+)?(?:scheduled\s+|active\s+)?(?:tasks|reminders)|show\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|list\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|do\s+i\s+have\s+any\s+(?:reminders|scheduled\s+tasks)|tasks?\s+(?:that\s+)?i(?:'ve|\s+have)\s+given\s+(?:to\s+)?you|what\s+tasks?\s+do\s+i\s+have)\b/i.test(lower);
 
+  // 2. Check if user wants to cancel a task
   const isCancelQuery =
-    /^(?:cancel|delete|remove|clear)\s+(?:task|reminder|scheduled\s+task)\b/i.test(lower) ||
-    /^(?:cancel|delete|remove)\s+(?:all\s+)?(?:my\s+)?(?:reminders|tasks)\b/i.test(lower);
+    /\b(cancel|delete|remove|clear)\s+(?:all\s+)?(?:my\s+)?(?:tasks?|reminders?|scheduled\s+tasks?)\b/i.test(lower);
+
+  // 3. Time trigger expressions (e.g. "in the next 3 minutes", "in 5 minutes", "at 4:30 pm", "tomorrow", "later")
+  const hasTimeTrigger =
+    /\b(?:in\s+(?:the\s+next\s+)?\d+|after\s+\d+)\s*(?:mins?|minutes?|hours?|hrs?|days?|secs?|seconds?)\b/i.test(lower) ||
+    /\b(?:at|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/i.test(lower) ||
+    /\b(?:tomorrow|tonight|later|sometime\s+later)\b/i.test(lower) ||
+    /\b(?:get\s+back\s+to\s+me|send\s+(?:it\s+to\s+)?me|drop\s+(?:it\s+for\s+)?me|ping\s+me)\b/i.test(lower);
+
+  // 4. Task action triggers (remind, research, search, look up, check, etc.)
+  const hasTaskAction =
+    /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
+    /\b(go\s+online|search|research|look\s+up|find\s+out|check|browse)\b/i.test(lower);
+
+  const isAnsweringFollowupTime =
+    hasTimeTrigger && historyText.toLowerCase().includes("when should i remind you");
 
   const isTaskOrReminderRequest =
     /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
-    /\b(go\s+online|search\s+online|look\s+up|research|find\s+out)\b.*\b(later|get\s+back\s+to\s+me|at\s+\d+|in\s+\d+|tomorrow|tonight)\b/i.test(lower) ||
-    (/\b(later|in\s+\d+\s*(?:mins?|minutes?|hours?|hrs?|days?)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|tomorrow)\b/i.test(lower) &&
-      historyText.toLowerCase().includes("when should i remind you"));
+    (hasTaskAction && hasTimeTrigger) ||
+    isAnsweringFollowupTime;
 
   if (!isListQuery && !isCancelQuery && !isTaskOrReminderRequest) {
     return { handled: false };
   }
+
 
   const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
   const now = new Date();
