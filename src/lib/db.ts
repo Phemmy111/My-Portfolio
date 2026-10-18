@@ -1123,7 +1123,18 @@ export async function dbGetContactsOverview(params: {
   const db = getSql();
   if (!db) return { totalContacts: 0, totalLeads: 0, sampleContacts: [] };
 
-  const instName = params.instanceName || "obey";
+  let instName = params.instanceName;
+  if (!instName && params.workspaceId) {
+    if (params.workspaceId === "ws_femi_default" || params.workspaceId === "femi-adeleke") {
+      instName = "obey";
+    } else {
+      const ws = await dbGetWorkspaceById(params.workspaceId);
+      instName = ws?.whatsapp_instance_name || undefined;
+    }
+  }
+  if (!instName) {
+    instName = "obey";
+  }
 
   try {
     await createWorkspaceTables();
@@ -1133,7 +1144,7 @@ export async function dbGetContactsOverview(params: {
       SELECT COUNT(DISTINCT c."remoteJid")::int as total
       FROM evolution."Contact" c
       JOIN evolution."Instance" i ON c."instanceId" = i.id
-      WHERE (i.name = ${instName} OR i.name = 'obey')
+      WHERE i.name = ${instName}
         AND c."remoteJid" LIKE '%@s.whatsapp.net'
         AND c."remoteJid" NOT LIKE '0@%'
     `;
@@ -1154,7 +1165,7 @@ export async function dbGetContactsOverview(params: {
         SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
         FROM evolution."Contact" c
         JOIN evolution."Instance" i ON c."instanceId" = i.id
-        WHERE (i.name = ${instName} OR i.name = 'obey')
+        WHERE i.name = ${instName}
           AND c."remoteJid" LIKE '%@s.whatsapp.net'
           AND c."remoteJid" NOT LIKE '0@%'
           AND c."pushName" IS NOT NULL
@@ -1191,7 +1202,18 @@ export async function dbFindContactsByNameOrPhone(params: {
 }): Promise<ContactMatch[]> {
   const db = getSql();
   const q = (params.query || "").toLowerCase().trim();
-  const instName = params.instanceName || "obey";
+  let instName = params.instanceName;
+  if (!instName && params.workspaceId) {
+    if (params.workspaceId === "ws_femi_default" || params.workspaceId === "femi-adeleke") {
+      instName = "obey";
+    } else {
+      const ws = await dbGetWorkspaceById(params.workspaceId);
+      instName = ws?.whatsapp_instance_name || undefined;
+    }
+  }
+  if (!instName) {
+    instName = "obey";
+  }
 
   const resultsMap = new Map<string, ContactMatch>();
   if (!db) return [];
@@ -1211,7 +1233,7 @@ export async function dbFindContactsByNameOrPhone(params: {
             SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
             FROM evolution."Contact" c
             JOIN evolution."Instance" i ON c."instanceId" = i.id
-            WHERE (i.name = ${instName} OR i.name = 'obey')
+            WHERE i.name = ${instName}
               AND c."remoteJid" LIKE '%@s.whatsapp.net'
               AND c."remoteJid" NOT LIKE '0@%'
               AND c."pushName" IS NOT NULL
@@ -1226,7 +1248,7 @@ export async function dbFindContactsByNameOrPhone(params: {
           SELECT c."remoteJid", c."pushName"
           FROM evolution."Contact" c
           JOIN evolution."Instance" i ON c."instanceId" = i.id
-          WHERE (i.name = ${instName} OR i.name = 'obey')
+          WHERE i.name = ${instName}
             AND c."remoteJid" LIKE '%@s.whatsapp.net'
             AND c."remoteJid" NOT LIKE '0@%'
             AND (
@@ -1419,7 +1441,12 @@ export async function dbRecordStatusComment(params: {
   }
 }
 
-export async function dbHasRecentStatusComment(posterPhone: string, hours: number = 12): Promise<boolean> {
+export async function dbHasRecentStatusComment(
+  posterPhone: string,
+  hours: number = 12,
+  workspaceId?: string | null,
+  instanceName?: string | null
+): Promise<boolean> {
   const db = getSql();
   if (!db) return false;
   try {
@@ -1428,6 +1455,7 @@ export async function dbHasRecentStatusComment(posterPhone: string, hours: numbe
       const rows = await db`
         SELECT id FROM workspace_status_comments
         WHERE poster_phone = ${posterPhone}
+          AND (${!workspaceId && !instanceName} OR workspace_id = ${workspaceId || null} OR instance_name = ${instanceName || null})
           AND created_at > NOW() - INTERVAL '2 minutes'
         LIMIT 1
       `;
@@ -1436,6 +1464,7 @@ export async function dbHasRecentStatusComment(posterPhone: string, hours: numbe
     const rows = await db`
       SELECT id FROM workspace_status_comments
       WHERE poster_phone = ${posterPhone}
+        AND (${!workspaceId && !instanceName} OR workspace_id = ${workspaceId || null} OR instance_name = ${instanceName || null})
         AND created_at > NOW() - (${hours} || ' hours')::INTERVAL
       LIMIT 1
     `;
@@ -2267,20 +2296,23 @@ export async function dbIsPhoneExcludedFromStatusComments(
       }
     }
 
-    // 2. Also check global / Main Obey setting if applicable
-    const { getSetting } = await import("@/lib/settings");
-    const globalRaw = await getSetting("STATUS_EXCLUDED_PHONES");
-    if (globalRaw) {
-      try {
-        const parsed: (StatusExcludedContact | string)[] = JSON.parse(globalRaw);
-        if (Array.isArray(parsed)) {
-          const match = parsed.some((item) => {
-            const p = typeof item === "string" ? item : item.phone;
-            return phonesMatch(p, cleanPhone);
-          });
-          if (match) return true;
-        }
-      } catch {}
+    // 2. Also check global / Main Obey setting ONLY if Main Obey
+    const isMainObey = !workspaceId || workspaceId === "ws_femi_default" || workspaceId === "femi-adeleke";
+    if (isMainObey) {
+      const { getSetting } = await import("@/lib/settings");
+      const globalRaw = await getSetting("STATUS_EXCLUDED_PHONES");
+      if (globalRaw) {
+        try {
+          const parsed: (StatusExcludedContact | string)[] = JSON.parse(globalRaw);
+          if (Array.isArray(parsed)) {
+            const match = parsed.some((item) => {
+              const p = typeof item === "string" ? item : item.phone;
+              return phonesMatch(p, cleanPhone);
+            });
+            if (match) return true;
+          }
+        } catch {}
+      }
     }
   } catch (err) {
     console.warn("dbIsPhoneExcludedFromStatusComments error:", err);

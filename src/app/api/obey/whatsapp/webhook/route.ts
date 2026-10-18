@@ -135,9 +135,46 @@ async function handleObeyBusinessOwnerTurn(params: {
   historyText: string;
   instanceName: string;
   reply: (text: string) => Promise<void>;
+  visionMedia?: { base64: string; mimetype: string } | null;
+  docMedia?: { base64: string; mimetype: string } | null;
+  documentFileName?: string;
+  isSticker?: boolean;
 }) {
-  const { currentWs, userText, replyTo, pushName, historyText, instanceName, reply } = params;
+  const {
+    currentWs,
+    userText,
+    replyTo,
+    pushName,
+    historyText,
+    instanceName,
+    reply,
+    visionMedia,
+    docMedia,
+    documentFileName,
+    isSticker,
+  } = params;
   const lower = userText.toLowerCase().trim();
+
+  // Sticker reaction for owner
+  if (isSticker) {
+    const stickerReplies = [
+      `Haha, nice sticker Boss! 😄 Wetin we dey tackle for ${currentWs.name} today?`,
+      `Love the sticker vibe, Boss! 🔥 How can I assist you with ${currentWs.name} right now?`,
+      `Sharp sticker, Boss! ⚡ What would you like to work on for ${currentWs.name}?`,
+    ];
+    const replyTxt = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
+    await reply(replyTxt);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-stk-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs.name,
+        role: "assistant",
+        content: replyTxt,
+      });
+    } catch {}
+    return;
+  }
 
   // 0. Intelligent Scheduled Tasks & Reminders Handling
   const taskTurn = await handleScheduledTaskConversation({
@@ -310,13 +347,31 @@ Your role and personality:
 ${getObeyBusinessManualKnowledge(platformPricing)}
 ${getMainObeyFlagshipKnowledge()}`;
 
-  const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
-
-  const aiRes = await executeAICompletion({
-    systemPrompt,
-    userPrompt,
-    temperature: 0.7,
-  });
+  let aiRes: any;
+  if (visionMedia?.base64) {
+    aiRes = await executeAICompletionWithMedia({
+      systemPrompt,
+      userPrompt: `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss sent this image with note: "${userText}". Review it in relation to ${currentWs.name} business operations and advise Boss directly:`,
+      mediaBase64: visionMedia.base64,
+      mimeType: visionMedia.mimetype || "image/jpeg",
+      temperature: 0.5,
+    });
+  } else if (docMedia?.base64) {
+    aiRes = await executeAICompletionWithMedia({
+      systemPrompt,
+      userPrompt: `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss sent this document (${documentFileName || "Document"}) with note: "${userText}". Review its contents in relation to ${currentWs.name} business operations and advise Boss directly:`,
+      mediaBase64: docMedia.base64,
+      mimeType: docMedia.mimetype || "application/pdf",
+      temperature: 0.3,
+    });
+  } else {
+    const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
+    aiRes = await executeAICompletion({
+      systemPrompt,
+      userPrompt,
+      temperature: 0.7,
+    });
+  }
 
   let replyText = aiRes.text;
   if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
@@ -350,8 +405,45 @@ async function handleObeyBusinessCustomerTurn(params: {
   historyText: string;
   instanceName: string;
   reply: (text: string) => Promise<void>;
+  visionMedia?: { base64: string; mimetype: string } | null;
+  docMedia?: { base64: string; mimetype: string } | null;
+  documentFileName?: string;
+  isSticker?: boolean;
 }) {
-  const { currentWs, userText, replyTo, pushName, historyText, instanceName, reply } = params;
+  const {
+    currentWs,
+    userText,
+    replyTo,
+    pushName,
+    historyText,
+    instanceName,
+    reply,
+    visionMedia,
+    docMedia,
+    documentFileName,
+    isSticker,
+  } = params;
+
+  // Sticker reaction for customer
+  if (isSticker) {
+    const stickerReplies = [
+      `Thanks for the sticker! 😊 How can I help you today with ${currentWs.name}?`,
+      `Nice sticker! 👍 Let me know if you have any questions about our products or services!`,
+      `Great vibe! ✨ How can I assist you today?`,
+    ];
+    const replyTxt = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
+    await reply(replyTxt);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-stk-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs.name,
+        role: "assistant",
+        content: replyTxt,
+      });
+    } catch {}
+    return;
+  }
 
   const [wsSettings, userFullMemory] = await Promise.all([
     dbGetWorkspaceSettings(currentWs.id),
@@ -489,13 +581,31 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
     }
   }
 
-  const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
-
-  const aiRes = await executeAICompletion({
-    systemPrompt,
-    userPrompt,
-    temperature: 0.5,
-  });
+  let aiRes: any;
+  if (visionMedia?.base64) {
+    aiRes = await executeAICompletionWithMedia({
+      systemPrompt,
+      userPrompt: `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer sent an image with note: "${userText}". Analyze this image in relation to our business products and services catalog, and answer them directly in 1-2 sentences:`,
+      mediaBase64: visionMedia.base64,
+      mimeType: visionMedia.mimetype || "image/jpeg",
+      temperature: 0.5,
+    });
+  } else if (docMedia?.base64) {
+    aiRes = await executeAICompletionWithMedia({
+      systemPrompt,
+      userPrompt: `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer sent a document (${documentFileName || "Document"}) with note: "${userText}". Review this document and answer them directly in 1-2 sentences:`,
+      mediaBase64: docMedia.base64,
+      mimeType: docMedia.mimetype || "application/pdf",
+      temperature: 0.3,
+    });
+  } else {
+    const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
+    aiRes = await executeAICompletion({
+      systemPrompt,
+      userPrompt,
+      temperature: 0.5,
+    });
+  }
 
   let replyText = aiRes.text;
   if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
@@ -559,23 +669,27 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Resolve Workspace by Evolution instance name or connected bot phone
+  const isMainObeyInstance = !instanceName || instanceName === "obey" || instanceName === "default" || instanceName === "obey_default";
   let currentWs: any = null;
-  if (instanceName && instanceName !== "obey" && instanceName !== "default") {
+  if (!isMainObeyInstance) {
     currentWs = await dbGetWorkspaceByInstanceName(instanceName);
+    if (!currentWs && connectedOwner) {
+      currentWs = await dbGetWorkspaceByInstanceName(connectedOwner);
+    }
+    if (!currentWs) {
+      currentWs = await dbGetWorkspaceBySlug(instanceName.replace(/^obey-/, ""));
+    }
+  } else {
+    currentWs = (await dbGetWorkspaceById("ws_femi_default")) || (await dbGetWorkspaceBySlug("femi-adeleke"));
   }
-  if (!currentWs && connectedOwner) {
-    currentWs = await dbGetWorkspaceByInstanceName(connectedOwner);
-  }
-  if (!currentWs) {
-    currentWs = await dbGetWorkspaceBySlug("femi-adeleke");
-  }
-  const wsId = currentWs ? currentWs.id : "ws_femi_default";
-  const isDefaultFemi = !currentWs || currentWs.slug === "femi-adeleke";
 
-  const ownerClean = (currentWs?.owner_phone || FEMI_PERSONAL_NUMBER).replace(/\D/g, "");
+  const wsId = currentWs ? currentWs.id : (isMainObeyInstance ? "ws_femi_default" : "default");
+  const isDefaultFemi = isMainObeyInstance && (!currentWs || currentWs.slug === "femi-adeleke" || currentWs.id === "ws_femi_default");
+
+  const ownerClean = (currentWs?.owner_phone || (isDefaultFemi ? FEMI_PERSONAL_NUMBER : "")).replace(/\D/g, "");
   const isOwner = isDefaultFemi
     ? replyTo === FEMI_PERSONAL_NUMBER
-    : (replyTo.endsWith(ownerClean.slice(-10)) || replyTo === FEMI_PERSONAL_NUMBER);
+    : (ownerClean ? (replyTo.endsWith(ownerClean.slice(-10)) || replyTo === ownerClean) : false);
 
   const isFemi = isDefaultFemi && (replyTo === FEMI_PERSONAL_NUMBER);
 
@@ -762,7 +876,148 @@ async function processMessage(params: ProcessMessageParams) {
     return;
   }
 
-  // Asynchronously extract and commit personal memory facts to DB in background
+  // 2. Load conversation history (Fetch recent 40 messages, keep last 25 turns)
+  const pastMessages = await dbGetGuestMessages(replyTo, 40);
+  const historyText = pastMessages
+    .slice(-25)
+    .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
+    .join("\n");
+
+  // ==============================================================
+  // OBEY BUSINESS WORKSPACE ROUTER (Airtight Strict Tenant Isolation)
+  // Non-Main-Obey instances (e.g. AutoLearn Spot, Moonvibez, customer bots)
+  // MUST NEVER reach Main Obey's personal code, memory, settings, or artifacts!
+  // ==============================================================
+  if (!isDefaultFemi && currentWs) {
+    // Proactive First-Contact Notification to Owner & Welcome for new leads
+    if (!isOwner && pastMessages.length <= 1) {
+      try {
+        const timeWAT = formatToWAT(new Date());
+        const notifyPhone = currentWs.owner_phone || FEMI_PERSONAL_NUMBER;
+        const firstContactAlert =
+          `👋 *New Lead Initiated Chat with ${currentWs.name}!*\n\n` +
+          `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
+          `• *Time:* ${timeWAT} (WAT)\n` +
+          `• *First Message:* "${userText}"\n\n` +
+          `_Obey Business AI is actively assisting them live._`;
+        await sendWhatsAppMessage(firstContactAlert, notifyPhone, instanceName);
+      } catch (e) {
+        console.warn("[WA] First contact alert error:", e);
+      }
+
+      // Welcome new users with concise showcase
+      const isFirstGreeting =
+        /^(hi|hello|hey|good morning|good afternoon|good evening|who are you|what can you do|start|help)\b/i.test(lower.trim()) ||
+        pastMessages.length === 0;
+
+      if (isFirstGreeting) {
+        const welcomeName = pushName ? `, ${pushName}` : "";
+        const wsSettings = await dbGetWorkspaceSettings(wsId);
+        let welcomeText = "";
+        if (wsSettings?.whatsapp_welcome) {
+          welcomeText = wsSettings.whatsapp_welcome.replace(/\{name\}/g, pushName || "there");
+        } else {
+          welcomeText = `👋 *Hello${welcomeName}! Welcome to ${currentWs.name}.*\n\nI am your 24/7 AI business assistant powered by Obey. I can answer questions about our catalog, pricing, services, and take your orders or bookings anytime!\n\nHow can I help you today?`;
+        }
+
+        await reply(welcomeText);
+        try {
+          await dbAddGuestMessage({
+            id: `guest-welcome-${Date.now()}`,
+            phone_number: replyTo,
+            sender_name: currentWs.name,
+            role: "assistant",
+            content: welcomeText,
+          });
+        } catch {}
+        return;
+      }
+    }
+
+    // Keyword rule triggers for customer leads
+    if (!isOwner && userText && !visionMedia?.base64 && !docMedia?.base64) {
+      try {
+        const rules = await dbGetWorkspaceRules(wsId);
+        const cleanUserText = userText.toLowerCase();
+
+        for (const rule of rules) {
+          if (!rule.is_active) continue;
+          const matched = rule.trigger_keywords.some((kw) => {
+            const cleanKw = kw.toLowerCase().trim();
+            if (!cleanKw) return false;
+            const escaped = cleanKw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return new RegExp(`(^|\\W)${escaped}($|\\W)`, "i").test(cleanUserText);
+          });
+
+          if (matched) {
+            if (/\b(?:not|don'?t|no)\s+(?:want|need|ask(?:ing)?\s+for)?\s*(?:a\s+)?call\b/i.test(cleanUserText)) continue;
+            if (cleanUserText.length > 60 || /\b(help me message|message|send a message|wasbot|status)\b/i.test(cleanUserText)) continue;
+
+            console.log(`[WA] Triggered Keyword Rule (${currentWs.name}): "${rule.trigger_keywords.join(", ")}" -> ${rule.action}`);
+            await reply(rule.response_text);
+
+            await dbAddGuestMessage({
+              id: `guest-asst-${Date.now()}`,
+              phone_number: replyTo,
+              sender_name: currentWs.name,
+              role: "assistant",
+              content: rule.response_text,
+            });
+
+            await dbUpsertWorkspaceLead({
+              workspace_id: wsId,
+              phone: replyTo,
+              name: pushName || "WhatsApp User",
+              source: "whatsapp",
+              status: rule.action === "collect_order" ? "interested" : "lead",
+              intent_summary: `Triggered rule [${rule.trigger_keywords.slice(0, 3).join(", ")}] with: "${userText.slice(0, 80)}"`,
+              last_message: userText,
+            });
+
+            return;
+          }
+        }
+      } catch (ruleErr) {
+        console.warn("[WA] Workspace rule evaluation error:", ruleErr);
+      }
+    }
+
+    if (isOwner) {
+      await handleObeyBusinessOwnerTurn({
+        currentWs,
+        userText,
+        replyTo,
+        pushName,
+        historyText,
+        instanceName,
+        reply,
+        visionMedia,
+        docMedia,
+        documentFileName,
+        isSticker: params.isSticker,
+      });
+      return;
+    } else {
+      await handleObeyBusinessCustomerTurn({
+        currentWs,
+        userText,
+        replyTo,
+        pushName,
+        historyText,
+        instanceName,
+        reply,
+        visionMedia,
+        docMedia,
+        documentFileName,
+        isSticker: params.isSticker,
+      });
+      return;
+    }
+  }
+
+  // ==============================================================
+  // MAIN OBEY PERSONAL ASSISTANT PIPELINE (Strictly for Femi Adeleke & Flagship Instance)
+  // ==============================================================
   if (userText && userText.length >= 10 && userText !== "[Unclear Voice Note]") {
     autoLearnUserMemory({
       userIdentifier: replyTo,
@@ -771,13 +1026,6 @@ async function processMessage(params: ProcessMessageParams) {
       isOwner,
     }).catch((memErr) => console.warn("[Memory Auto-Learn Error]:", memErr));
   }
-
-  // 2. Load conversation history (Fetch recent 40 messages, keep last 25 turns)
-  const pastMessages = await dbGetGuestMessages(replyTo, 40);
-  const historyText = pastMessages
-    .slice(-25)
-    .map((m) => `${m.role === "user" ? (pushName || "User") : "Obey"}: ${m.content}`)
-    .join("\n");
 
   // Dedicated Multimodal WhatsApp Sticker Decoding & Vision Banter
   if (params.isSticker) {
@@ -1123,33 +1371,6 @@ How can I help you today?`;
     }
   }
 
-  // 5.8 OBEY BUSINESS WORKSPACE ROUTER (Strict Tenant Isolation)
-  if (!isDefaultFemi && currentWs) {
-    if (isOwner) {
-      await handleObeyBusinessOwnerTurn({
-        currentWs,
-        userText,
-        replyTo,
-        pushName,
-        historyText,
-        instanceName,
-        reply,
-      });
-      return;
-    } else {
-      await handleObeyBusinessCustomerTurn({
-        currentWs,
-        userText,
-        replyTo,
-        pushName,
-        historyText,
-        instanceName,
-        reply,
-      });
-      return;
-    }
-  }
-
   // 6. DYNAMIC COMPANION ENGINE (Zero-Regex Universal Task & Companion Processing)
   try {
     const companionRes = await processDynamicCompanionTurn({
@@ -1160,6 +1381,7 @@ How can I help you today?`;
       historyText,
       isVoiceNote,
       instanceName,
+      workspaceId: wsId,
     });
 
     const finalReply = companionRes.reply;
@@ -1425,14 +1647,14 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
 
         // 1. Identify workspace / instance
         let currentWs: any = null;
-        if (instanceName && instanceName !== "obey" && instanceName !== "default") {
+        const isMainObeyInstance = !instanceName || instanceName === "obey" || instanceName === "default" || instanceName === "obey_default";
+        if (!isMainObeyInstance) {
           currentWs = await dbGetWorkspaceByInstanceName(instanceName);
-        }
-        if (!currentWs) {
-          currentWs = await dbGetWorkspaceBySlug("femi-adeleke");
-        }
-        if (!currentWs) {
-          currentWs = await dbGetWorkspaceById("ws_femi_default");
+          if (!currentWs) {
+            currentWs = await dbGetWorkspaceBySlug(instanceName.replace(/^obey-/, ""));
+          }
+        } else {
+          currentWs = (await dbGetWorkspaceById("ws_femi_default")) || (await dbGetWorkspaceBySlug("femi-adeleke"));
         }
 
         // 2. Check settings (Unified single feature: Viewing & AI Commenting are active together)
@@ -1455,22 +1677,27 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
           return;
         }
 
-        // 3. Auto-View Status (Mark as Read in WhatsApp)
+        // 3. Auto-View Status (Mark as Read in WhatsApp strictly within this instance)
         if (msgObj.key?.id) {
           await markWhatsAppMessageRead(instanceName, "status@broadcast", msgObj.key.id, readParticipant, phoneJid);
           console.log(`[WA Status] Viewed status story ${msgObj.key.id} from ${posterPhone} (${instanceName})`);
-
-          // If the status is from Femi Adeleke (the Boss), ensure Main Obey also marks it as viewed!
-          if (instanceName !== "obey" && (posterPhone === "2348120934828" || phoneJid.includes("8120934828"))) {
-            await markWhatsAppMessageRead("obey", "status@broadcast", msgObj.key.id, readParticipant, phoneJid);
-            console.log(`[WA Status] Main Obey marked Boss ${posterPhone}'s status as viewed!`);
-          }
         }
 
         // 4. AI Status Commenting
         if (posterPhone && posterPhone.length >= 10 && posterPhone.length <= 13) {
           // Guard: Don't comment on the bot's own posted status
           if (msgObj.key?.fromMe) {
+            return;
+          }
+
+          // Guard: Never comment on the business owner or platform founder's status
+          const ownerClean = (currentWs?.owner_phone || "").replace(/\D/g, "");
+          const isOwnerOrFounder =
+            (ownerClean && (posterPhone.endsWith(ownerClean.slice(-10)) || posterPhone === ownerClean)) ||
+            posterPhone === FEMI_PERSONAL_NUMBER ||
+            posterPhone.endsWith(FEMI_PERSONAL_NUMBER.slice(-10));
+          if (isOwnerOrFounder) {
+            console.log(`[WA Status] Skipping status comment: Poster is owner or platform founder (${posterPhone}).`);
             return;
           }
 
@@ -1542,7 +1769,7 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
           }
 
           // Rate limit cooldown per contact
-          const alreadyCommented = await dbHasRecentStatusComment(posterPhone, rateLimitHours);
+          const alreadyCommented = await dbHasRecentStatusComment(posterPhone, rateLimitHours, currentWs?.id, instanceName);
           if (!alreadyCommented) {
             const statusText = (
               msgObj.message?.conversation ||
@@ -1613,20 +1840,6 @@ Output ONLY the comment text.`,
                 }
 
                 console.log(`[WA Status] Commented on ${posterPhone}'s status: "${comment}" (quoted reply)`);
-
-                // If Boss posted, also dispatch a personalized Chief-of-Staff salute from Main Obey!
-                if (instanceName !== "obey" && (posterPhone === "2348120934828" || phoneJid.includes("8120934828"))) {
-                  const bossSalute = "Boss! Love this update. 🔥 Obey is right behind you!";
-                  await sendWhatsAppMessage(bossSalute, posterPhone, "obey", quotedStatus);
-                  try {
-                    await dbAddChatMessage({
-                      id: `wa-asst-boss-${Date.now()}`,
-                      role: "assistant",
-                      content: `[Obey commented on your WhatsApp Status]: "${bossSalute}"`,
-                    });
-                  } catch {}
-                  console.log(`[WA Status] Main Obey sent direct Boss comment to ${posterPhone}`);
-                }
               }
             }
           }

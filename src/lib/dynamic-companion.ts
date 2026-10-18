@@ -9,6 +9,8 @@ import {
   dbGetLatestExecutedUserAction,
   dbGetWorkspaceSettings,
   dbGetWorkspaceBySlug,
+  dbGetWorkspaceById,
+  dbGetWorkspaceByInstanceName,
   dbGetPlatformPricing,
   dbListWorkspaces,
 } from "./db";
@@ -146,8 +148,9 @@ export async function processDynamicCompanionTurn(params: {
   mediaMimeType?: string;
   isVoiceNote?: boolean;
   instanceName?: string;
+  workspaceId?: string;
 }): Promise<CompanionResponse> {
-  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType, isVoiceNote = false, instanceName } = params;
+  const { userIdentifier, userText, senderName, channel = "whatsapp", historyText = "", mediaBase64, mediaMimeType, isVoiceNote = false, instanceName, workspaceId } = params;
   const lower = userText.toLowerCase().trim();
   const isFemi = userIdentifier === "2348120934828";
   const { timeStr: watTime, dateStr: watDate } = getNigerianTime();
@@ -265,20 +268,22 @@ export async function processDynamicCompanionTurn(params: {
   // 2.5 CONTACT SEARCH & BUCKET MESSAGING FOR OBEY
   try {
     const { handleOwnerContactOrBucketTurn } = await import("@/lib/contact-agent");
-    const workspaces = await dbListWorkspaces();
-    let targetWs = workspaces?.find((w) => w.whatsapp_instance_name === instanceName);
-    if (!targetWs && userIdentifier) {
-      const cleanUserPhone = userIdentifier.replace(/\D/g, "");
-      targetWs = workspaces?.find((w) => w.owner_phone?.replace(/\D/g, "") === cleanUserPhone);
+    let targetWs: any = null;
+    if (workspaceId) {
+      targetWs = await dbGetWorkspaceById(workspaceId);
+    }
+    if (!targetWs && instanceName && instanceName !== "obey" && instanceName !== "default") {
+      targetWs = await dbGetWorkspaceByInstanceName(instanceName);
     }
     if (!targetWs) {
-      targetWs = workspaces?.[0];
+      targetWs = (await dbGetWorkspaceById("ws_femi_default")) || (await dbGetWorkspaceBySlug("femi-adeleke"));
     }
     const resolvedInstance = instanceName || targetWs?.whatsapp_instance_name || "obey";
+    const resolvedWorkspaceId = targetWs?.id || "ws_femi_default";
 
     if (targetWs) {
       const contactTurn = await handleOwnerContactOrBucketTurn({
-        workspaceId: targetWs.id,
+        workspaceId: resolvedWorkspaceId,
         instanceName: resolvedInstance,
         userPhone: userIdentifier,
         userText,
@@ -301,8 +306,8 @@ export async function processDynamicCompanionTurn(params: {
     const multiTaskRes = await processMultiTaskVoiceOrText({
       userText,
       recipientPhone: userIdentifier || "2348120934828",
-      workspaceId: "ws_femi_default",
-      instanceName: "obey",
+      workspaceId: workspaceId || "ws_femi_default",
+      instanceName: instanceName || "obey",
       isVoiceNote,
     });
     if (multiTaskRes.handled && multiTaskRes.replyText) {
@@ -315,15 +320,14 @@ export async function processDynamicCompanionTurn(params: {
   }
 
   // 2.6 SCHEDULED TASKS & REMINDERS FOR MAIN OBEY
-
   try {
     const { handleScheduledTaskConversation } = await import("@/lib/scheduled-task-engine");
     const taskTurn = await handleScheduledTaskConversation({
       userText,
       historyText,
       recipientPhone: userIdentifier || "2348120934828",
-      workspaceId: "ws_femi_default",
-      instanceName: "obey",
+      workspaceId: workspaceId || "ws_femi_default",
+      instanceName: instanceName || "obey",
       senderName: "Obey",
     });
     if (taskTurn.handled && taskTurn.replyText) {
