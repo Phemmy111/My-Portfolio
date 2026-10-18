@@ -679,6 +679,13 @@ export async function sendWhatsAppStatusPost(params: {
       }
     }
 
+    // 3. CRITICAL: Include the phone's OWN number (botOwnerNumber) in statusJidList!
+    // In WhatsApp Multi-Device protocol, linked devices must address the primary phone JID
+    // so the device receives the stanza and renders the post under "My status" in the WhatsApp mobile app.
+    if (botOwnerNumber) {
+      jidList.push(`${botOwnerNumber}@s.whatsapp.net`);
+    }
+
     // Clean, validate and deduplicate recipient JIDs
     jidList = Array.from(new Set(jidList)).filter((jid) => {
       if (!jid || typeof jid !== "string") return false;
@@ -686,15 +693,8 @@ export async function sendWhatsAppStatusPost(params: {
       const digits = jid.replace(/[^0-9]/g, "");
       if (digits.length < 8) return false;
       if (digits === "0") return false;
-      // In WhatsApp protocol, the bot's own number cannot be a recipient of its own broadcast status
-      if (botOwnerNumber && digits === botOwnerNumber) return false;
       return true;
     });
-
-    // Fallback: If still empty (e.g. brand new instance without synced contacts), ensure at least 1 recipient
-    if (jidList.length === 0 && botOwnerNumber) {
-      jidList.push(`${botOwnerNumber}@s.whatsapp.net`);
-    }
 
     // Build proper Evolution API v2 sendStatus payload
     const payload: any = cleanMediaUrl
