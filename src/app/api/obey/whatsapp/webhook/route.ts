@@ -873,17 +873,69 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
-  // 1b. Check if contact is complaining or requesting to stop status comments
-  const isStatusComplaint =
-    /\b(stop|don'?t|never|quit|cease|remove\s+me\s+from|exclude\s+me\s+from)\b.*\b(comment|commenting|reply|replying|react|reacting)\b.*\b(status|statuses|story|stories)\b/i.test(lower) ||
-    /\bwhy\s+(are\s+you|u|do\s+you)\s+(always\s+)?(comment|commenting|reply|replying)\b.*\b(status|story|stories)\b/i.test(lower) ||
-    /\b(stop|don'?t)\s+(comment|commenting|reply|replying)\s+(on\s+)?(my\s+)?(status|story|stories)\b/i.test(lower) ||
-    /\b(remove|exclude)\s+(my\s+number|me)\s+from\s+status\b/i.test(lower);
+  // 2. Load conversation history early (Fetch recent 40 messages, keep last 25 turns)
+  const pastMessages = await dbGetGuestMessages(replyTo, 40);
+  const historyText = pastMessages
+    .slice(-25)
+    .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
+    .join("\n");
+
+  // Check if recent conversation turns discussed status updates or stories
+  const recentAssistantMessages = pastMessages
+    .filter((m) => m.role === "assistant")
+    .slice(-3)
+    .map((m) => m.content.toLowerCase())
+    .join(" ");
+
+  const wasRecentStatusTopic =
+    recentAssistantMessages.includes("status") ||
+    recentAssistantMessages.includes("story") ||
+    recentAssistantMessages.includes("replied to your");
+
+  // 1b. Check if contact is complaining, opting out, or asking to stop status viewing/commenting
+  const isDirectStatusOptOut =
+    /\b(stop|don'?t|never|quit|cease)\s+(checking|viewing|watching|looking\s+at)\s*(it|my\s+status|my\s+story|status|story)?\b/i.test(lower) ||
+    /\bstop\s+checking\b/i.test(lower) ||
+    /\bstop\s+viewing\b/i.test(lower) ||
+    /\bstop\s+watching\b/i.test(lower) ||
+    /\bdon'?t\s+(check|view|watch|look\s+at)\s*(it|my\s+status|my\s+story)?\b/i.test(lower) ||
+    /\bwhy\s+(are\s+you|u|do\s+you)\s+(checking|viewing|watching|looking\s+at)\b/i.test(lower) ||
+    /\b(stop|don'?t|quit|never)\s+(comment|commenting|reply|replying|react|reacting)\b/i.test(lower) ||
+    /\b(remove|exclude)\s+(me|my\s+number)\s*(from\s+(status|story|stories|updates?))?\b/i.test(lower) ||
+    /\b(opt\s*-?\s*out|unsubscribe)\b/i.test(lower);
+
+  const isContextualStatusOptOut =
+    wasRecentStatusTopic &&
+    /\b(stop\s+checking|stop\s+viewing|stop\s+watching|stop\s+it|don'?t\s+check|don'?t\s+view|leave\s+me\s+alone|don'?t|stop)\b/i.test(lower.trim());
+
+  const isStatusComplaint = isDirectStatusOptOut || isContextualStatusOptOut;
+
+  // 1c. Check if contact is requesting complete data deletion / erasure (GDPR & Privacy Compliance)
+  const isDataDeletionRequest =
+    /\b(delete|clear|erase|remove|wipe)\s+(everything|all\s+data|all\s+my\s+data|my\s+data|my\s+chats?|my\s+messages?|all\s+records?)\b/i.test(lower) ||
+    /\b(cleared|deleted|erased|wiped)\s+(in|from)\s+(your\s+)?database\b/i.test(lower) ||
+    /\bdelete\s+my\s+information\b/i.test(lower);
+
+  if (isDataDeletionRequest && !isOwner) {
+    const contactName = pushName || `User ${replyTo.slice(-4)}`;
+    await dbAddStatusExclusion(wsId, replyTo, contactName, "Contact requested data deletion & opt-out");
+    try {
+      const { sql: neonSql } = await import("@/lib/db");
+      await neonSql`DELETE FROM guest_chat_messages WHERE phone_number = ${replyTo}`;
+      await neonSql`DELETE FROM workspace_leads WHERE phone = ${replyTo} OR phone LIKE ${`%${replyTo.slice(-10)}`}`;
+    } catch (e) {
+      console.warn("[Data Deletion] Error wiping records:", e);
+    }
+
+    const deletionReply = `Your request has been completely executed. 🙏 All your message history, leads, and logs have been permanently erased from our database, and your number is strictly excluded from all future automated engagement. Your privacy is fully respected. Farewell!`;
+    await reply(deletionReply);
+    return;
+  }
 
   if (isStatusComplaint && !isOwner) {
     const contactName = pushName || `User ${replyTo.slice(-4)}`;
-    await dbAddStatusExclusion(wsId, replyTo, contactName, "Contact requested opt-out via WhatsApp");
-    const optOutReply = `I am truly sorry for disturbing you! 🙏 I have immediately added your number to our status comment exclusion list. I will never comment on your WhatsApp status updates again. Have a wonderful day ahead!`;
+    await dbAddStatusExclusion(wsId, replyTo, contactName, `Contact requested opt-out: "${userText.slice(0, 40)}"`);
+    const optOutReply = `I am truly sorry for disturbing you! 🙏 I have immediately added your number to our status comment exclusion list. I will never view or comment on your WhatsApp status updates again. Have a wonderful day ahead!`;
     await reply(optOutReply);
     try {
       await dbAddGuestMessage({
@@ -896,13 +948,6 @@ async function processMessage(params: ProcessMessageParams) {
     } catch {}
     return;
   }
-
-  // 2. Load conversation history (Fetch recent 40 messages, keep last 25 turns)
-  const pastMessages = await dbGetGuestMessages(replyTo, 40);
-  const historyText = pastMessages
-    .slice(-25)
-    .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
-    .join("\n");
 
   // ==============================================================
   // OBEY BUSINESS WORKSPACE ROUTER (Airtight Strict Tenant Isolation)
