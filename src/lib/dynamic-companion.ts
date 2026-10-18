@@ -286,6 +286,26 @@ export async function processDynamicCompanionTurn(params: {
     console.warn("[Dynamic Companion] contact/bucket turn fallback:", err);
   }
 
+  // 2.6 SCHEDULED TASKS & REMINDERS FOR MAIN OBEY
+  try {
+    const { handleScheduledTaskConversation } = await import("@/lib/scheduled-task-engine");
+    const taskTurn = await handleScheduledTaskConversation({
+      userText,
+      historyText,
+      recipientPhone: userIdentifier || "2348120934828",
+      workspaceId: "ws_femi_default",
+      instanceName: "obey",
+      senderName: "Obey",
+    });
+    if (taskTurn.handled && taskTurn.replyText) {
+      return {
+        reply: cleanWhatsApp(taskTurn.replyText),
+      };
+    }
+  } catch (err) {
+    console.warn("[Dynamic Companion] scheduled task turn fallback:", err);
+  }
+
   // 3. OBEY AUTONOMOUS AI REASONING & DECISION ENGINE
   // Analyzes semantics, multi-turn dialogue, and context to select the exact right tool with ZERO hardcoded keywords.
   const decisionSystemPrompt = `You are Obey, an autonomous AI executive companion and business assistant.

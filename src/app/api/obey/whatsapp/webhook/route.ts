@@ -57,6 +57,10 @@ import {
   getObeyBusinessManualKnowledge,
   getMainObeyFlagshipKnowledge,
 } from "@/lib/obey-manual-knowledge";
+import {
+  handleScheduledTaskConversation,
+  dispatchDueScheduledTasks,
+} from "@/lib/scheduled-task-engine";
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
@@ -129,6 +133,30 @@ async function handleObeyBusinessOwnerTurn(params: {
 }) {
   const { currentWs, userText, replyTo, pushName, historyText, instanceName, reply } = params;
   const lower = userText.toLowerCase().trim();
+
+  // 0. Intelligent Scheduled Tasks & Reminders Handling
+  const taskTurn = await handleScheduledTaskConversation({
+    userText,
+    historyText,
+    recipientPhone: replyTo,
+    workspaceId: currentWs.id,
+    instanceName,
+    senderName: currentWs.name,
+  });
+
+  if (taskTurn.handled && taskTurn.replyText) {
+    await reply(taskTurn.replyText);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-asst-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs.name,
+        role: "assistant",
+        content: taskTurn.replyText,
+      });
+    } catch {}
+    return;
+  }
 
   // 1. WhatsApp Status Automation Commands: "post status: ...", "status: ...", "put on status: ..."
   if (lower.startsWith("post status:") || lower.startsWith("status:") || lower.startsWith("put on status:")) {
@@ -238,9 +266,15 @@ async function handleObeyBusinessOwnerTurn(params: {
   const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
   const voiceCallLink = `https://obeyai.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}`;
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|can (?:we|i) call)\b/i.test(userText);
+  const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
 
   const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
 You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
+
+CURRENT TIME & DATE IN NIGERIA (WAT / UTC+1):
+• Current Local Time: ${currentWatTime} (West Africa Time, Africa/Lagos)
+• Current Date: ${currentWatDate}
+• Whenever Boss asks for the time, date, or day, ALWAYS provide the exact current time (${currentWatTime} WAT) and date accurately. NEVER guess, estimate, or hallucinate the time!
 
 Business Knowledge:
 ${businessBio}
@@ -356,9 +390,15 @@ async function handleObeyBusinessCustomerTurn(params: {
 
   const voiceCallLink = `https://obeyai.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}&name=${encodeURIComponent(customerName)}`;
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|speak to (?:you|someone)|can (?:we|i) call)\b/i.test(userText);
+  const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
 
   const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".
 You are chatting with ${customerName}.
+
+CURRENT TIME & DATE (WAT / UTC+1):
+• Current Time: ${currentWatTime} (West Africa Time, Africa/Lagos)
+• Current Date: ${currentWatDate}
+• If asked for the time or date, state the current time accurately (${currentWatTime} WAT).
 
 About "${currentWs.name}":
 ${businessBio}
@@ -636,8 +676,8 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
-  // 1a. If Bot Bypass is ON, suppress autonomous AI replies for non-owners (customer chats)
-  if (!isOwner && currentWs?.bot_bypass) {
+  // 1a. If Bot Bypass is ON, suppress autonomous AI replies completely (both customer chats and owner chatter)
+  if (currentWs?.bot_bypass) {
     console.log(`[WA Bot Bypass] Auto-reply suppressed for ${replyTo} because Bot Bypass is ON for ${currentWs?.name}`);
     return;
   }
@@ -1261,6 +1301,9 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
   if (msgObj.key?.fromMe) {
     return NextResponse.json({ ok: true });
   }
+
+  // Check and dispatch any due scheduled tasks asynchronously
+  dispatchDueScheduledTasks().catch(() => {});
 
   // Deduplicate incoming webhook deliveries to prevent double replies
   if (msgObj.key?.id && isDuplicateWebhookMessage(msgObj.key.id)) {

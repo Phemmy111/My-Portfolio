@@ -28,10 +28,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Automatically dispatch any due scheduled statuses
+    // Automatically dispatch any due scheduled statuses and tasks
     try {
       const { dispatchDueScheduledStatuses } = await import("@/lib/status-scheduler");
       await dispatchDueScheduledStatuses();
+      const { dispatchDueScheduledTasks } = await import("@/lib/scheduled-task-engine");
+      await dispatchDueScheduledTasks();
     } catch {}
 
     if (type === "evening") {

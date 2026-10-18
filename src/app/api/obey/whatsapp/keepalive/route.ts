@@ -113,11 +113,21 @@ export async function GET(req: NextRequest) {
       console.warn("[WA Keepalive] Scheduled status dispatcher warning:", schedErr);
     }
 
+    // 5. Automatically check & dispatch any due scheduled reminders & research tasks
+    let scheduledTasksReport = null;
+    try {
+      const { dispatchDueScheduledTasks } = await import("@/lib/scheduled-task-engine");
+      scheduledTasksReport = await dispatchDueScheduledTasks();
+    } catch (taskErr) {
+      console.warn("[WA Keepalive] Scheduled tasks dispatcher warning:", taskErr);
+    }
+
     return NextResponse.json({
       success: true,
       instancesChecked: report.length,
       report,
       scheduledStatusDispatched: scheduledReport,
+      scheduledTasksDispatched: scheduledTasksReport,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
