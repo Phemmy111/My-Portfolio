@@ -87,6 +87,19 @@ async function checkEvolutionKeepAlive() {
   }
 }
 
+const KEEPALIVE_URL = process.env.KEEPALIVE_URL || 'https://obeyai.vercel.app/api/obey/whatsapp/keepalive';
+
+async function pingKeepalive() {
+  try {
+    const res = await fetch(KEEPALIVE_URL);
+    if (!res.ok) {
+      console.warn(`[WA Daemon Keepalive] HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.warn('[WA Daemon Keepalive] Ping error:', err?.message || err);
+  }
+}
+
 // Lightweight HTTP server for Render Free Web Service health checks and keep-alive pings
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -106,4 +119,9 @@ server.listen(PORT, () => {
   // Ping Evolution API every 3 minutes (180,000ms) so Render never spins down into inactivity sleep
   setInterval(checkEvolutionKeepAlive, 180000);
   checkEvolutionKeepAlive();
+
+  // Ping Vercel keepalive every 20s to ensure instant reminder dispatch & scheduled tasks
+  setInterval(pingKeepalive, 20000);
+  pingKeepalive();
 });
+

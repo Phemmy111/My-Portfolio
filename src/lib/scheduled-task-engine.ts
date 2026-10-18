@@ -284,15 +284,17 @@ export async function dispatchDueScheduledTasks(): Promise<{
 }
 
 /**
- * Retrieves pending scheduled tasks for a given phone number.
+ * Retrieves pending scheduled tasks for a given phone number, strictly scoped to a workspace.
  */
-export async function dbGetPendingTasksForPhone(phone: string): Promise<ScheduledTask[]> {
+export async function dbGetPendingTasksForPhone(phone: string, workspaceId?: string | null): Promise<ScheduledTask[]> {
   if (!sql) return [];
   try {
     const cleanPhone = phone.replace(/\D/g, "");
+    const targetWsId = workspaceId || "ws_femi_default";
     const rows = await sql`
       SELECT * FROM obey_scheduled_tasks
       WHERE (recipient_phone = ${cleanPhone} OR recipient_phone = ${phone})
+        AND (workspace_id = ${targetWsId} OR (workspace_id IS NULL AND ${targetWsId} = 'ws_femi_default'))
         AND status = 'pending'
       ORDER BY scheduled_at ASC
       LIMIT 10
@@ -305,17 +307,19 @@ export async function dbGetPendingTasksForPhone(phone: string): Promise<Schedule
 }
 
 /**
- * Cancels a pending scheduled task for a user.
+ * Cancels a pending scheduled task for a user, scoped to their workspace.
  */
-export async function dbCancelTask(taskId: string, phone: string): Promise<boolean> {
+export async function dbCancelTask(taskId: string, phone: string, workspaceId?: string | null): Promise<boolean> {
   if (!sql) return false;
   try {
     const cleanPhone = phone.replace(/\D/g, "");
+    const targetWsId = workspaceId || "ws_femi_default";
     const res = await sql`
       UPDATE obey_scheduled_tasks
       SET status = 'cancelled', updated_at = NOW()
       WHERE id = ${taskId} 
         AND (recipient_phone = ${cleanPhone} OR recipient_phone = ${phone})
+        AND (workspace_id = ${targetWsId} OR (workspace_id IS NULL AND ${targetWsId} = 'ws_femi_default'))
         AND status = 'pending'
       RETURNING id
     `;
@@ -328,6 +332,101 @@ export async function dbCancelTask(taskId: string, phone: string): Promise<boole
     console.error("[Scheduled Task] Cancel error:", err);
     return false;
   }
+}
+
+/**
+ * Deterministically computes the target future Date from natural language time cues.
+ * Completely eliminates LLM timezone hallucinations and off-by-one-hour errors.
+ */
+export function computeTargetScheduledDate(input: {
+  text: string;
+  now?: Date;
+}): { targetDate: Date | null; humanDescription: string | null; needsTime: boolean } {
+  const text = input.text.toLowerCase();
+  const now = input.now || new Date();
+
+  // 1. Relative durations e.g. "in the next 3 minutes", "in 5 minutes", "in 2 hours", "after 10 mins"
+  const relRegex = /\b(?:in\s+(?:the\s+next\s+)?|after\s+)(\d+)\s*(mins?|minutes?|hours?|hrs?|days?|secs?|seconds?)\b/i;
+  const relMatch = text.match(relRegex);
+  if (relMatch) {
+    const val = parseInt(relMatch[1], 10);
+    const unit = relMatch[2].toLowerCase();
+    let mult = 60 * 1000;
+    if (unit.startsWith("sec")) mult = 1000;
+    else if (unit.startsWith("min")) mult = 60 * 1000;
+    else if (unit.startsWith("hour") || unit.startsWith("hr")) mult = 3600 * 1000;
+    else if (unit.startsWith("day")) mult = 86400 * 1000;
+
+    const targetDate = new Date(now.getTime() + val * mult);
+    return {
+      targetDate,
+      humanDescription: `Today at ${formatToWAT(targetDate)} WAT (in ${val} ${unit})`,
+      needsTime: false,
+    };
+  }
+
+  // Common idioms: "in a minute", "in an hour", "in half an hour"
+  if (/\bin\s+(?:a|1)\s*minute\b/i.test(text)) {
+    const targetDate = new Date(now.getTime() + 60 * 1000);
+    return { targetDate, humanDescription: `Today at ${formatToWAT(targetDate)} WAT (in 1 minute)`, needsTime: false };
+  }
+  if (/\bin\s+(?:half\s+an\s+hour|30\s*mins?)\b/i.test(text)) {
+    const targetDate = new Date(now.getTime() + 30 * 60 * 1000);
+    return { targetDate, humanDescription: `Today at ${formatToWAT(targetDate)} WAT (in 30 minutes)`, needsTime: false };
+  }
+  if (/\bin\s+(?:an?|1)\s*hour\b/i.test(text)) {
+    const targetDate = new Date(now.getTime() + 3600 * 1000);
+    return { targetDate, humanDescription: `Today at ${formatToWAT(targetDate)} WAT (in 1 hour)`, needsTime: false };
+  }
+
+  // 2. Absolute time expressions e.g. "at 4:30 pm", "at 9 am", "by 9pm", "at 10:15"
+  const absRegex = /\b(?:at|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+  const absMatch = text.match(absRegex);
+  if (absMatch) {
+    let hour = parseInt(absMatch[1], 10);
+    const min = absMatch[2] ? parseInt(absMatch[2], 10) : 0;
+    const ampm = absMatch[3] ? absMatch[3].toLowerCase() : null;
+
+    if (ampm === "pm" && hour < 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
+
+    // Current time in WAT (Africa/Lagos)
+    const watNow = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+    let targetWatYear = watNow.getFullYear();
+    let targetWatMonth = watNow.getMonth();
+    let targetWatDay = watNow.getDate();
+
+    const isExplicitTomorrow = /\btomorrow\b/i.test(text);
+    if (isExplicitTomorrow) {
+      targetWatDay += 1;
+    } else {
+      const curHour = watNow.getHours();
+      const curMin = watNow.getMinutes();
+      if (hour < curHour || (hour === curHour && min <= curMin)) {
+        targetWatDay += 1;
+      }
+    }
+
+    // Convert WAT (UTC+1) to UTC timestamp: subtract 1 hour
+    const targetUtcMs = Date.UTC(targetWatYear, targetWatMonth, targetWatDay, hour - 1, min, 0);
+    const targetDate = new Date(targetUtcMs);
+
+    const isToday = !isExplicitTomorrow && targetWatDay === watNow.getDate();
+    const dayLabel = isToday ? "Today" : "Tomorrow";
+
+    return {
+      targetDate,
+      humanDescription: `${dayLabel} at ${formatToWAT(targetDate)} WAT`,
+      needsTime: false,
+    };
+  }
+
+  // 3. User said "later" with no time specification
+  if (/\b(?:later|sometime\s+later)\b/i.test(text)) {
+    return { targetDate: null, humanDescription: null, needsTime: true };
+  }
+
+  return { targetDate: null, humanDescription: null, needsTime: false };
 }
 
 /**
@@ -368,7 +467,7 @@ export async function handleScheduledTaskConversation(params: {
 
   // 1. Handle List Query
   if (isListQuery) {
-    const pending = await dbGetPendingTasksForPhone(recipientPhone);
+    const pending = await dbGetPendingTasksForPhone(recipientPhone, workspaceId);
     if (pending.length === 0) {
       return {
         handled: true,
@@ -400,7 +499,7 @@ export async function handleScheduledTaskConversation(params: {
 
   // 2. Handle Cancel Query
   if (isCancelQuery) {
-    const pending = await dbGetPendingTasksForPhone(recipientPhone);
+    const pending = await dbGetPendingTasksForPhone(recipientPhone, workspaceId);
     if (pending.length === 0) {
       return {
         handled: true,
@@ -414,7 +513,7 @@ export async function handleScheduledTaskConversation(params: {
       const idx = parseInt(numberMatch[1], 10) - 1;
       if (idx >= 0 && idx < pending.length) {
         const target = pending[idx];
-        await dbCancelTask(target.id, recipientPhone);
+        await dbCancelTask(target.id, recipientPhone, workspaceId);
         return {
           handled: true,
           replyText: `🗑️ *Task Cancelled!*\n\nI have cancelled your scheduled reminder:\n👉 *${target.prompt}*`,
@@ -425,7 +524,7 @@ export async function handleScheduledTaskConversation(params: {
     // Check if user said "cancel all"
     if (lower.includes("all")) {
       for (const t of pending) {
-        await dbCancelTask(t.id, recipientPhone);
+        await dbCancelTask(t.id, recipientPhone, workspaceId);
       }
       return {
         handled: true,
@@ -435,38 +534,57 @@ export async function handleScheduledTaskConversation(params: {
 
     // Otherwise, cancel the most recently scheduled one
     const mostRecent = pending[0];
-    await dbCancelTask(mostRecent.id, recipientPhone);
+    await dbCancelTask(mostRecent.id, recipientPhone, workspaceId);
     return {
       handled: true,
       replyText: `🗑️ *Task Cancelled!*\n\nI have cancelled your scheduled reminder:\n👉 *${mostRecent.prompt}*`,
     };
   }
 
-  // 3. Handle Schedule / Ask-Time Request with AI Parsing
+  // 3. Handle Schedule / Ask-Time Request
   try {
+    // 3A. Deterministic Fast-Path: Compute exact time without LLM timezone distortion
+    const fastTime = computeTargetScheduledDate({ text: userText, now });
+
+    if (fastTime.needsTime) {
+      const cleaned = userText.replace(/^(?:remind\s+me(?:\s+to)?|reminder\s+for|set\s+a\s+reminder(?:\s+to)?)\s*/i, "").replace(/\b(?:later|sometime\s+later)\b/gi, "").trim();
+      const promptSnippet = cleaned || "this task";
+      return {
+        handled: true,
+        replyText:
+          `Sure Boss! When should I remind you about *${promptSnippet}*? ⏰\n\n` +
+          `• *In a few minutes:* e.g. "In 15 minutes"\n` +
+          `• *In a few hours:* e.g. "In 2 hours"\n` +
+          `• *At a specific time:* e.g. "At 4:30 PM" or "Tomorrow at 9:00 AM"`,
+      };
+    }
+
+    let finalTargetDate: Date | null = fastTime.targetDate;
+    let finalHumanDesc: string | null = fastTime.humanDescription;
+
     const parsingPrompt = `You are a high-precision time & scheduling parser for Obey AI.
 Your job is to parse the user's request for a reminder or scheduled task.
 
 Current Nigerian Local Time (WAT): ${currentWatTime}
 Current Date (WAT): ${currentWatDate}
-Current Reference UTC Timestamp: ${now.toISOString()}
 
 Determine the user's intent:
-1. Is the user asking to be reminded of something or asking Obey to research something later?
+1. Is the user asking to be reminded of something or asking Obey to research/check something later?
 2. What is the task prompt (what to remind or research)?
-3. Did the user specify a time or delay (e.g. "in 10 minutes", "in 2 hours", "tomorrow at 9am", "at 4:30 pm", "later")?
-4. If the user said "remind me later" WITHOUT specifying any time or duration, set "needs_time": true.
-5. If the time is provided or inferred, compute "scheduled_iso": the exact future ISO 8601 string calculated relative to the current WAT time.
-6. Provide "scheduled_human": a friendly string describing when it is due in WAT (e.g. "Today at 4:00 AM WAT (in 45 minutes)", "Tomorrow at 9:00 AM WAT").
+3. If delay is relative, output "delay_seconds" (e.g. 180 for 3 mins, 300 for 5 mins, 7200 for 2 hours).
+4. If absolute time, output "target_wat_hour" (0-23), "target_wat_minute" (0-59), and "is_tomorrow" (boolean).
+5. If user said "remind me later" with NO time, set "needs_time": true.
 
-Return ONLY a valid JSON object matching this schema:
+Return ONLY a valid JSON object:
 {
   "is_task": boolean,
   "needs_time": boolean,
   "task_type": "reminder" | "research",
   "task_prompt": string,
-  "scheduled_iso": string | null,
-  "scheduled_human": string | null
+  "delay_seconds": number | null,
+  "target_wat_hour": number | null,
+  "target_wat_minute": number | null,
+  "is_tomorrow": boolean | null
 }`;
 
     const userContext = `${historyText ? `RECENT CONVERSATION:\n${historyText}\n\n` : ""}User message: "${userText}"`;
@@ -487,11 +605,12 @@ Return ONLY a valid JSON object matching this schema:
     }
 
     if (!parsed || !parsed.is_task) {
-      return { handled: false };
+      if (!finalTargetDate) {
+        return { handled: false };
+      }
     }
 
-    // Case A: User said "remind me later" or didn't provide a time
-    if (parsed.needs_time || !parsed.scheduled_iso) {
+    if (parsed?.needs_time && !finalTargetDate) {
       const promptSnippet = parsed.task_prompt || "this task";
       return {
         handled: true,
@@ -503,24 +622,48 @@ Return ONLY a valid JSON object matching this schema:
       };
     }
 
-    // Case B: Time is resolved -> Schedule the task!
-    const targetDate = new Date(parsed.scheduled_iso);
-    if (isNaN(targetDate.getTime()) || targetDate.getTime() <= now.getTime()) {
-      // If parsed time is in the past or invalid, ask for clarification
+    // If fast deterministic parser didn't match, compute date from AI structured numbers
+    if (!finalTargetDate) {
+      if (typeof parsed?.delay_seconds === "number" && parsed.delay_seconds > 0) {
+        finalTargetDate = new Date(now.getTime() + parsed.delay_seconds * 1000);
+        finalHumanDesc = `Today at ${formatToWAT(finalTargetDate)} WAT (in ${Math.round(parsed.delay_seconds / 60)} minutes)`;
+      } else if (typeof parsed?.target_wat_hour === "number") {
+        const watNow = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+        let targetDay = watNow.getDate();
+        if (parsed.is_tomorrow || parsed.target_wat_hour < watNow.getHours()) {
+          targetDay += 1;
+        }
+        const targetUtcMs = Date.UTC(
+          watNow.getFullYear(),
+          watNow.getMonth(),
+          targetDay,
+          parsed.target_wat_hour - 1, // WAT is UTC+1
+          parsed.target_wat_minute || 0,
+          0
+        );
+        finalTargetDate = new Date(targetUtcMs);
+        finalHumanDesc = `${parsed.is_tomorrow ? "Tomorrow" : "Today"} at ${formatToWAT(finalTargetDate)} WAT`;
+      }
+    }
+
+    if (!finalTargetDate || isNaN(finalTargetDate.getTime()) || finalTargetDate.getTime() <= now.getTime()) {
       return {
         handled: true,
         replyText: `Boss, please specify a time in the future! E.g. "In 30 minutes", "In 2 hours", or "Tomorrow at 8 AM".`,
       };
     }
 
+    const taskPrompt = parsed?.task_prompt || userText.replace(/^(?:remind\s+me(?:\s+to)?|reminder\s+for|set\s+a\s+reminder(?:\s+to)?)\s*/i, "").trim();
+    const taskType = parsed?.task_type || (/\b(go\s+online|search|research|look\s+up)\b/i.test(userText) ? "research" : "reminder");
+
     const scheduled = await dbScheduleTask({
       workspace_id: workspaceId,
       instance_name: instanceName || "obey",
       recipient_phone: recipientPhone,
       sender_name: senderName || "Obey",
-      task_type: parsed.task_type || "reminder",
-      prompt: parsed.task_prompt || userText,
-      scheduled_at: targetDate,
+      task_type: taskType,
+      prompt: taskPrompt,
+      scheduled_at: finalTargetDate,
     });
 
     if (!scheduled) {
@@ -530,14 +673,14 @@ Return ONLY a valid JSON object matching this schema:
       };
     }
 
-    const humanTime = parsed.scheduled_human || `${formatDateTimeWAT(targetDate)} WAT`;
+    const humanTime = finalHumanDesc || `${formatDateTimeWAT(finalTargetDate)} WAT`;
 
-    if (parsed.task_type === "research") {
+    if (taskType === "research") {
       return {
         handled: true,
         replyText:
           `🔍 *Research Task Scheduled, Boss!*\n\n` +
-          `📌 *Topic:* ${parsed.task_prompt}\n` +
+          `📌 *Topic:* ${taskPrompt}\n` +
           `🕒 *Briefing Due:* ${humanTime}\n\n` +
           `I will research this online and deliver a full report right here on WhatsApp when it's time! 🚀`,
       };
@@ -547,7 +690,7 @@ Return ONLY a valid JSON object matching this schema:
       handled: true,
       replyText:
         `⏰ *Reminder Scheduled, Boss!*\n\n` +
-        `📌 *Task:* ${parsed.task_prompt}\n` +
+        `📌 *Task:* ${taskPrompt}\n` +
         `🕒 *Due:* ${humanTime}\n\n` +
         `I will ping you right here on WhatsApp when it's time. Relax, I've got your back! 🚀`,
     };
@@ -556,3 +699,4 @@ Return ONLY a valid JSON object matching this schema:
     return { handled: false };
   }
 }
+
