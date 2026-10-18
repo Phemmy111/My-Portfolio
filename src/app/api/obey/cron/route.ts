@@ -43,6 +43,10 @@ export async function GET(req: NextRequest) {
       const { runGmailInboxSync } = await import("@/lib/gmail-reader");
       const res = await runGmailInboxSync();
       return NextResponse.json({ ok: true, type: "gmail", result: res });
+    } else if (type === "pulse" || type === "all") {
+      const { runGmailInboxSync } = await import("@/lib/gmail-reader");
+      const gmailRes = await runGmailInboxSync().catch(() => null);
+      return NextResponse.json({ ok: true, type: "pulse", gmail: gmailRes });
     } else {
       const res = await dispatchMorningBriefing();
       return NextResponse.json({ ok: true, type: "morning", result: res });
