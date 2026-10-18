@@ -25,6 +25,8 @@ import {
   Check,
   CreditCard,
   Copy,
+  Lock,
+  Key,
 } from "lucide-react";
 
 interface WorkspaceWithStats {
@@ -97,6 +99,12 @@ export default function AdminMasterControlRoom() {
   const [paystackSuccess, setPaystackSuccess] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
+  // Passcode Manager State
+  const [newPasscode, setNewPasscode] = useState("");
+  const [savingPasscode, setSavingPasscode] = useState(false);
+  const [passcodeSuccess, setPasscodeSuccess] = useState(false);
+  const [passcodeError, setPasscodeError] = useState<string | null>(null);
+
   // Manual Plan Grant Modal State
   const [grantModalWs, setGrantModalWs] = useState<WorkspaceWithStats | null>(null);
   const [grantPlan, setGrantPlan] = useState("pro");
@@ -167,6 +175,35 @@ export default function AdminMasterControlRoom() {
       console.error("Failed to save Paystack keys:", err);
     } finally {
       setSavingPaystack(false);
+    }
+  };
+
+  const handleUpdatePasscode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPasscode.trim() || newPasscode.trim().length < 6) {
+      setPasscodeError("Passcode must be at least 6 characters long.");
+      return;
+    }
+    setSavingPasscode(true);
+    setPasscodeError(null);
+    setPasscodeSuccess(false);
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPasscode: newPasscode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update passcode");
+      }
+      setPasscodeSuccess(true);
+      setNewPasscode("");
+      setTimeout(() => setPasscodeSuccess(false), 4000);
+    } catch (err: any) {
+      setPasscodeError(err.message || "Failed to update passcode");
+    } finally {
+      setSavingPasscode(false);
     }
   };
 
@@ -593,6 +630,83 @@ export default function AdminMasterControlRoom() {
                 <>
                   <Check className="w-3.5 h-3.5" />
                   <span>Save Paystack Configuration</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Admin Security & Private Passcode Controller */}
+      <div className="bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-4">
+          <div>
+            <h2 className="text-base font-black text-zinc-900 dark:text-white flex items-center gap-2">
+              <Lock className="w-4 h-4 text-purple-500" />
+              Admin Dashboard Security & Private Passcode
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Take full charge of your secret passcode. All public hints have been removed from the login screen.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              Custom Passcode Active
+            </span>
+
+            {passcodeSuccess && (
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Passcode Updated!
+              </span>
+            )}
+          </div>
+        </div>
+
+        {passcodeError && (
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-bold flex items-center gap-2">
+            <AlertCircle size={15} />
+            {passcodeError}
+          </div>
+        )}
+
+        <form onSubmit={handleUpdatePasscode} className="space-y-4 text-xs">
+          <div className="max-w-md space-y-1">
+            <label className="font-bold text-zinc-700 dark:text-zinc-300">
+              Set New Private Passcode
+            </label>
+            <div className="relative">
+              <input
+                type="password"
+                placeholder="Enter new secret passcode (min 6 characters)..."
+                value={newPasscode}
+                onChange={(e) => setNewPasscode(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl font-mono text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <Key size={15} className="absolute left-3 top-3 text-zinc-400" />
+            </div>
+            <p className="text-[10px] text-zinc-400">
+              Saved directly to your encrypted database settings. It takes effect immediately across all devices.
+            </p>
+          </div>
+
+          <div className="flex justify-start pt-1">
+            <button
+              type="submit"
+              disabled={savingPasscode}
+              className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition shadow-md shadow-purple-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+            >
+              {savingPasscode ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Updating Passcode...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Update Admin Passcode</span>
                 </>
               )}
             </button>

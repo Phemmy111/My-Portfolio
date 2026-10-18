@@ -62,6 +62,7 @@ export const KNOWN_KEYS = [
   "VOICE_HOTLINE_GREETING",
   "PAYSTACK_SECRET_KEY",
   "PAYSTACK_PUBLIC_KEY",
+  "ADMIN_PASSCODE",
 ] as const;
 
 export type KnownKey = typeof KNOWN_KEYS[number];

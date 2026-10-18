@@ -84,7 +84,7 @@ export default function AdminLoginPage() {
               <Lock size={16} className="absolute left-3.5 top-3.5 text-zinc-500" />
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-500 mt-1.5 font-medium">
-              Default passcode: <code className="font-mono text-emerald-600 dark:text-emerald-400">femi2026</code>
+              Encrypted access portal. Authorized administrator only.
             </p>
           </div>
 
