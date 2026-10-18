@@ -135,7 +135,9 @@ export async function POST(req: NextRequest) {
       media_type = "text",
       mode = "post_now", // "post_now" | "schedule"
       scheduled_at,
+      scheduled_time_ms,
       background_color = "#075E54",
+      text_color = "#FFFFFF",
       font = 1,
       auto_post_now = true,
       auto_status_enabled,
@@ -295,7 +297,10 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const schedDate = new Date(scheduled_at);
+        const schedDate =
+          typeof scheduled_time_ms === "number" && !isNaN(scheduled_time_ms)
+            ? new Date(scheduled_time_ms)
+            : new Date(scheduled_at);
         const now = new Date();
         const maxTime = new Date(now.getTime() + 24 * 60 * 60 * 1000 + 5 * 60 * 1000); // 24h + 5m buffer
 
@@ -332,6 +337,7 @@ export async function POST(req: NextRequest) {
           mediaType: normalizedMediaType,
           instanceName,
           backgroundColor: background_color || "#075E54",
+          textColor: text_color || "#FFFFFF",
           font: typeof font === "number" ? font : 1,
         });
 
@@ -352,6 +358,7 @@ export async function POST(req: NextRequest) {
           media_url,
           media_type,
           background_color,
+          text_color,
           font,
           message_id,
           status,
@@ -368,6 +375,7 @@ export async function POST(req: NextRequest) {
           ${media_url || null},
           ${media_type || (hasMedia ? "image" : "text")},
           ${background_color || "#075E54"},
+          ${text_color || "#FFFFFF"},
           ${font || 1},
           ${messageId},
           ${initialStatus},

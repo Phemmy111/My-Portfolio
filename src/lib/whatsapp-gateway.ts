@@ -86,7 +86,8 @@ export async function sendWhatsAppMessage(
  * POST /chat/getBase64FromMediaMessage/${instanceName}
  */
 export async function fetchEvolutionMediaBase64(
-  msgObj: any
+  msgObj: any,
+  instanceOverride?: string
 ): Promise<{ base64: string; mimetype: string } | null> {
   if (!msgObj) return null;
 
@@ -96,13 +97,21 @@ export async function fetchEvolutionMediaBase64(
     msgObj.base64 ||
     msgObj.message?.audioMessage?.base64 ||
     msgObj.message?.imageMessage?.base64 ||
+    msgObj.message?.stickerMessage?.base64 ||
     msgObj.message?.documentMessage?.base64;
 
   const mimetype =
     msgObj.message?.audioMessage?.mimetype ||
     msgObj.message?.imageMessage?.mimetype ||
+    msgObj.message?.stickerMessage?.mimetype ||
     msgObj.message?.documentMessage?.mimetype ||
-    (msgObj.message?.audioMessage ? "audio/ogg" : msgObj.message?.imageMessage ? "image/jpeg" : "application/octet-stream");
+    (msgObj.message?.audioMessage
+      ? "audio/ogg"
+      : msgObj.message?.imageMessage
+      ? "image/jpeg"
+      : msgObj.message?.stickerMessage
+      ? "image/webp"
+      : "application/octet-stream");
 
   if (directBase64 && typeof directBase64 === "string" && directBase64.length > 50) {
     return {
@@ -117,7 +126,7 @@ export async function fetchEvolutionMediaBase64(
       process.env.EVOLUTION_API_URL ||
       "https://evolution-api-latest-cx3y.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = instanceOverride || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     if (!msgObj.key?.id) return null;
 
@@ -589,6 +598,7 @@ export async function sendWhatsAppStatusPost(params: {
   mediaType?: "image" | "video";
   instanceName?: string;
   backgroundColor?: string;
+  textColor?: string;
   font?: number;
   statusJidList?: string[];
 }): Promise<{ success: boolean; error?: string; messageId?: string }> {
@@ -655,6 +665,7 @@ export async function sendWhatsAppStatusPost(params: {
           type: "text",
           content: cleanWhatsAppFormatting(params.text),
           backgroundColor: params.backgroundColor || "#075E54",
+          textColor: params.textColor || "#FFFFFF",
           font: params.font || 1,
           allContacts: true,
           ...(jidList.length > 0 ? { statusJidList: jidList } : {}),

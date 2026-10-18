@@ -849,6 +849,7 @@ export async function createWorkspaceTables() {
         media_url TEXT,
         media_type TEXT DEFAULT 'text',
         background_color TEXT DEFAULT '#075E54',
+        text_color TEXT DEFAULT '#FFFFFF',
         font INTEGER DEFAULT 1,
         status TEXT DEFAULT 'posted',
         error_message TEXT,
@@ -863,6 +864,7 @@ export async function createWorkspaceTables() {
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_statuses_ws ON workspace_statuses(workspace_id)`;
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_statuses_sched ON workspace_statuses(status, scheduled_at)`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS background_color TEXT DEFAULT '#075E54'`;
+    await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS text_color TEXT DEFAULT '#FFFFFF'`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS font INTEGER DEFAULT 1`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS message_id TEXT`;
     await db`ALTER TABLE workspace_statuses ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0`;

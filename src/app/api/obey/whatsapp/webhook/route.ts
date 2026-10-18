@@ -263,7 +263,8 @@ Your role and personality:
   You are fully aware of Main Obey (Femi Adeleke's flagship personal AI engineer & executive companion).
   If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Main Obey / Femi Adeleke directly, introduce Main Obey and provide Femi's verified direct clickable WhatsApp link:
   • Direct WhatsApp: https://wa.me/2348120934828 (+2348120934828)
-  • Platform / Portfolio: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app)
+  • Obey Platform: https://obeyai.vercel.app
+  • Femi's Portfolio: https://obeyai.vercel.app/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
 
 ${getObeyBusinessManualKnowledge(platformPricing)}
 ${getMainObeyFlagshipKnowledge()}`;
@@ -526,27 +527,6 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
-  // If incoming message was a sticker without other instructions:
-  if (params.isSticker && (!userText || userText === "[Sticker Sent by User]")) {
-    const stickerReplies = [
-      "Haha, nice sticker! 😄 How can I assist you right now?",
-      "Love the sticker! 🔥 Wetin we dey tackle today?",
-      "Sharp sticker! ⚡ Tell me what you'd like to work on.",
-    ];
-    const chosenReply = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
-    await reply(chosenReply);
-    try {
-      await dbAddGuestMessage({
-        id: `guest-stk-${Date.now()}`,
-        phone_number: replyTo,
-        sender_name: currentWs?.name || "Obey",
-        role: "assistant",
-        content: chosenReply,
-      });
-    } catch {}
-    return;
-  }
-
   // 1. Record incoming message in Neon DB
   const recordedUserText = userText && userText !== "[Image Received]" && userText !== "[Unclear Voice Note]"
     ? (visionMedia?.base64
@@ -637,6 +617,60 @@ async function processMessage(params: ProcessMessageParams) {
     .slice(-25)
     .map((m) => `${m.role === "user" ? (pushName || "User") : "Obey"}: ${m.content}`)
     .join("\n");
+
+  // Dedicated Multimodal WhatsApp Sticker Decoding & Vision Banter
+  if (params.isSticker) {
+    let stickerVisualResponse = "";
+    if (visionMedia?.base64) {
+      try {
+        const isFemiOwner = isOwner && isDefaultFemi;
+        const stickerSystemPrompt = `You are Obey, an ultra-intelligent, magnetic, witty, and culturally savvy AI executive companion created by Femi Adeleke.
+The user just sent you a WhatsApp sticker.
+YOUR TASK:
+1. Visually decode the sticker with precision: Recognize the person, character, meme, facial expression, clothing, gesture, or emotion (e.g. laughing heartily, wearing a green beanie/cap, teasing, eye-rolling, flex/swagger, shock, crying laughter). Notice any text or meme caption if present.
+2. React naturally and conversationally with genuine banter:
+   - Acknowledge what the person/character in the sticker is doing with humor and warmth (e.g. "Look at that hearty laugh in the green beanie! 😂", "That face is hilarious! 💀", "That swagger is unmatched! 🔥").
+   - Match their energy: sound like a real friend who actually looked at the sticker and got the joke/vibe.
+   - Smoothly ask how you can help or pivot back to what you were working on together.
+3. Keep it punchy, warm, and natural (1-3 sentences max).
+${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adeleke." : ""}`;
+
+        const aiRes = await executeAICompletionWithMedia({
+          systemPrompt: stickerSystemPrompt,
+          userPrompt: `${historyText ? `RECENT CHAT CONTEXT:\n${historyText}\n\n` : ""}The user sent this WhatsApp sticker. Visually decode the sticker's expression/meme, react with authentic banter, and reply:`,
+          mediaBase64: visionMedia.base64,
+          mimeType: visionMedia.mimetype || "image/webp",
+          temperature: 0.7,
+        });
+
+        stickerVisualResponse = aiRes.text.trim();
+      } catch (stkVisionErr) {
+        console.warn("[WA Sticker] Vision analysis fallback:", stkVisionErr);
+      }
+    }
+
+    if (!stickerVisualResponse) {
+      const stickerReplies = [
+        "Haha, nice sticker! 😄 Wetin we dey tackle today, Boss?",
+        "Love the sticker vibe! 🔥 Tell me what you'd like to work on.",
+        "Sharp sticker! ⚡ How can I assist you right now?",
+      ];
+      stickerVisualResponse = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
+    }
+
+    const formattedReply = cleanWhatsAppFormatting(stickerVisualResponse);
+    await reply(formattedReply);
+    try {
+      await dbAddGuestMessage({
+        id: `guest-stk-${Date.now()}`,
+        phone_number: replyTo,
+        sender_name: currentWs?.name || "Obey",
+        role: "assistant",
+        content: formattedReply,
+      });
+    } catch {}
+    return;
+  }
 
   // Handle unclear voice notes
   if (userText === "[Unclear Voice Note]") {
@@ -1522,7 +1556,7 @@ Output ONLY the comment text.`,
 
       // 1. Voice Note Transcription
       if (isAudio) {
-        const media = await fetchEvolutionMediaBase64(msgObj);
+        const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
         if (media?.base64) {
           const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
           if (transRes.success && transRes.text) {
@@ -1536,15 +1570,15 @@ Output ONLY the comment text.`,
         }
       }
 
-      // 2. Multimodal Vision (Photos, Screenshots)
-      if (isImage) {
-        visionMedia = await fetchEvolutionMediaBase64(msgObj);
-        if (!activeText) activeText = "[Image Received]";
+      // 2. Multimodal Vision (Photos, Screenshots, Stickers)
+      if (isImage || isSticker) {
+        visionMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
+        if (!activeText) activeText = isSticker ? "[Sticker Received]" : "[Image Received]";
       }
 
       // 3. Documents (PDFs, CVs, Invoices)
       if (isDoc) {
-        docMedia = await fetchEvolutionMediaBase64(msgObj);
+        docMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
         if (!activeText) activeText = "[Document Received]";
       }
 

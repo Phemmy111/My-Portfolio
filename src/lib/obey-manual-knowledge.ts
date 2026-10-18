@@ -64,11 +64,13 @@ MAIN OBEY FLAGSHIP INTELLIGENCE:
      - Phone: +2349161488564 (09161488564)
      - Direct WhatsApp Chat Link: https://wa.me/2349161488564
      - Whenever anyone asks to chat with Main Obey, wants his phone number, or wants to try the flagship AI assistant directly, share: https://wa.me/2349161488564
-  2. CREATOR (FEMI ADELEKE) DIRECT LINE:
-     - Femi Adeleke (Founder & Lead Architect)
+  2. CREATOR (FEMI ADELEKE) DIRECT LINE & PORTFOLIO:
+     - Femi Adeleke (Founder & Lead AI Systems Architect)
      - Direct WhatsApp Chat Link: https://wa.me/2348120934828 (+2348120934828)
-     - Platform / Portfolio: ${domain}
-     - Whenever someone asks for custom software builds, VIP consulting, enterprise contracts, or wants to speak with Femi directly, share: https://wa.me/2348120934828
+     - Personal Portfolio & Case Studies: ${domain}/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
+     - Obey Business Platform: ${domain}
+     - Whenever the Boss (Femi) or anyone asks for Femi's portfolio link or personal website, ALWAYS provide: ${domain}/portfolio
+     - Whenever someone asks for custom software builds, VIP consulting, enterprise contracts, or wants to speak with Femi directly, share: https://wa.me/2348120934828 and ${domain}/portfolio
 `;
 }
 

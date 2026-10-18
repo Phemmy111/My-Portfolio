@@ -76,6 +76,17 @@ const WHATSAPP_STATUS_COLORS = [
   { name: "Magenta", hex: "#BE185D", bg: "#BE185D" },
 ];
 
+const WHATSAPP_STATUS_TEXT_COLORS = [
+  { name: "Pure White", hex: "#FFFFFF" },
+  { name: "Cream Ivory", hex: "#FEF3C7" },
+  { name: "Bright Yellow", hex: "#FDE047" },
+  { name: "Neon Lime", hex: "#4ADE80" },
+  { name: "Cyan Ice", hex: "#38BDF8" },
+  { name: "Warm Orange", hex: "#FB923C" },
+  { name: "Soft Pink", hex: "#F472B6" },
+  { name: "Pitch Black", hex: "#000000" },
+];
+
 const WHATSAPP_STATUS_FONTS = [
   { id: 1, name: "Sans", fontClass: "font-sans", label: "Sans" },
   { id: 2, name: "Serif", fontClass: "font-serif", label: "Serif" },
@@ -231,6 +242,7 @@ function ControlRoomContent() {
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStatusColor, setSelectedStatusColor] = useState("#075E54");
+  const [selectedStatusTextColor, setSelectedStatusTextColor] = useState("#FFFFFF");
   const [selectedStatusFont, setSelectedStatusFont] = useState(1);
   const [statusPostMode, setStatusPostMode] = useState<"post_now" | "schedule">("post_now");
   const [statusScheduledAt, setStatusScheduledAt] = useState("");
@@ -969,12 +981,18 @@ function ControlRoomContent() {
     }
   };
 
+  const formatLocalInputDateTime = (target: Date) => {
+    const year = target.getFullYear();
+    const month = String(target.getMonth() + 1).padStart(2, "0");
+    const day = String(target.getDate()).padStart(2, "0");
+    const hours = String(target.getHours()).padStart(2, "0");
+    const minutes = String(target.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
   const setPresetSchedule = (hoursAhead: number) => {
     const target = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
-    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    setStatusScheduledAt(localIso);
+    setStatusScheduledAt(formatLocalInputDateTime(target));
     setStatusPostMode("schedule");
   };
 
@@ -984,10 +1002,7 @@ function ControlRoomContent() {
     if (target.getTime() <= Date.now()) {
       target.setDate(target.getDate() + 1);
     }
-    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    setStatusScheduledAt(localIso);
+    setStatusScheduledAt(formatLocalInputDateTime(target));
     setStatusPostMode("schedule");
   };
 
@@ -995,10 +1010,7 @@ function ControlRoomContent() {
     const target = new Date();
     target.setDate(target.getDate() + 1);
     target.setHours(9, 0, 0, 0);
-    const localIso = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    setStatusScheduledAt(localIso);
+    setStatusScheduledAt(formatLocalInputDateTime(target));
     setStatusPostMode("schedule");
   };
 
@@ -1055,7 +1067,12 @@ function ControlRoomContent() {
             statusPostMode === "schedule" && statusScheduledAt
               ? new Date(statusScheduledAt).toISOString()
               : undefined,
+          scheduled_time_ms:
+            statusPostMode === "schedule" && statusScheduledAt
+              ? new Date(statusScheduledAt).getTime()
+              : undefined,
           background_color: selectedStatusColor,
+          text_color: selectedStatusTextColor,
           font: selectedStatusFont,
           auto_post_now: statusPostMode === "post_now",
         }),
@@ -3071,17 +3088,24 @@ function ControlRoomContent() {
                         value={statusContent}
                         onChange={(e) => setStatusContent(e.target.value)}
                         placeholder={`e.g. 🔥 Flash Friday Promo at ${currentWs.name}!\n\nGet 20% off our bestsellers today only. Send us a message to lock in your spot now! 🚀`}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none transition font-sans"
+                        style={{
+                          backgroundColor: selectedStatusColor,
+                          color: selectedStatusTextColor,
+                        }}
+                        className={`w-full border border-slate-800 focus:border-emerald-500 rounded-xl p-3 text-xs focus:outline-none transition shadow-inner placeholder:text-white/40 ${
+                          WHATSAPP_STATUS_FONTS.find((f) => f.id === selectedStatusFont)?.fontClass || "font-sans"
+                        }`}
                       />
                     </div>
 
-                    {/* WhatsApp Background Color Palette & Font Style Selector */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                    {/* WhatsApp Background Color, Text Color & Font Selector */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
-                          Story Background Color
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center justify-between">
+                          <span>Story Background</span>
+                          <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: selectedStatusColor }} />
                         </label>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {WHATSAPP_STATUS_COLORS.map((c) => (
                             <button
                               key={c.hex}
@@ -3089,9 +3113,9 @@ function ControlRoomContent() {
                               onClick={() => setSelectedStatusColor(c.hex)}
                               title={c.name}
                               style={{ backgroundColor: c.hex }}
-                              className={`w-6 h-6 rounded-full transition transform hover:scale-110 shrink-0 ${
+                              className={`w-5 h-5 rounded-full transition transform hover:scale-110 shrink-0 ${
                                 selectedStatusColor.toLowerCase() === c.hex.toLowerCase()
-                                  ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md"
+                                  ? "ring-2 ring-emerald-400 ring-offset-1 ring-offset-slate-950 scale-110 shadow-md"
                                   : "border border-white/20 opacity-80 hover:opacity-100"
                               }`}
                             />
@@ -3100,16 +3124,39 @@ function ControlRoomContent() {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
-                          Story Typography Font
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center justify-between">
+                          <span>Story Text Color</span>
+                          <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: selectedStatusTextColor }} />
                         </label>
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {WHATSAPP_STATUS_TEXT_COLORS.map((tc) => (
+                            <button
+                              key={tc.hex}
+                              type="button"
+                              onClick={() => setSelectedStatusTextColor(tc.hex)}
+                              title={tc.name}
+                              style={{ backgroundColor: tc.hex }}
+                              className={`w-5 h-5 rounded-full transition transform hover:scale-110 shrink-0 ${
+                                selectedStatusTextColor.toLowerCase() === tc.hex.toLowerCase()
+                                  ? "ring-2 ring-emerald-400 ring-offset-1 ring-offset-slate-950 scale-110 shadow-md"
+                                  : "border border-white/20 opacity-80 hover:opacity-100"
+                              } ${tc.hex === "#000000" ? "border border-slate-600" : ""}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+                          Story Typography
+                        </label>
+                        <div className="flex items-center gap-1 flex-wrap">
                           {WHATSAPP_STATUS_FONTS.map((f) => (
                             <button
                               key={f.id}
                               type="button"
                               onClick={() => setSelectedStatusFont(f.id)}
-                              className={`px-2.5 py-1 rounded-md text-xs transition ${f.fontClass} ${
+                              className={`px-2 py-0.5 rounded text-[11px] transition ${f.fontClass} ${
                                 selectedStatusFont === f.id
                                   ? "bg-emerald-500 text-slate-950 font-bold shadow"
                                   : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
@@ -4218,29 +4265,39 @@ function ControlRoomContent() {
                                 </span>
                               )}
 
-                              {/* WhatsApp Views / Live Status Badge */}
-                              {typeof st.view_count === "number" && st.view_count > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1">
-                                  <Eye className="w-3 h-3 text-emerald-400" />
-                                  <span>{st.view_count} views</span>
-                                </span>
-                              ) : (
-                                <span
-                                  className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] flex items-center gap-1"
-                                  title="Story deployed to your WhatsApp Status audience. Real-time viewer names are tracked natively in WhatsApp > Updates on your mobile device."
-                                >
-                                  <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-                                  <span>Live on Status</span>
-                                </span>
+                              {/* WhatsApp Views / Live Status Badge - ONLY for published stories */}
+                              {st.status === "posted" && (
+                                typeof st.view_count === "number" && st.view_count > 0 ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1">
+                                    <Eye className="w-3 h-3 text-emerald-400" />
+                                    <span>{st.view_count} views</span>
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] flex items-center gap-1"
+                                    title="Story deployed to your WhatsApp Status audience. Real-time viewer names are tracked natively in WhatsApp > Updates on your mobile device."
+                                  >
+                                    <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                                    <span>Live on Status</span>
+                                  </span>
+                                )
                               )}
 
                               {/* Color and Font Indicator */}
                               {st.background_color && (
-                                <span className="flex items-center gap-1 text-[10px] text-slate-300 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1.5 text-[10px] text-slate-300 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
                                   <span
-                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                    className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20"
                                     style={{ backgroundColor: st.background_color }}
+                                    title={`Canvas: ${st.background_color}`}
                                   />
+                                  {st.text_color && (
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0 border border-white/30"
+                                      style={{ backgroundColor: st.text_color }}
+                                      title={`Text Color: ${st.text_color}`}
+                                    />
+                                  )}
                                   <span>
                                     {WHATSAPP_STATUS_FONTS.find((f) => f.id === st.font)?.label || "Sans"}
                                   </span>
@@ -4253,7 +4310,18 @@ function ControlRoomContent() {
                             </div>
 
                             {st.content && (
-                              <p className="text-slate-200 line-clamp-2 text-xs font-sans leading-relaxed">
+                              <p
+                                className="line-clamp-2 text-xs font-sans leading-relaxed p-1.5 rounded-md"
+                                style={
+                                  st.background_color && !st.media_url
+                                    ? {
+                                        backgroundColor: `${st.background_color}33`,
+                                        color: st.text_color || "#f1f5f9",
+                                        borderLeft: `3px solid ${st.background_color}`,
+                                      }
+                                    : undefined
+                                }
+                              >
                                 {st.content}
                               </p>
                             )}

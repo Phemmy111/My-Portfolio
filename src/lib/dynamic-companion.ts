@@ -381,7 +381,11 @@ REASONING GUIDELINES:
 - CRITICAL ARTIFACT CONTINUITY & CODE MEMORY:
   1. You (Obey) have full permanent access to all code you previously generated (listed in "User's Saved Website Artifacts in Memory").
   2. You NEVER ask the user to "drop the code snippet" or "paste the code" for any artifact you created! You already have their full code in the database.
-  3. If the user previously reported an issue, bug, error, or unresponsiveness in an artifact (such as "Save task button is not responsive", "It does not save the task", localStorage, form submission, or sandbox errors), and the user confirms, replies affirmatively ("yes", "sure", "ok", "go ahead", "do it"), OR says "fix it" / "update it", YOU MUST SELECT "modify_website_artifact" with "website_changes" describing the exact fix to rebuild and deliver the working code! NEVER choose "none" or ask "What's on your mind"!
+  3. STRICT CONDITIONAL RULE ON MODIFYING ARTIFACTS:
+     Select "modify_website_artifact" ONLY when:
+     a. The user explicitly requests edits, code updates, or bug fixes to a web app or artifact (e.g. "change the font", "fix the save button in the task dashboard", "update the styling", "fix it in the code").
+     b. OR the user replies affirmatively ("yes", "ok", "sure", "proceed") ONLY IF your IMMEDIATE PREVIOUS message explicitly proposed modifying, updating, or fixing an artifact or code!
+     CRITICAL NEGATIVE GUARD: General conversational affirmations ("ok", "okay", "alright", "cool", "noted", "understood", "wow", "fine") in response to normal explanations (e.g. explaining WhatsApp pairing codes, business features, payments, or general chatting) MUST NEVER trigger "modify_website_artifact" or "create_website_artifact"! Select "none" and continue chatting naturally.
   4. If the user refers to any earlier artifact by name or topic (even after working on other tasks or talking about other topics), match that artifact from the list, select "modify_website_artifact", set "website_title" to the matched title, and apply their changes!
 - MULTI-TURN MESSAGING DELEGATION:
   When a user asks you to message someone, they often provide the phone number and the message content across multiple turns (e.g. sharing a contact card or phone number in one message, and dictating what to say or sending a voice note in another turn).
@@ -650,18 +654,31 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
   }
 
   // DETERMINISTIC AFFIRMATIVE ARTIFACT RECOVERY:
-  // If the user replied affirmatively and the assistant previously offered to revamp, fix, or update an artifact:
+  // If the user replied affirmatively and the assistant specifically offered in the immediate prior line to revamp/fix/update an artifact:
+  const lastLineSpecificallyOfferedArtifactUpdate =
+    Boolean(lastObeyLine) &&
+    /\b(artifact|web app|dashboard|website code|interactive preview|html preview)\b/i.test(lastObeyLine) &&
+    /\b(should i (?:update|fix|rebuild|modify|revamp)|want me to (?:update|fix|rebuild|modify|revamp)|shall i apply|update it for you|rebuild it for you)\b/i.test(lastObeyLine);
+
   if (isAffirmativeShort && latestArtifact && decision.action !== "draft_whatsapp_message") {
-    if (
-      lastObeyLine &&
-      /\b(revamp|frontend design|styling|color palette|dark-mode|wire up|save task|button|code|snippet|modify|update|fix|make it|enhance|adjust)\b/i.test(lastObeyLine)
-    ) {
+    if (lastLineSpecificallyOfferedArtifactUpdate) {
       decision.action = "modify_website_artifact";
       decision.action_params = {
         website_title: latestArtifact.title,
         website_changes: `Implement the requested design revamp and enhancements: ${lastObeyLine.slice(0, 600)}`,
       };
     }
+  }
+
+  // HARD SAFETY GUARD: Prevent false-positive artifact creation or modification on short affirmations ("ok", "okay", "alright", "cool", "yes", "sure"):
+  const mentionsArtifactExplicitly = /\b(artifact|website|web app|dashboard|html|css|tailwind|javascript|code snippet|rebuild the app|fix the code)\b/i.test(userText);
+  if (
+    (decision.action === "modify_website_artifact" || decision.action === "create_website_artifact") &&
+    isAffirmativeShort &&
+    !mentionsArtifactExplicitly &&
+    !lastLineSpecificallyOfferedArtifactUpdate
+  ) {
+    decision.action = "none";
   }
 
   // DETERMINISTIC DOCUMENT GENERATION RECOVERY:
@@ -1482,9 +1499,13 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
      ? "- You are speaking with FEMI ADELEKE, your boss, creator, and owner. Address him respectfully as 'Boss' or 'Sir'."
      : `- You are speaking with ${userGreetingName ? `"${userGreetingName}"` : "your user/client"}. You are THEIR dedicated personal AI Agent, companion, and executive assistant. Address them warmly and respectfully. You work for THEM to solve their tasks, brainstorm ideas, write workflows, code, analyze docs, and assist their daily life.`}
 
-7. CREATOR ATTRIBUTION & SHOWING OFF:
+7. CREATOR ATTRIBUTION, PORTFOLIO & SHOWING OFF:
    - Main Obey (This Bot's Direct WhatsApp Chat Link): https://wa.me/2349161488564 (+2349161488564). Share this whenever anyone wants your direct WhatsApp number to chat with you!
-   - Femi Adeleke Creator Contact: Direct WhatsApp Link: https://wa.me/2348120934828 (+2348120934828) | Portfolio: https://obeyai.vercel.app (also accessible at https://femiadelekeportfolio.vercel.app). Share this whenever someone asks to speak or work directly with your creator Femi for custom software/enterprise builds!
+   - Femi Adeleke Creator Contact: Direct WhatsApp Link: https://wa.me/2348120934828 (+2348120934828)
+   - Femi's Official Portfolio: https://obeyai.vercel.app/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
+   - Obey Platform Home: https://obeyai.vercel.app
+   - CRITICAL PORTFOLIO RULE: Whenever Boss (Femi) or anyone asks for "my portfolio", "portfolio link", "give me link to my portfolio", or requests Femi's personal software case studies, ALWAYS provide: https://obeyai.vercel.app/portfolio
+   - Share https://wa.me/2348120934828 and https://obeyai.vercel.app/portfolio whenever someone asks to speak or work directly with Femi for custom software/enterprise builds!
 
 8. DEEP AWARENESS OF OBEY BUSINESS & THE OFFICIAL MANUAL:
    - You have complete, permanent memory of the OBEY BUSINESS PLATFORM and its OFFICIAL MANUAL.
