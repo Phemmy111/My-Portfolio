@@ -34,17 +34,21 @@ export async function sendWhatsAppMessage(
     const instanceName =
       customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
-    // Femi's personal WhatsApp number — fallback when no recipient supplied or when recipient is an internal LID
-    let cleaned = (recipient || "2348120934828")
+    if (!recipient) {
+      return { success: false, error: "Recipient phone number is required" };
+    }
+
+    let cleaned = recipient
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
       .replace(/\D/g, "");
 
-    // If cleaned is not a standard international phone number (e.g. 15-digit internal WhatsApp LID or empty), default to Femi's phone
-    if (!cleaned || cleaned.length > 13 || cleaned.length < 10) {
-      cleaned = "2348120934828";
+    // Valid international phone number check (10 to 14 digits)
+    if (!cleaned || cleaned.length < 10 || cleaned.length > 14) {
+      return { success: false, error: `Invalid recipient phone number format: "${recipient}"` };
     }
 
     const targetPhone = cleaned;
+
 
     const payload: Record<string, any> = {
       number: targetPhone,
@@ -178,12 +182,17 @@ export async function sendWhatsAppAudio(
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
-    let cleaned = (recipient || "2348120934828")
+    if (!recipient) {
+      return { success: false, error: "Recipient phone number is required" };
+    }
+
+    let cleaned = recipient
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
       .replace(/\D/g, "");
-    if (!cleaned || cleaned.length > 13 || cleaned.length < 10) {
-      cleaned = "2348120934828";
+    if (!cleaned || cleaned.length > 14 || cleaned.length < 10) {
+      return { success: false, error: `Invalid recipient phone number format: "${recipient}"` };
     }
+
 
     let formattedAudio = audioUrl;
     if (audioUrl && !audioUrl.startsWith("http://") && !audioUrl.startsWith("https://") && !audioUrl.startsWith("data:")) {

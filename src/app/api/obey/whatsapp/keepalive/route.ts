@@ -131,14 +131,16 @@ export async function GET(req: NextRequest) {
       console.warn("[WA Keepalive] Web watcher error:", watchErr);
     }
 
-    // 7. Autonomous Lead Closer: Follow up with warm prospective leads
+    // 7. Autonomous Lead Closer (Disabled to prevent bulk messages)
     let leadCloserReport = null;
+    /*
     try {
       const { runAutonomousLeadCloser } = await import("@/lib/lead-closer");
       leadCloserReport = await runAutonomousLeadCloser();
     } catch (closerErr) {
       console.warn("[WA Keepalive] Lead closer error:", closerErr);
     }
+    */
 
     // 8. Morning Executive Briefing (fires at 7:30 AM WAT daily)
     let morningBriefingReport = null;
