@@ -55,13 +55,14 @@ export async function POST(req: NextRequest) {
         const alertMsg = `🎉 *Obey Business Subscription Activated!*\n\n• *Business:* ${ws.name}\n• *Plan:* ${plan.toUpperCase()}\n• *Amount:* ₦${(data.amount / 100).toLocaleString()}\n• *Reference:* ${data.reference}\n\nYour workspace has been upgraded with unlimited leads and premium features!`;
 
         if (ws.owner_phone) {
-          await sendWhatsAppMessage(alertMsg, ws.owner_phone);
+          await sendWhatsAppMessage(alertMsg, ws.owner_phone, "obey").catch(() => {});
         }
         if (ws.owner_phone !== FEMI_PHONE) {
           await sendWhatsAppMessage(
             `💰 *New Subscription Received!*\n\n• Business: ${ws.name} (+${ws.owner_phone})\n• Plan: ${plan.toUpperCase()}\n• Amount: ₦${(data.amount / 100).toLocaleString()}`,
-            FEMI_PHONE
-          );
+            FEMI_PHONE,
+            "obey"
+          ).catch(() => {});
         }
       }
     }

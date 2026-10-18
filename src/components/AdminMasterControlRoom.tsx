@@ -23,6 +23,8 @@ import {
   ChevronRight,
   Filter,
   Check,
+  CreditCard,
+  Copy,
 } from "lucide-react";
 
 interface WorkspaceWithStats {
@@ -86,6 +88,15 @@ export default function AdminMasterControlRoom() {
   const [savingPricing, setSavingPricing] = useState(false);
   const [pricingSuccess, setPricingSuccess] = useState(false);
 
+  // Paystack Gateway State
+  const [paystackForm, setPaystackForm] = useState({
+    secretKey: "",
+    publicKey: "",
+  });
+  const [savingPaystack, setSavingPaystack] = useState(false);
+  const [paystackSuccess, setPaystackSuccess] = useState(false);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
   // Manual Plan Grant Modal State
   const [grantModalWs, setGrantModalWs] = useState<WorkspaceWithStats | null>(null);
   const [grantPlan, setGrantPlan] = useState("pro");
@@ -103,7 +114,10 @@ export default function AdminMasterControlRoom() {
   const fetchMasterData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/master");
+      const [res, settingsRes] = await Promise.all([
+        fetch("/api/admin/master"),
+        fetch("/api/admin/settings"),
+      ]);
       const data = await res.json();
       if (data.success) {
         setWorkspaces(data.workspaces || []);
@@ -114,10 +128,45 @@ export default function AdminMasterControlRoom() {
         if (data.stats) setStats(data.stats);
         if (data.activityFeed) setActivityFeed(data.activityFeed);
       }
+
+      const settingsData = await settingsRes.json();
+      if (settingsData.success && settingsData.settings) {
+        setPaystackForm({
+          secretKey: settingsData.settings.PAYSTACK_SECRET_KEY?.value || "",
+          publicKey: settingsData.settings.PAYSTACK_PUBLIC_KEY?.value || "",
+        });
+      }
     } catch (err) {
       console.error("Failed to load master control room data:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSavePaystack = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPaystack(true);
+    setPaystackSuccess(false);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          updates: {
+            PAYSTACK_SECRET_KEY: paystackForm.secretKey.trim(),
+            PAYSTACK_PUBLIC_KEY: paystackForm.publicKey.trim(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPaystackSuccess(true);
+        setTimeout(() => setPaystackSuccess(false), 4000);
+      }
+    } catch (err) {
+      console.error("Failed to save Paystack keys:", err);
+    } finally {
+      setSavingPaystack(false);
     }
   };
 
@@ -415,6 +464,135 @@ export default function AdminMasterControlRoom() {
                 <>
                   <Check className="w-3.5 h-3.5" />
                   <span>Update Package Pricing</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Paystack Payment Gateway Controller */}
+      <div className="bg-white dark:bg-[#0b1424] border border-zinc-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-4">
+          <div>
+            <h2 className="text-base font-black text-zinc-900 dark:text-white flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-emerald-500" />
+              Paystack Payment Gateway Integration
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Connect your Paystack keys to collect automated subscription payments via Card, USSD, and Direct Bank Transfer.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {paystackForm.secretKey ? (
+              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Live Gateway Active
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                WhatsApp Direct Fallback Mode
+              </span>
+            )}
+            {paystackSuccess && (
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Keys Saved!
+              </span>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={handleSavePaystack} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="font-bold text-zinc-700 dark:text-zinc-300">
+                Paystack Secret Key (sk_live / sk_test)
+              </label>
+              <input
+                type="password"
+                placeholder="Enter your Paystack secret key..."
+                value={paystackForm.secretKey}
+                onChange={(e) =>
+                  setPaystackForm({ ...paystackForm, secretKey: e.target.value })
+                }
+                className="w-full bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2.5 font-mono text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[10px] text-zinc-400">Used server-side to initialize charges and verify signatures.</p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-zinc-700 dark:text-zinc-300">
+                Paystack Public Key (pk_live / pk_test)
+              </label>
+              <input
+                type="text"
+                placeholder="Enter your Paystack public key..."
+                value={paystackForm.publicKey}
+                onChange={(e) =>
+                  setPaystackForm({ ...paystackForm, publicKey: e.target.value })
+                }
+                className="w-full bg-zinc-50 dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2.5 font-mono text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[10px] text-zinc-400">Used for client-side popups and payment triggers.</p>
+            </div>
+          </div>
+
+          {/* Webhook URL Helper */}
+          <div className="p-3.5 bg-zinc-50 dark:bg-slate-900/60 border border-zinc-200 dark:border-slate-800 rounded-xl space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                  Paystack Webhook URL:
+                </span>
+                <p className="text-[11px] text-zinc-500">
+                  Copy and paste this URL into your Paystack Dashboard (Settings &gt; API Keys &amp; Webhooks &gt; Live Webhook URL):
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText("https://obeyai.vercel.app/api/obey/billing/webhook");
+                  setCopiedWebhook(true);
+                  setTimeout(() => setCopiedWebhook(false), 2500);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-slate-800 hover:bg-zinc-300 dark:hover:bg-slate-700 text-zinc-800 dark:text-zinc-200 font-bold text-xs flex items-center gap-1.5 shrink-0 transition"
+              >
+                {copiedWebhook ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Webhook URL</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <code className="block p-2 bg-white dark:bg-slate-950 border border-zinc-200 dark:border-slate-800 rounded-lg text-emerald-600 dark:text-emerald-400 font-mono text-xs select-all">
+              https://obeyai.vercel.app/api/obey/billing/webhook
+            </code>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={savingPaystack}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+            >
+              {savingPaystack ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving Paystack Keys...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Paystack Configuration</span>
                 </>
               )}
             </button>

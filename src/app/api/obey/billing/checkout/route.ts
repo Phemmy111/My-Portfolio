@@ -49,12 +49,16 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email: ws.owner_email || "billing@obey.ai",
+        email: ws.owner_email || (ws.owner_phone ? `${ws.owner_phone}@obey.ai` : "billing@obey.ai"),
         amount: amountInKobo,
+        currency: "NGN",
+        channels: ["card", "bank", "ussd", "qr", "mobile_money", "bank_transfer"],
         metadata: {
           workspace_id: ws.id,
           workspace_slug: ws.slug,
           plan,
+          owner_name: ws.owner_name,
+          owner_phone: ws.owner_phone,
         },
         callback_url: `${origin}/control-room?biz=${ws.slug}&paid=true`,
       }),

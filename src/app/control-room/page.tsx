@@ -481,6 +481,11 @@ function ControlRoomContent() {
 
   // Billing state
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [paymentSuccessToast, setPaymentSuccessToast] = useState<{
+    show: boolean;
+    plan: string;
+    reference: string;
+  } | null>(null);
 
   // Session user state (for OTP auth)
   const [sessionUser, setSessionUser] = useState<{
@@ -496,6 +501,34 @@ function ControlRoomContent() {
     fetchSessionUser();
     fetchWorkspaces();
   }, [paramSlug, user?.id]);
+
+  // Handle Paystack payment callback (e.g. ?paid=true&reference=...)
+  useEffect(() => {
+    const isPaid = searchParams.get("paid") === "true";
+    const ref = searchParams.get("reference") || "";
+    if (ref) {
+      fetch(`/api/obey/billing/verify?reference=${encodeURIComponent(ref)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.plan) {
+            setPaymentSuccessToast({
+              show: true,
+              plan: data.plan,
+              reference: ref,
+            });
+            fetchWorkspaces();
+          }
+        })
+        .catch(() => {});
+    } else if (isPaid) {
+      setPaymentSuccessToast({
+        show: true,
+        plan: "active",
+        reference: "",
+      });
+      fetchWorkspaces();
+    }
+  }, [searchParams]);
 
   async function fetchSessionUser() {
     try {
@@ -2374,6 +2407,39 @@ function ControlRoomContent() {
 
         {/* Workspace Brand Ribbon Card */}
         <main className="p-3 sm:p-6 md:p-8 space-y-6 max-w-7xl">
+          {paymentSuccessToast?.show && (
+            <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Payment Successful via Paystack! 🎉
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black uppercase">
+                      {paymentSuccessToast.plan.toUpperCase()} ACTIVE
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Your workspace subscription has been upgraded successfully. All quota limits and premium features are live!
+                    {paymentSuccessToast.reference && (
+                      <span className="ml-1 text-[10px] font-mono text-slate-500">
+                        (Ref: {paymentSuccessToast.reference})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentSuccessToast(null)}
+                className="text-slate-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {currentWs && (
             <div className="bg-[#0b1424] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1.5">

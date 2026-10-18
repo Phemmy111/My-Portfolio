@@ -72,7 +72,7 @@ export async function runWhatsAppSessionSentinel(options?: {
     // 1. Notify workspace owner if requested
     if (shouldNotifyOwners && item.ownerPhone) {
       try {
-        const res = await sendWhatsAppMessage("obey", item.ownerPhone, alertMessage);
+        const res = await sendWhatsAppMessage(alertMessage, item.ownerPhone, "obey");
         if (res.success) {
           alertsSent.push(`Owner: ${item.ownerPhone} (${item.instanceName})`);
           sentinelAlertCooldowns.set(instKey, now);
@@ -90,7 +90,7 @@ export async function runWhatsAppSessionSentinel(options?: {
           `Instance *${item.instanceName}* (${wsName}) dropped offline.\n` +
           `Owner: ${item.ownerName || "Unknown"} (+${item.ownerPhone || "None"})\n` +
           `Status: *${item.connectionStatus}*`;
-        const res = await sendWhatsAppMessage("obey", adminPhone, adminSummary);
+        const res = await sendWhatsAppMessage(adminSummary, adminPhone, "obey");
         if (res.success) {
           alertsSent.push(`Admin: ${adminPhone} (${item.instanceName})`);
           sentinelAlertCooldowns.set(instKey, now);
