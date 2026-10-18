@@ -122,14 +122,45 @@ export async function GET(req: NextRequest) {
       console.warn("[WA Keepalive] Scheduled tasks dispatcher warning:", taskErr);
     }
 
+    // 6. Ghost Hunter: Check active real-time web & social watcher jobs
+    let webWatchersReport = 0;
+    try {
+      const { runActiveWebWatchers } = await import("@/lib/web-watcher");
+      webWatchersReport = await runActiveWebWatchers();
+    } catch (watchErr) {
+      console.warn("[WA Keepalive] Web watcher error:", watchErr);
+    }
+
+    // 7. Autonomous Lead Closer: Follow up with warm prospective leads
+    let leadCloserReport = null;
+    try {
+      const { runAutonomousLeadCloser } = await import("@/lib/lead-closer");
+      leadCloserReport = await runAutonomousLeadCloser();
+    } catch (closerErr) {
+      console.warn("[WA Keepalive] Lead closer error:", closerErr);
+    }
+
+    // 8. Morning Executive Briefing (fires at 7:30 AM WAT daily)
+    let morningBriefingReport = null;
+    try {
+      const { dispatchMorningExecutiveBriefing } = await import("@/lib/morning-briefing");
+      morningBriefingReport = await dispatchMorningExecutiveBriefing();
+    } catch (briefErr) {
+      console.warn("[WA Keepalive] Morning briefing error:", briefErr);
+    }
+
     return NextResponse.json({
       success: true,
       instancesChecked: report.length,
       report,
       scheduledStatusDispatched: scheduledReport,
       scheduledTasksDispatched: scheduledTasksReport,
+      webWatchersTriggered: webWatchersReport,
+      leadCloserResult: leadCloserReport,
+      morningBriefingResult: morningBriefingReport,
       timestamp: new Date().toISOString(),
     });
+
   } catch (err: any) {
     console.error("[WA Keepalive] Global error:", err);
     return NextResponse.json(

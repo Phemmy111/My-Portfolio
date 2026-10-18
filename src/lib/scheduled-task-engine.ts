@@ -690,7 +690,37 @@ Return ONLY a valid JSON object:
 
     const humanTime = finalHumanDesc || `${formatDateTimeWAT(finalTargetDate)} WAT`;
 
+    // Ghost Hunter: Autonomous real-time web & social monitoring trigger
+    const isWatchRequest = /\b(watch|monitor|keep\s+(?:an?\s+)?eye\s+on|track)\b/i.test(userText);
+    if (isWatchRequest) {
+      try {
+        const { createWebWatcher } = await import("@/lib/web-watcher");
+        const activeFrom = new Date(finalTargetDate.getTime() - 2 * 60 * 1000); // 2 minutes before
+        const activeUntil = new Date(finalTargetDate.getTime() + 6 * 60 * 1000); // 6 minutes after
+        await createWebWatcher({
+          user_phone: recipientPhone,
+          workspace_id: workspaceId || "ws_femi_default",
+          target_subject: taskPrompt,
+          search_query: `${taskPrompt} drop code voucher`,
+          active_from: activeFrom,
+          active_until: activeUntil,
+        });
+
+        return {
+          handled: true,
+          replyText:
+            `⚡ *Ghost Hunter Activated, Boss!* 🎯\n\n` +
+            `📌 *Target:* ${taskPrompt}\n` +
+            `🕒 *Active Watch Window:* ${formatToWAT(activeFrom)} – ${formatToWAT(activeUntil)} WAT\n\n` +
+            `I am locked onto this feed and will poll it continuously. The split-second the drop or code appears, I will grab it and ping you here immediately! 🚀`,
+        };
+      } catch (watchErr) {
+        console.warn("[Ghost Hunter] Watcher setup error:", watchErr);
+      }
+    }
+
     if (taskType === "research") {
+
       return {
         handled: true,
         replyText:

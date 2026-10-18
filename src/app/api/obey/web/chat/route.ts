@@ -45,8 +45,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing sessionId or message" }, { status: 400 });
     }
 
-    const contactId = `web-${sessionId}`;
-    const displayName = visitorName || "Web Visitor";
+    const userPhone = body.userPhone || body.ownerPhone || (body.isOwner ? FEMI_PERSONAL_NUMBER : null);
+    const contactId = userPhone ? userPhone.replace(/\D/g, "") : `web-${sessionId}`;
+    const displayName = visitorName || (contactId === FEMI_PERSONAL_NUMBER ? "Femi Adeleke" : "Web Visitor");
+
 
     const mediaBase64 = body.mediaBase64;
     const mediaMimeType = body.mediaMimeType;

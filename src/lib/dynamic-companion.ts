@@ -286,7 +286,27 @@ export async function processDynamicCompanionTurn(params: {
     console.warn("[Dynamic Companion] contact/bucket turn fallback:", err);
   }
 
+  // 2.5 MULTITASK VOICE-TO-ACTION PIPELINE (Compound tasks: Expenses + Reminders)
+  try {
+    const { processMultiTaskVoiceOrText } = await import("@/lib/multitask-pipeline");
+    const multiTaskRes = await processMultiTaskVoiceOrText({
+      userText,
+      recipientPhone: userIdentifier || "2348120934828",
+      workspaceId: "ws_femi_default",
+      instanceName: "obey",
+      isVoiceNote,
+    });
+    if (multiTaskRes.handled && multiTaskRes.replyText) {
+      return {
+        reply: cleanWhatsApp(multiTaskRes.replyText),
+      };
+    }
+  } catch (err) {
+    console.warn("[Dynamic Companion] multitask turn fallback:", err);
+  }
+
   // 2.6 SCHEDULED TASKS & REMINDERS FOR MAIN OBEY
+
   try {
     const { handleScheduledTaskConversation } = await import("@/lib/scheduled-task-engine");
     const taskTurn = await handleScheduledTaskConversation({
