@@ -1051,7 +1051,10 @@ function ControlRoomContent() {
           media_url: mediaToPost.trim() || undefined,
           media_type: mediaToPost.trim() ? typeToPost : "text",
           mode: statusPostMode,
-          scheduled_at: statusPostMode === "schedule" ? statusScheduledAt : undefined,
+          scheduled_at:
+            statusPostMode === "schedule" && statusScheduledAt
+              ? new Date(statusScheduledAt).toISOString()
+              : undefined,
           background_color: selectedStatusColor,
           font: selectedStatusFont,
           auto_post_now: statusPostMode === "post_now",
@@ -4038,8 +4041,8 @@ function ControlRoomContent() {
                 </div>
 
                 {/* Status Commenting Exclusion List (Opt-Outs) */}
-                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+                <div className="bg-[#0b1424] border border-slate-800/90 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
                     <div>
                       <div className="flex items-center gap-2">
                         <UserX className="w-4 h-4 text-rose-400" />
@@ -4050,7 +4053,7 @@ function ControlRoomContent() {
                           {statusExcludedPhones.length} Opted Out
                         </span>
                       </div>
-                      <p className="text-[11px] text-zinc-400 mt-1 max-w-xl leading-relaxed">
+                      <p className="text-[11px] text-slate-400 mt-1 max-w-xl leading-relaxed">
                         Contacts who asked not to have their status updates commented on. Obey will strictly skip commenting on their status stories. Contacts can also auto-exclude themselves anytime by texting &ldquo;Stop commenting on my status&rdquo;.
                       </p>
                     </div>
@@ -4077,28 +4080,28 @@ function ControlRoomContent() {
                   {/* Search filter for exclusions if more than 3 */}
                   {statusExcludedPhones.length > 3 && (
                     <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={exclusionSearch}
                         onChange={(e) => setExclusionSearch(e.target.value)}
                         placeholder="Search excluded names or phone numbers..."
-                        className="w-full pl-9 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-500"
+                        className="w-full pl-9 pr-3 py-1.5 bg-[#060d1a] border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-rose-500"
                       />
                     </div>
                   )}
 
                   {/* Exclusion List Items */}
                   {statusExcludedPhones.length === 0 ? (
-                    <div className="p-6 text-center text-zinc-500 text-xs space-y-1.5 border border-dashed border-zinc-800/80 rounded-xl bg-zinc-900/20">
-                      <UserCheck className="w-7 h-7 mx-auto text-zinc-600" />
-                      <p className="font-semibold text-zinc-400">No excluded contacts</p>
-                      <p className="text-[11px] text-zinc-500">
+                    <div className="p-6 text-center text-slate-400 text-xs space-y-1.5 border border-dashed border-slate-800/80 rounded-xl bg-[#060d1a]/50">
+                      <UserCheck className="w-7 h-7 mx-auto text-slate-500" />
+                      <p className="font-semibold text-slate-300">No excluded contacts</p>
+                      <p className="text-[11px] text-slate-400">
                         All contacts posting WhatsApp status stories are currently eligible for automated comments.
                       </p>
                     </div>
                   ) : filteredStatusExcludedPhones.length === 0 ? (
-                    <div className="p-4 text-center text-zinc-500 text-xs border border-zinc-800 rounded-xl">
+                    <div className="p-4 text-center text-slate-400 text-xs border border-slate-800 rounded-xl bg-[#060d1a]/50">
                       No excluded contacts match your search.
                     </div>
                   ) : (
@@ -4106,7 +4109,7 @@ function ControlRoomContent() {
                       {filteredStatusExcludedPhones.map((ex, idx) => (
                         <div
                           key={ex.phone || idx}
-                          className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 transition"
+                          className="flex items-center justify-between p-3 rounded-xl bg-[#060d1a]/80 border border-slate-800/90 hover:border-slate-700 transition"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center font-bold text-xs text-rose-400 shrink-0">
@@ -4117,11 +4120,11 @@ function ControlRoomContent() {
                                 <span className="font-bold text-xs text-white truncate">
                                   {ex.name || `Contact ${ex.phone.slice(-4)}`}
                                 </span>
-                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-300 border border-slate-800">
                                   +{ex.phone}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-zinc-400 flex items-center gap-2 mt-0.5">
+                              <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
                                 <span className="text-rose-400/90 font-medium">{ex.reason || "Opt-out"}</span>
                                 {ex.excluded_at && (
                                   <>
@@ -4136,7 +4139,7 @@ function ControlRoomContent() {
                           <button
                             type="button"
                             onClick={() => handleRemoveStatusExclusion(ex.phone)}
-                            className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-emerald-950/40 text-zinc-400 hover:text-emerald-400 text-[11px] font-semibold border border-zinc-700 hover:border-emerald-600/40 transition shrink-0 flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-emerald-950/40 text-slate-300 hover:text-emerald-400 text-[11px] font-semibold border border-slate-800 hover:border-emerald-600/40 transition shrink-0 flex items-center gap-1 cursor-pointer"
                             title="Re-allow Obey to comment on their status updates"
                           >
                             <UserCheck className="w-3.5 h-3.5" />
@@ -4149,39 +4152,39 @@ function ControlRoomContent() {
                 </div>
 
                 {/* Published Stories Log - Vercel Deployments Style */}
-                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                <div className="bg-[#0b1424] border border-slate-800/90 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                     <div>
                       <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 text-emerald-400" />
                         Status Broadcast Deployments ({statuses.length})
                       </h3>
-                      <p className="text-[11px] text-zinc-400">
+                      <p className="text-[11px] text-slate-400">
                         Live stories deployed to your WhatsApp Status audience.
                       </p>
                     </div>
 
                     <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                      <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-2.5 py-1 rounded-md font-mono">
+                      <span className="text-[10px] bg-slate-900 border border-slate-800 text-slate-400 px-2.5 py-1 rounded-md font-mono">
                         Author: Obey AI
                       </span>
-                      <span className="text-[10px] bg-blue-600/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold">
                         Production
                       </span>
                     </div>
                   </div>
 
                   {statuses.length === 0 ? (
-                    <div className="p-8 text-center text-zinc-500 text-xs space-y-2 border border-dashed border-zinc-800/80 rounded-xl">
-                      <Radio className="w-8 h-8 mx-auto text-zinc-600" />
+                    <div className="p-8 text-center text-slate-400 text-xs space-y-2 border border-dashed border-slate-800/80 rounded-xl bg-[#060d1a]/50">
+                      <Radio className="w-8 h-8 mx-auto text-slate-500" />
                       <p>No status stories published yet. Compose your first status broadcast on the left!</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-zinc-800/60 max-h-96 overflow-y-auto pr-1">
+                    <div className="divide-y divide-slate-800/60 max-h-96 overflow-y-auto pr-1">
                       {statuses.slice(0, 25).map((st, i) => (
                         <div
                           key={st.id || i}
-                          className="py-3 px-2 sm:px-3 hover:bg-zinc-900/40 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                          className="py-3 px-2 sm:px-3 hover:bg-slate-900/40 rounded-xl transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                         >
                           <div className="space-y-1.5 min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -4204,8 +4207,8 @@ function ControlRoomContent() {
                                   <span>Failed</span>
                                 </span>
                               ) : st.status === "deleted" ? (
-                                <span className="flex items-center gap-1.5 text-zinc-400 font-semibold text-xs bg-zinc-800/60 px-2 py-0.5 rounded-full">
-                                  <Trash2 className="w-3 h-3 text-zinc-500" />
+                                <span className="flex items-center gap-1.5 text-slate-400 font-semibold text-xs bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
+                                  <Trash2 className="w-3 h-3 text-slate-500" />
                                   <span>Deleted</span>
                                 </span>
                               ) : (
@@ -4215,15 +4218,25 @@ function ControlRoomContent() {
                                 </span>
                               )}
 
-                              {/* WhatsApp Views Count Badge */}
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-bold text-[10px] flex items-center gap-1">
-                                <Eye className="w-3 h-3 text-emerald-400" />
-                                <span>{st.view_count || 0} views</span>
-                              </span>
+                              {/* WhatsApp Views / Live Status Badge */}
+                              {typeof st.view_count === "number" && st.view_count > 0 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1">
+                                  <Eye className="w-3 h-3 text-emerald-400" />
+                                  <span>{st.view_count} views</span>
+                                </span>
+                              ) : (
+                                <span
+                                  className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] flex items-center gap-1"
+                                  title="Story deployed to your WhatsApp Status audience. Real-time viewer names are tracked natively in WhatsApp > Updates on your mobile device."
+                                >
+                                  <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                                  <span>Live on Status</span>
+                                </span>
+                              )}
 
                               {/* Color and Font Indicator */}
                               {st.background_color && (
-                                <span className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1 text-[10px] text-slate-300 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
                                   <span
                                     className="w-2.5 h-2.5 rounded-full shrink-0"
                                     style={{ backgroundColor: st.background_color }}
@@ -4234,28 +4247,28 @@ function ControlRoomContent() {
                                 </span>
                               )}
 
-                              <span className="font-mono text-[10px] text-zinc-500">
+                              <span className="font-mono text-[10px] text-slate-500">
                                 #{(st.id || "").slice(-6)}
                               </span>
                             </div>
 
                             {st.content && (
-                              <p className="text-zinc-200 line-clamp-2 text-xs font-sans leading-relaxed">
+                              <p className="text-slate-200 line-clamp-2 text-xs font-sans leading-relaxed">
                                 {st.content}
                               </p>
                             )}
 
                             {st.media_url && (
                               <div className="flex items-center gap-2 pt-0.5">
-                                <span className="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded-md flex items-center gap-1 font-mono">
+                                <span className="text-[10px] bg-slate-900 text-slate-400 border border-slate-800 px-2 py-0.5 rounded-md flex items-center gap-1 font-mono">
                                   {st.media_type === "video" ? "🎬 Video Story" : "📸 Photo Story"}
                                 </span>
                               </div>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0 text-zinc-500 text-[11px] justify-between sm:justify-end">
-                            <span className="font-mono text-[11px] text-zinc-400">
+                          <div className="flex items-center gap-2 shrink-0 text-slate-400 text-[11px] justify-between sm:justify-end">
+                            <span className="font-mono text-[11px] text-slate-400">
                               {st.posted_at
                                 ? new Date(st.posted_at).toLocaleTimeString([], {
                                     hour: "2-digit",
@@ -4275,7 +4288,7 @@ function ControlRoomContent() {
                                 type="button"
                                 onClick={() => handleDeleteStatus(st.id)}
                                 disabled={deletingStatusId === st.id}
-                                className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition border border-transparent hover:border-rose-500/20"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition border border-transparent hover:border-rose-500/20 cursor-pointer"
                                 title="Delete status from WhatsApp and Control Room"
                               >
                                 {deletingStatusId === st.id ? (

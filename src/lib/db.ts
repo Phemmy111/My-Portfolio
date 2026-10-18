@@ -1204,7 +1204,7 @@ export async function dbGetWorkspaceStatuses(workspaceId: string, limit: number 
     await createWorkspaceTables();
     const rows = await db`
       SELECT * FROM workspace_statuses
-      WHERE workspace_id = ${workspaceId}
+      WHERE workspace_id = ${workspaceId} AND status != 'deleted'
       ORDER BY 
         CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END,
         COALESCE(scheduled_at, posted_at, created_at) DESC
@@ -1277,9 +1277,7 @@ export async function dbDeleteStatusPost(statusId: string, workspaceId: string) 
   try {
     await createWorkspaceTables();
     const [row] = await db`
-      UPDATE workspace_statuses
-      SET status = 'deleted',
-          updated_at = NOW()
+      DELETE FROM workspace_statuses
       WHERE id = ${statusId} AND (workspace_id = ${workspaceId} OR ${workspaceId} = 'all')
       RETURNING *
     `;
