@@ -116,6 +116,7 @@ export async function GET(req: NextRequest) {
       comment_rate_limit,
       auto_status_enabled,
       auto_status_interval,
+      auto_lead_closer_enabled: Boolean(ws?.auto_lead_closer_enabled),
       status_excluded_phones,
     });
   } catch (err: any) {
@@ -209,10 +210,12 @@ export async function POST(req: NextRequest) {
 
     // If updating workspace settings
     if (ws) {
+      const auto_lead_closer_enabled = typeof body.auto_lead_closer_enabled === "boolean" ? body.auto_lead_closer_enabled : null;
       await sql`
         UPDATE workspaces
         SET auto_status_enabled = COALESCE(${auto_status_enabled}, auto_status_enabled),
             auto_status_interval = COALESCE(${auto_status_interval}, auto_status_interval),
+            auto_lead_closer_enabled = COALESCE(${auto_lead_closer_enabled}, auto_lead_closer_enabled),
             auto_view_status = COALESCE(${unifiedEngagement}, auto_view_status),
             auto_comment_status = COALESCE(${unifiedEngagement}, auto_comment_status),
             comment_tone = COALESCE(${comment_tone}, comment_tone),

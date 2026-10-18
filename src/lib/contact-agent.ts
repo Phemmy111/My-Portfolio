@@ -1,5 +1,6 @@
 import {
   dbFindContactsByNameOrPhone,
+  dbGetContactsOverview,
   dbGetContactBuckets,
   dbFindBucketByName,
   dbGetContactBucketById,
@@ -7,6 +8,7 @@ import {
   dbGetPendingUserAction,
   dbUpdateUserActionStatus,
   ContactBucket,
+  ContactMatch,
 } from "./db";
 import { sendWhatsAppMessage } from "./whatsapp-gateway";
 
@@ -16,8 +18,8 @@ export interface ContactAgentTurnResult {
 }
 
 /**
- * Handles owner commands to search contacts, disambiguate names, stage messages,
- * and dispatch broadcasts to contact buckets or specific recipients.
+ * Handles owner commands to search contacts, view contact book overview,
+ * disambiguate names, stage messages, and dispatch broadcasts to contact buckets.
  */
 export async function handleOwnerContactOrBucketTurn(params: {
   workspaceId: string;
@@ -95,7 +97,78 @@ export async function handleOwnerContactOrBucketTurn(params: {
   }
 
   // -------------------------------------------------------------
-  // 2. Bucket Listing Commands ("list buckets", "my buckets", "bucket list")
+  // 2. Contact List Visibility, Overview & Count Queries
+  // ("can you access my contact list", "how many contacts do i have", "show my contacts", "list contacts")
+  // -------------------------------------------------------------
+  const isContactAccessOrCount =
+    /\b(can you access my contact|can you see (?:through )?my contact|access my contact|see my contact|do you have (?:access to )?my contact|how many contacts|count (?:my )?contacts|list (?:my )?contacts|show (?:my )?contacts|view (?:my )?contacts|check (?:my )?contacts|who is (?:on|in) my contact|my contact list|my contacts)\b/i.test(
+      lower
+    ) || /^(contacts|contact list|all contacts)$/i.test(lower);
+
+  if (isContactAccessOrCount) {
+    const overview = await dbGetContactsOverview({ workspaceId, instanceName });
+    const sampleList = overview.sampleContacts
+      .slice(0, 8)
+      .map((c, i) => `   ${i + 1}. *${c.name}* (${c.formattedPhone})`)
+      .join("\n");
+
+    return {
+      handled: true,
+      reply:
+        `📱 *Yes ${ownerName}, I have full live access to your WhatsApp address book!*\n\n` +
+        `📊 *Your Contact Book Overview:*\n` +
+        `• *Total WhatsApp Contacts:* ${overview.totalContacts} saved contacts (Instance: *${instanceName}*)\n` +
+        `• *CRM Leads:* ${overview.totalLeads} active leads\n\n` +
+        `👥 *Recent Contacts in your address book:*\n` +
+        `${sampleList || "   (No named contacts found)"}\n\n` +
+        `💡 *What you can tell me to do:*\n` +
+        `• *Search any contact:* \`search contact Seyi\` or \`find contact Ola\`\n` +
+        `• *Message someone:* \`message [Name]: [Your message]\`\n` +
+        `• *Buckets:* \`list buckets\` to broadcast to customer groups`,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 2.5 Contact Search Commands ("search contact Seyi", "find contact Ola", "who is Seyi")
+  // -------------------------------------------------------------
+  const contactSearchMatch = lower.match(
+    /^(?:search|find|look\s+(?:up|for)|check|who\s+is)\s+(?:contact\s+|number\s+for\s+|for\s+)?([a-zA-Z0-9_\-\s]+?)(?:\s+in\s+(?:my\s+)?contacts?)?$/i
+  );
+
+  if (contactSearchMatch) {
+    let rawQuery = contactSearchMatch[1].trim();
+    // Ignore generic pronouns or questions
+    if (!/^(status|broadcast|bucket|me|you|someone|person|people|number|lead|leads|group)$/i.test(rawQuery)) {
+      const matches = await dbFindContactsByNameOrPhone({
+        workspaceId,
+        query: rawQuery,
+        instanceName,
+      });
+
+      if (matches.length === 0) {
+        return {
+          handled: true,
+          reply: `🔍 ${ownerName}, I found no contacts matching "*${rawQuery}*" in your saved WhatsApp contacts or CRM.\n\n💡 You can try searching by first name, last name, or digits from their phone number.`,
+        };
+      }
+
+      const formatted = matches
+        .slice(0, 8)
+        .map((m, i) => `   ${i + 1}. *${m.name}* (${m.formattedPhone})`)
+        .join("\n");
+
+      return {
+        handled: true,
+        reply:
+          `🔍 *Found ${matches.length} contact(s) matching "${rawQuery}":*\n\n` +
+          `${formatted}\n\n` +
+          `💡 To deliver a message, just tell me:\n\`message ${matches[0].name}: [your message]\``,
+      };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 3. Bucket Listing Commands ("list buckets", "my buckets", "bucket list")
   // -------------------------------------------------------------
   const isBucketListQuery =
     /^(list buckets|my buckets|show buckets|bucket list|what buckets do i have|view buckets)$/i.test(lower);
@@ -120,7 +193,7 @@ export async function handleOwnerContactOrBucketTurn(params: {
   }
 
   // -------------------------------------------------------------
-  // 3. Bucket Delivery Commands ("deliver this message to bucket 1", "send to bucket 1: ...")
+  // 3.5 Bucket Delivery Commands ("deliver this message to bucket 1", "send to bucket 1: ...")
   // -------------------------------------------------------------
   const bucketMatch = userText.match(
     /(?:deliver\s+(?:this\s+)?message\s+to|send\s+(?:this\s+)?(?:message\s+)?to|broadcast\s+to|message)\s+(?:bucket\s+list\s+|bucket\s+)([a-zA-Z0-9_\-\s]+?)(?::|\s+saying\s+|\s+with\s+message\s+|\s+content:\s*|$)/i
@@ -194,7 +267,49 @@ export async function handleOwnerContactOrBucketTurn(params: {
   }
 
   // -------------------------------------------------------------
-  // 4. Contact Name Search & Messaging ("help me message Femi", "message Chioma and Tunde")
+  // 4. Hypothetical / Rhetorical Messaging Inquiries
+  // ("So, if I say you should message Ola, you won't?", "Can you message Ola?", "Will you message someone?")
+  // -------------------------------------------------------------
+  const isHypotheticalMessaging =
+    /\b(if i (?:say|tell|ask)|what if|can you (?:please )?(?:message|text)|will you (?:message|text)|would you (?:message|text)|could you (?:message|text))\b/i.test(
+      lower
+    ) || (lower.endsWith("?") && !userText.includes(":"));
+
+  if (isHypotheticalMessaging && /\b(message|text)\b/i.test(lower)) {
+    // Extract candidate target name if present
+    const nameMatch = lower.match(/\b(?:message|text)\s+([a-zA-Z0-9_\-]+)/i);
+    const candidateName = nameMatch ? nameMatch[1].replace(/[?,.!]/g, "").trim() : "";
+
+    let searchSnippet = "";
+    if (candidateName && !/^(someone|anyone|them|him|her|me|you|people|person|now|later)$/i.test(candidateName)) {
+      const matches = await dbFindContactsByNameOrPhone({
+        workspaceId,
+        query: candidateName,
+        instanceName,
+      });
+
+      if (matches.length > 0) {
+        const topMatches = matches
+          .slice(0, 5)
+          .map((m, i) => `   ${i + 1}. *${m.name}* (${m.formattedPhone})`)
+          .join("\n");
+        searchSnippet = `\n\nFor example, I just searched your address book for "*${candidateName}*" and found:\n${topMatches}\n`;
+      }
+    }
+
+    return {
+      handled: true,
+      reply:
+        `Of course I will, ${ownerName}! 🚀 I have full, direct access to your saved WhatsApp contacts and CRM leads.` +
+        searchSnippet +
+        `\nWhenever you want me to message someone, just command me:\n` +
+        `\`message [Name]: [Your message]\`\n\n` +
+        `I will look up their phone number, format the message respectfully in reported speech on your behalf, and wait for your *YES* confirmation before dispatching!`,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 5. Contact Name Search & Actual Messaging ("help me message Femi", "message Olajide: Good morning")
   // -------------------------------------------------------------
   // Strict guard: if the user is discussing automations, workflows, integrations, creative assets, prompts, code, images, video, n8n, or asking for plain text, DO NOT treat as contact outreach!
   const isCreativeOrTechnical =
@@ -209,10 +324,17 @@ export async function handleOwnerContactOrBucketTurn(params: {
     : null;
 
   if (messageContactTrigger) {
-    const rawTargetsStr = messageContactTrigger[1].trim();
+    let rawTargetsStr = messageContactTrigger[1].trim();
+
+    // Strip question marks, quotes, and punctuation
+    rawTargetsStr = rawTargetsStr.replace(/[?.,!;]/g, "").trim();
+
+    // Remove auxiliary/filler phrases like "you won't", "will you", "can you", "please"
+    rawTargetsStr = rawTargetsStr.replace(/\b(you won't|you wont|will you|can you|would you|could you|please|now|first|later)\b/gi, "").trim();
 
     // Check if the user is asking about status, broadcast, general pronouns, or business entities
     if (
+      !rawTargetsStr ||
       /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|group|now|later|first)/i.test(rawTargetsStr) ||
       isCreativeOrTechnical
     ) {
@@ -234,7 +356,7 @@ export async function handleOwnerContactOrBucketTurn(params: {
         (n) =>
           n.length > 1 &&
           n.length <= 25 &&
-          !/^(him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|invoice)$/i.test(n)
+          !/^(him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|invoice|won't|wont)$/i.test(n)
       );
 
     if (names.length === 0) {

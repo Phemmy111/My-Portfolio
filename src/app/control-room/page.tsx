@@ -353,6 +353,8 @@ function ControlRoomContent() {
   const [autoStatusEnabled, setAutoStatusEnabled] = useState(false);
   const [autoStatusInterval, setAutoStatusInterval] = useState("daily_morning");
   const [savingStatusSchedule, setSavingStatusSchedule] = useState(false);
+  const [autoLeadCloserEnabled, setAutoLeadCloserEnabled] = useState(false);
+  const [savingLeadCloser, setSavingLeadCloser] = useState(false);
   const [autoViewStatus, setAutoViewStatus] = useState(true);
   const [autoCommentStatus, setAutoCommentStatus] = useState(false);
   const [commentTone, setCommentTone] = useState("friendly");
@@ -565,6 +567,7 @@ function ControlRoomContent() {
         setCallLogs(data.callLogs || []);
         setStatuses(data.statuses || []);
         setAutoStatusEnabled(data.workspace.auto_status_enabled || false);
+        setAutoLeadCloserEnabled(Boolean(data.workspace.auto_lead_closer_enabled));
         const isEngagementActive = Boolean(data.workspace.auto_comment_status && data.workspace.auto_view_status !== false);
         setAutoViewStatus(isEngagementActive);
         setAutoCommentStatus(isEngagementActive);
@@ -1196,6 +1199,30 @@ function ControlRoomContent() {
       console.error("Save schedule error:", err);
     } finally {
       setSavingStatusSchedule(false);
+    }
+  };
+
+  const handleToggleLeadCloser = async () => {
+    if (!currentWs) return;
+    const nextVal = !autoLeadCloserEnabled;
+    setAutoLeadCloserEnabled(nextVal);
+    setSavingLeadCloser(true);
+    try {
+      await fetch("/api/obey/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace_id: currentWs.id,
+          slug: currentWs.slug,
+          auto_lead_closer_enabled: nextVal,
+        }),
+      });
+      setStatusSuccessMsg(nextVal ? "✅ Lead Closer activated (9 AM - 7 PM WAT)" : "⏸️ Lead Closer paused");
+      setTimeout(() => setStatusSuccessMsg(""), 4000);
+    } catch (err) {
+      console.error("Toggle lead closer error:", err);
+    } finally {
+      setSavingLeadCloser(false);
     }
   };
 
@@ -4042,6 +4069,51 @@ function ControlRoomContent() {
                     >
                       <Save className="w-3.5 h-3.5 text-emerald-400" />
                       <span>{savingStatusSchedule ? "Saving..." : "Save Schedule Preferences"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Autonomous Lead Closer & Sales Follow-Up Engine */}
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
+                  <div className="border-b border-slate-800 pb-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                        Autonomous Lead Closer & Sales Follow-Up
+                      </h3>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                        autoLeadCloserEnabled
+                          ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
+                          : "bg-slate-900 text-slate-400 border-slate-800"
+                      }`}>
+                        {autoLeadCloserEnabled ? "Active (9 AM - 7 PM WAT)" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Intelligently re-engages potential customers who asked about pricing or enrollment &gt; 2 hours ago. Strictly filtered by buyer intent, strictly during Nigerian business hours, and strictly 1 follow-up per lead lifetime.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
+                    <div className="space-y-0.5 pr-3">
+                      <span className="text-xs font-semibold text-white block">Auto Sales Follow-Up Engine</span>
+                      <span className="text-[11px] text-slate-400">
+                        {autoLeadCloserEnabled ? "Auto-qualifying & converting inactive leads" : "Manual follow-ups only"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingLeadCloser}
+                      onClick={handleToggleLeadCloser}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                        autoLeadCloserEnabled ? "bg-emerald-500" : "bg-slate-800"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          autoLeadCloserEnabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>

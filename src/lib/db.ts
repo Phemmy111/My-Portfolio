@@ -1105,97 +1105,200 @@ export async function dbDeleteContactBucket(
   }
 }
 
+export interface ContactMatch {
+  name: string;
+  phone: string;
+  formattedPhone: string;
+  source: string;
+}
+
+export async function dbGetContactsOverview(params: {
+  workspaceId: string;
+  instanceName?: string;
+}): Promise<{
+  totalContacts: number;
+  totalLeads: number;
+  sampleContacts: ContactMatch[];
+}> {
+  const db = getSql();
+  if (!db) return { totalContacts: 0, totalLeads: 0, sampleContacts: [] };
+
+  const instName = params.instanceName || "obey";
+
+  try {
+    await createWorkspaceTables();
+
+    // 1. Count distinct WhatsApp contacts for the instance
+    const waCountRows = await db`
+      SELECT COUNT(DISTINCT c."remoteJid")::int as total
+      FROM evolution."Contact" c
+      JOIN evolution."Instance" i ON c."instanceId" = i.id
+      WHERE (i.name = ${instName} OR i.name = 'obey')
+        AND c."remoteJid" LIKE '%@s.whatsapp.net'
+        AND c."remoteJid" NOT LIKE '0@%'
+    `;
+    const totalContacts = waCountRows?.[0]?.total || 0;
+
+    // 2. Count CRM leads
+    const leadCountRows = await db`
+      SELECT COUNT(*)::int as total
+      FROM workspace_leads
+      WHERE workspace_id = ${params.workspaceId}
+    `;
+    const totalLeads = leadCountRows?.[0]?.total || 0;
+
+    // 3. Fetch recent named contacts
+    const sampleRows = await db`
+      SELECT c."remoteJid", c."pushName"
+      FROM (
+        SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+        FROM evolution."Contact" c
+        JOIN evolution."Instance" i ON c."instanceId" = i.id
+        WHERE (i.name = ${instName} OR i.name = 'obey')
+          AND c."remoteJid" LIKE '%@s.whatsapp.net'
+          AND c."remoteJid" NOT LIKE '0@%'
+          AND c."pushName" IS NOT NULL
+          AND TRIM(c."pushName") != ''
+        ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+      ) c
+      ORDER BY c."updatedAt" DESC NULLS LAST
+      LIMIT 10
+    `;
+
+    const sampleContacts: ContactMatch[] = sampleRows.map((r: any) => {
+      const phone = (r.remoteJid || "").replace(/\D/g, "");
+      return {
+        name: r.pushName || `Contact ${phone.slice(-4)}`,
+        phone,
+        formattedPhone: phone.startsWith("234")
+          ? `+234 ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
+          : `+${phone}`,
+        source: "whatsapp_phone",
+      };
+    });
+
+    return { totalContacts, totalLeads, sampleContacts };
+  } catch (err) {
+    console.warn("dbGetContactsOverview error:", err);
+    return { totalContacts: 0, totalLeads: 0, sampleContacts: [] };
+  }
+}
+
 export async function dbFindContactsByNameOrPhone(params: {
   workspaceId: string;
   query: string;
   instanceName?: string;
-}): Promise<Array<{ name: string; phone: string; formattedPhone: string; source: string }>> {
+}): Promise<ContactMatch[]> {
   const db = getSql();
   const q = (params.query || "").toLowerCase().trim();
-  if (!q) return [];
+  const instName = params.instanceName || "obey";
 
-  const resultsMap = new Map<
-    string,
-    { name: string; phone: string; formattedPhone: string; source: string }
-  >();
+  const resultsMap = new Map<string, ContactMatch>();
+  if (!db) return [];
 
-  // 1. Search in DB workspace_leads
-  if (db) {
+  try {
+    await createWorkspaceTables();
+    const cleanDigits = q.replace(/\D/g, "");
+    const isWildcard = !q || q === "*" || q === "all" || q === "list";
+
+    // 1. Direct query into evolution."Contact" (Neon Postgres)
     try {
-      await createWorkspaceTables();
-      const rows = await db`
-        SELECT name, phone FROM workspace_leads
-        WHERE workspace_id = ${params.workspaceId}
-          AND (
-            LOWER(COALESCE(name, '')) LIKE ${`%${q}%`}
-            OR phone LIKE ${`%${q.replace(/\D/g, "")}%`}
-          )
-        LIMIT 25
-      `;
-      for (const r of rows) {
+      let evoRows: any[] = [];
+      if (isWildcard) {
+        evoRows = await db`
+          SELECT c."remoteJid", c."pushName"
+          FROM (
+            SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+            FROM evolution."Contact" c
+            JOIN evolution."Instance" i ON c."instanceId" = i.id
+            WHERE (i.name = ${instName} OR i.name = 'obey')
+              AND c."remoteJid" LIKE '%@s.whatsapp.net'
+              AND c."remoteJid" NOT LIKE '0@%'
+              AND c."pushName" IS NOT NULL
+              AND TRIM(c."pushName") != ''
+            ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+          ) c
+          ORDER BY c."updatedAt" DESC NULLS LAST
+          LIMIT 25
+        `;
+      } else {
+        evoRows = await db`
+          SELECT c."remoteJid", c."pushName"
+          FROM evolution."Contact" c
+          JOIN evolution."Instance" i ON c."instanceId" = i.id
+          WHERE (i.name = ${instName} OR i.name = 'obey')
+            AND c."remoteJid" LIKE '%@s.whatsapp.net'
+            AND c."remoteJid" NOT LIKE '0@%'
+            AND (
+              LOWER(COALESCE(c."pushName", '')) LIKE ${`%${q}%`}
+              OR (${cleanDigits.length >= 3} AND c."remoteJid" LIKE ${`%${cleanDigits}%`})
+            )
+          ORDER BY c."updatedAt" DESC NULLS LAST
+          LIMIT 25
+        `;
+      }
+
+      for (const row of evoRows) {
+        const phone = (row.remoteJid || "").replace(/\D/g, "");
+        if (phone && phone.length >= 8) {
+          const name = (row.pushName || "").trim() || `Contact ${phone.slice(-4)}`;
+          resultsMap.set(phone, {
+            name,
+            phone,
+            formattedPhone: phone.startsWith("234")
+              ? `+234 ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
+              : `+${phone}`,
+            source: "whatsapp_phone",
+          });
+        }
+      }
+    } catch (evoErr) {
+      console.warn("dbFindContactsByNameOrPhone evolution query warning:", evoErr);
+    }
+
+    // 2. Query workspace_leads
+    try {
+      let leadRows: any[] = [];
+      if (isWildcard) {
+        leadRows = await db`
+          SELECT name, phone FROM workspace_leads
+          WHERE workspace_id = ${params.workspaceId}
+          ORDER BY created_at DESC
+          LIMIT 25
+        `;
+      } else {
+        leadRows = await db`
+          SELECT name, phone FROM workspace_leads
+          WHERE workspace_id = ${params.workspaceId}
+            AND (
+              LOWER(COALESCE(name, '')) LIKE ${`%${q}%`}
+              OR (${cleanDigits.length >= 3} AND phone LIKE ${`%${cleanDigits}%`})
+            )
+          ORDER BY created_at DESC
+          LIMIT 25
+        `;
+      }
+
+      for (const r of leadRows) {
         const clean = (r.phone || "").replace(/\D/g, "");
         if (clean && clean.length >= 8) {
+          const existing = resultsMap.get(clean);
+          const name = r.name || existing?.name || `Contact ${clean.slice(-4)}`;
           resultsMap.set(clean, {
-            name: r.name || `Contact ${clean.slice(-4)}`,
+            name,
             phone: clean,
             formattedPhone: clean.startsWith("234")
               ? `+234 ${clean.slice(3, 6)} ${clean.slice(6, 9)} ${clean.slice(9)}`
               : `+${clean}`,
-            source: "crm_leads",
+            source: existing ? existing.source : "crm_leads",
           });
         }
       }
-    } catch (e) {
-      console.warn("dbFindContactsByNameOrPhone DB search error:", e);
+    } catch (leadErr) {
+      console.warn("dbFindContactsByNameOrPhone lead query warning:", leadErr);
     }
-  }
-
-  // 2. Search in live Evolution API contacts for the instance
-  if (params.instanceName) {
-    try {
-      const evoUrl =
-        process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
-      const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-      const res = await fetch(
-        `${evoUrl}/chat/findContacts/${encodeURIComponent(params.instanceName)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: evoKey },
-          body: JSON.stringify({}),
-        }
-      );
-      if (res.ok) {
-        const list = await res.json();
-        if (Array.isArray(list)) {
-          for (const item of list) {
-            const rawJid = item.remoteJid || item.id || "";
-            if (rawJid.includes("@g.us") || rawJid.includes("@broadcast") || rawJid.includes("status"))
-              continue;
-            const phone = rawJid.replace(/@s\.whatsapp\.net|@lid/g, "").replace(/\D/g, "");
-            if (!phone || phone.length < 8) continue;
-
-            const name = item.pushName || item.verifiedName || item.name || "";
-            const matchesName = name.toLowerCase().includes(q);
-            const matchesPhone = phone.includes(q.replace(/\D/g, ""));
-
-            if (matchesName || (q.replace(/\D/g, "").length >= 3 && matchesPhone)) {
-              const existing = resultsMap.get(phone);
-              const bestName = name || existing?.name || `Contact ${phone.slice(-4)}`;
-              resultsMap.set(phone, {
-                name: bestName,
-                phone,
-                formattedPhone: phone.startsWith("234")
-                  ? `+234 ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
-                  : `+${phone}`,
-                source: "whatsapp_phone",
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("dbFindContactsByNameOrPhone live contact search warning:", e);
-    }
+  } catch (e) {
+    console.warn("dbFindContactsByNameOrPhone general error:", e);
   }
 
   return Array.from(resultsMap.values());

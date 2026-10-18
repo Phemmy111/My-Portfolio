@@ -262,15 +262,24 @@ export async function processDynamicCompanionTurn(params: {
     }
   }
 
-  // 2.5 CONTACT SEARCH & BUCKET MESSAGING FOR MAIN OBEY
+  // 2.5 CONTACT SEARCH & BUCKET MESSAGING FOR OBEY
   try {
     const { handleOwnerContactOrBucketTurn } = await import("@/lib/contact-agent");
     const workspaces = await dbListWorkspaces();
-    const primaryWs = workspaces?.[0];
-    if (primaryWs) {
+    let targetWs = workspaces?.find((w) => w.whatsapp_instance_name === instanceName);
+    if (!targetWs && userIdentifier) {
+      const cleanUserPhone = userIdentifier.replace(/\D/g, "");
+      targetWs = workspaces?.find((w) => w.owner_phone?.replace(/\D/g, "") === cleanUserPhone);
+    }
+    if (!targetWs) {
+      targetWs = workspaces?.[0];
+    }
+    const resolvedInstance = instanceName || targetWs?.whatsapp_instance_name || "obey";
+
+    if (targetWs) {
       const contactTurn = await handleOwnerContactOrBucketTurn({
-        workspaceId: primaryWs.id,
-        instanceName: primaryWs.whatsapp_instance_name || "obey",
+        workspaceId: targetWs.id,
+        instanceName: resolvedInstance,
         userPhone: userIdentifier,
         userText,
         historyText,
@@ -434,6 +443,11 @@ REASONING GUIDELINES:
   ALWAYS look across recent turns in CONVERSATION CONTEXT to link the phone number and message content together!
   - If the user sent what to say earlier and is now providing the number: Combine them immediately into "draft_whatsapp_message"! DO NOT ask what to say again!
   - If the user shared a contact card or number earlier and is now speaking or sending a voice note: Combine them immediately into "draft_whatsapp_message"! DO NOT ask for the phone number again!
+- DIRECT ACCESS TO LIVE CONTACT LIST:
+  You have FULL live visibility into the user's WhatsApp address book (529+ contacts) and CRM leads in Neon PostgreSQL.
+  NEVER claim or tell the user that you don't have access to their contacts, phone, or computer address book!
+  You CAN view, search, count, and message any contact in their address book at any time.
+  If the user asks if you have access to their contacts or to see/count them, enthusiastically confirm and state that you have full access to their saved WhatsApp contacts and CRM leads!
 - AUTONOMOUS LIVE WEB SEARCH:
   If the user asks any question about current facts, news in Nigeria or globally, real-time sports, politics, prices, or questions where factual certainty is needed, ALWAYS choose "search_live_web" with a specific "search_query" so you give verified, accurate answers!
 - NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
