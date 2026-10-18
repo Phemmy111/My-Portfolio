@@ -627,30 +627,74 @@ export async function sendWhatsAppStatusPost(params: {
     }
 
     // Build recipient statusJidList:
-    // When allContacts is true, Evolution API/Baileys already broadcasts to all contacts.
-    // We only need the instance owner's JID in statusJidList so that the user's primary phone syncs under "My Status"
-    // without inflating the payload or crashing Render memory!
     let jidList = params.statusJidList ? [...params.statusJidList] : [];
+
+    // Fetch instance bot owner JID to ensure we exclude self from recipient list
+    let botOwnerNumber = "";
+    try {
+      if (sql) {
+        const instRows = await sql`
+          SELECT "ownerJid" FROM evolution."Instance" WHERE name = ${instance} LIMIT 1
+        `;
+        if (instRows && instRows[0]?.ownerJid) {
+          botOwnerNumber = instRows[0].ownerJid.replace(/[^0-9]/g, "");
+        }
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Status] Instance bot owner JID query warning:", e);
+    }
+
+    // If no custom recipient list provided, fetch all actual saved contacts for this instance
     if (jidList.length === 0) {
       try {
         if (sql) {
-          const instRows = await sql`
-            SELECT "ownerJid" FROM evolution."Instance" WHERE name = ${instance} LIMIT 1
+          // 1. Fetch individual contacts from evolution."Contact" for this instance
+          const contactRows = await sql`
+            SELECT "remoteJid" FROM evolution."Contact"
+            WHERE "instanceId" = (SELECT id FROM evolution."Instance" WHERE name = ${instance} LIMIT 1)
+              AND "remoteJid" LIKE '%@s.whatsapp.net'
+              AND "remoteJid" != '0@s.whatsapp.net'
           `;
-          if (instRows && instRows[0]?.ownerJid) {
-            const cleanOwner = instRows[0].ownerJid.replace(/[^0-9]/g, "");
-            if (cleanOwner) {
-              jidList.push(`${cleanOwner}@s.whatsapp.net`);
+          if (contactRows && contactRows.length > 0) {
+            for (const r of contactRows) {
+              if (r.remoteJid) jidList.push(r.remoteJid);
+            }
+          }
+
+          // 2. Also ensure workspace owner's phone is included so the owner sees it in their feed
+          const wsOwnerRows = await sql`
+            SELECT owner_phone FROM workspaces
+            WHERE whatsapp_instance_name = ${instance} OR LOWER(slug) = ${instance.replace(/^obey-/, '').toLowerCase()}
+            LIMIT 1
+          `;
+          if (wsOwnerRows && wsOwnerRows[0]?.owner_phone) {
+            const cleanOwnerPhone = wsOwnerRows[0].owner_phone.replace(/[^0-9]/g, "");
+            if (cleanOwnerPhone) {
+              jidList.push(`${cleanOwnerPhone}@s.whatsapp.net`);
             }
           }
         }
       } catch (e) {
-        console.warn("[WhatsApp Status] Instance owner JID query warning:", e);
+        console.warn("[WhatsApp Status] Contact list query warning:", e);
       }
     }
 
-    // Deduplicate JIDs
-    jidList = Array.from(new Set(jidList));
+    // Clean, validate and deduplicate recipient JIDs
+    jidList = Array.from(new Set(jidList)).filter((jid) => {
+      if (!jid || typeof jid !== "string") return false;
+      if (!jid.includes("@s.whatsapp.net")) return false;
+      const digits = jid.replace(/[^0-9]/g, "");
+      if (digits.length < 8) return false;
+      if (digits === "0") return false;
+      // In WhatsApp protocol, the bot's own number cannot be a recipient of its own broadcast status
+      if (botOwnerNumber && digits === botOwnerNumber) return false;
+      return true;
+    });
+
+    // Fallback: If still empty (e.g. brand new instance without synced contacts), ensure at least 1 recipient
+    if (jidList.length === 0 && botOwnerNumber) {
+      jidList.push(`${botOwnerNumber}@s.whatsapp.net`);
+    }
 
     // Build proper Evolution API v2 sendStatus payload
     const payload: any = cleanMediaUrl
@@ -659,7 +703,7 @@ export async function sendWhatsAppStatusPost(params: {
           content: cleanMediaUrl,
           caption: cleanWhatsAppFormatting(params.text),
           allContacts: true,
-          ...(jidList.length > 0 ? { statusJidList: jidList } : {}),
+          statusJidList: jidList,
         }
       : {
           type: "text",
@@ -668,7 +712,7 @@ export async function sendWhatsAppStatusPost(params: {
           textColor: params.textColor || "#FFFFFF",
           font: params.font || 1,
           allContacts: true,
-          ...(jidList.length > 0 ? { statusJidList: jidList } : {}),
+          statusJidList: jidList,
         };
 
     // Execute with automatic retry for 502/503/504 (handling Render cold-starts gracefully)
@@ -730,25 +774,44 @@ export async function deleteWhatsAppStatusPost(params: {
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || "obey";
 
-    const res = await fetch(`${evoUrl}/chat/deleteMessageForEveryone/${encodeURIComponent(instance)}`, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: evoKey,
-      },
-      body: JSON.stringify({
-        id: params.messageId,
-        remoteJid: "status@broadcast",
-        fromMe: true,
-      }),
-    });
+    let lastError = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(`${evoUrl}/chat/deleteMessageForEveryone/${encodeURIComponent(instance)}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoKey,
+          },
+          body: JSON.stringify({
+            id: params.messageId,
+            remoteJid: "status@broadcast",
+            fromMe: true,
+          }),
+        });
 
-    if (res.ok) {
-      return { success: true };
+        if (res.ok) {
+          return { success: true };
+        }
+        const err = await res.text();
+        lastError = `Evolution delete error (${res.status}): ${err}`;
+        console.warn(`[Evolution] deleteWhatsAppStatusPost attempt ${attempt} failed (${res.status}):`, err);
+
+        if (attempt === 1 && (res.status === 502 || res.status === 503 || res.status === 504)) {
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
+        break;
+      } catch (fetchErr: any) {
+        lastError = fetchErr.message;
+        if (attempt === 1) {
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
+      }
     }
-    const err = await res.text();
-    console.warn("[Evolution] deleteWhatsAppStatusPost error:", res.status, err);
-    return { success: false, error: err };
+
+    return { success: false, error: lastError };
   } catch (err: any) {
     console.error("[Evolution] deleteWhatsAppStatusPost error:", err);
     return { success: false, error: err.message };

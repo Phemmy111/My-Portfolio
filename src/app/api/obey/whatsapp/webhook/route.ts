@@ -148,8 +148,8 @@ async function handleObeyBusinessOwnerTurn(params: {
       try {
         if (sql) {
           await sql`
-            INSERT INTO workspace_statuses (id, workspace_id, content, status, posted_at)
-            VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${statusText}, 'posted', NOW())
+            INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at)
+            VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${statusText}, 'posted', ${res.messageId || null}, NOW())
           `;
         }
       } catch {}

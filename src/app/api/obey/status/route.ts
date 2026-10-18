@@ -447,17 +447,59 @@ export async function DELETE(req: NextRequest) {
     }
 
     const statusRow = statusRows[0];
-    const instanceName = ws ? (ws.whatsapp_instance_name || `obey-${ws.slug}`) : "obey";
 
-    // If live on WhatsApp with a messageId, call deleteWhatsAppStatusPost
-    if (statusRow.status === "posted" && statusRow.message_id) {
+    // Determine the exact instance name from the status record's workspace
+    let statusWs: any = null;
+    if (statusRow.workspace_id) {
+      const wsRows = await sql`SELECT * FROM workspaces WHERE id = ${statusRow.workspace_id} LIMIT 1`;
+      if (wsRows && wsRows.length > 0) statusWs = wsRows[0];
+    }
+    const instanceName = statusWs
+      ? (statusWs.whatsapp_instance_name || (statusWs.slug ? `obey-${statusWs.slug}` : "obey"))
+      : (ws ? (ws.whatsapp_instance_name || `obey-${ws.slug}`) : "obey");
+
+    let messageIdToDelete = statusRow.message_id;
+
+    // If message_id was null in workspace_statuses, search evolution."Message" for the active broadcast message key ID
+    if (!messageIdToDelete && sql) {
       try {
-        await deleteWhatsAppStatusPost({
+        const snippet = (statusRow.content || "").slice(0, 25).trim();
+        const evoMsgRows = await sql`
+          SELECT key->>'id' as key_id 
+          FROM evolution."Message"
+          WHERE "instanceId" = (SELECT id FROM evolution."Instance" WHERE name = ${instanceName} LIMIT 1)
+            AND key->>'fromMe' = 'true'
+            AND key->>'remoteJid' = 'status@broadcast'
+            AND (key->>'deleted' IS NULL OR key->>'deleted' = 'false')
+            AND (
+              message->'conversation'::text ILIKE ${'%' + snippet + '%'}
+              OR message::text ILIKE ${'%' + snippet + '%'}
+            )
+          ORDER BY "messageTimestamp" DESC
+          LIMIT 1
+        `;
+        if (evoMsgRows && evoMsgRows[0]?.key_id) {
+          messageIdToDelete = evoMsgRows[0].key_id;
+        }
+      } catch (findErr) {
+        console.warn("[Status API] Error looking up message key in evolution.Message:", findErr);
+      }
+    }
+
+    // Call WhatsApp remote delete if status was posted and messageId is identified
+    let remoteDeleteSuccess = false;
+    if (statusRow.status === "posted" && messageIdToDelete) {
+      try {
+        const delRes = await deleteWhatsAppStatusPost({
           instanceName,
-          messageId: statusRow.message_id,
+          messageId: messageIdToDelete,
         });
+        remoteDeleteSuccess = delRes.success;
+        if (!delRes.success) {
+          console.warn("[Status API] WhatsApp remote delete warning:", delRes.error);
+        }
       } catch (delErr) {
-        console.warn("[Status API] WhatsApp remote delete warning:", delErr);
+        console.warn("[Status API] WhatsApp remote delete exception:", delErr);
       }
     }
 
@@ -466,7 +508,9 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Status successfully deleted from WhatsApp and Control Room.",
+      message: messageIdToDelete
+        ? "Status successfully deleted from WhatsApp and Control Room."
+        : "Status removed from Control Room. (Note: Posted prior to message key tracking, manual removal on phone may be required).",
     });
   } catch (err: any) {
     console.error("[Status API] DELETE error:", err);
