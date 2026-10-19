@@ -62,12 +62,43 @@ export async function generateSpeechAudio(
     return null;
   }
 
-  // 1. Try ElevenLabs if API key is provided
+  // 1. Primary & Authentic: Microsoft Edge Neural TTS (en-NG-AbeoNeural for Obey)
+  try {
+    const selectedVoice =
+      options.voice || resolveVoiceName(options.personality, options.gender);
+
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(
+      selectedVoice,
+      OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3
+    );
+
+    const { audioStream } = tts.toStream(cleanedText);
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      audioStream.on("end", () => resolve(Buffer.concat(chunks)));
+      audioStream.on("error", (err: any) => reject(err));
+    });
+
+    if (buffer && buffer.length > 0) {
+      return {
+        buffer,
+        base64: buffer.toString("base64"),
+        mimeType: "audio/mp3",
+      };
+    }
+  } catch (edgeErr) {
+    console.warn("[TTS Engine] MsEdgeTTS synthesis error, attempting fallbacks:", edgeErr);
+  }
+
+  // 2. Secondary Fallback: ElevenLabs (Only if explicit male/custom voice ID configured)
   const elevenKey = process.env.ELEVENLABS_API_KEY;
-  if (elevenKey) {
+  const elevenVoiceId = process.env.ELEVENLABS_VOICE_ID;
+  if (elevenKey && elevenVoiceId && elevenVoiceId !== "21m00Tcm4TlvDq8ikWAM") {
     try {
-      const voiceId = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Default Rachel or custom Obey
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${elevenVoiceId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -97,7 +128,7 @@ export async function generateSpeechAudio(
     }
   }
 
-  // 2. Try OpenAI TTS if API key is provided
+  // 3. Fallback: OpenAI TTS (onyx for male)
   const openAiKey = process.env.OPENAI_API_KEY;
   if (openAiKey) {
     try {
@@ -126,37 +157,6 @@ export async function generateSpeechAudio(
     } catch (openAiErr) {
       console.warn("[TTS Engine] OpenAI TTS error, falling back:", openAiErr);
     }
-  }
-
-  // 3. Robust, High-Fidelity Zero-Config Fallback: MsEdgeTTS Neural Voices
-  try {
-    const selectedVoice =
-      options.voice || resolveVoiceName(options.personality, options.gender);
-
-    const tts = new MsEdgeTTS();
-    await tts.setMetadata(
-      selectedVoice,
-      OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3
-    );
-
-    const { audioStream } = tts.toStream(cleanedText);
-
-    const buffer = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
-      audioStream.on("end", () => resolve(Buffer.concat(chunks)));
-      audioStream.on("error", (err: any) => reject(err));
-    });
-
-    if (buffer && buffer.length > 0) {
-      return {
-        buffer,
-        base64: buffer.toString("base64"),
-        mimeType: "audio/mp3",
-      };
-    }
-  } catch (edgeErr) {
-    console.error("[TTS Engine] MsEdgeTTS synthesis error:", edgeErr);
   }
 
   return null;

@@ -195,13 +195,22 @@ Provide a clear, well-structured, up-to-date briefing with emojis and bullet poi
         `${researchAI.text}\n\n` +
         `💡 *Task completed on schedule.* Have a productive day! 🚀`;
     } else {
-      // Standard reminder
-      deliveryText =
-        `⏰ *Scheduled Reminder, Boss!*\n\n` +
-        `Hey Boss, this is your scheduled reminder:\n` +
-        `👉 *${task.prompt}*\n\n` +
-        `🕒 *Scheduled for:* ${formatToWAT(task.scheduled_at)} WAT\n\n` +
-        `Hope this helps you stay ahead of everything! 🚀`;
+      // Check if this was a wake-up call / alarm
+      const isWakeUp = /\b(?:wake\s*up|wake\s+me|morning)\b/i.test(task.prompt);
+      if (isWakeUp) {
+        deliveryText =
+          `🌅 *Good Morning, Boss! Wake Up Time!* ⏰✨\n\n` +
+          `It's *${formatToWAT(task.scheduled_at)} WAT*. Rise and shine, time to conquer the day and build greatness! 🚀🔥\n\n` +
+          `Your schedule and autonomous agents are primed and standing by. What are we tackling first today?`;
+      } else {
+        // Standard reminder
+        deliveryText =
+          `⏰ *Scheduled Reminder, Boss!*\n\n` +
+          `Hey Boss, this is your scheduled reminder:\n` +
+          `👉 *${task.prompt}*\n\n` +
+          `🕒 *Scheduled for:* ${formatToWAT(task.scheduled_at)} WAT\n\n` +
+          `Hope this helps you stay ahead of everything! 🚀`;
+      }
     }
 
     // Send WhatsApp message
@@ -379,26 +388,42 @@ export function computeTargetScheduledDate(input: {
     return { targetDate, humanDescription: `Today at ${formatToWAT(targetDate)} WAT (in 1 hour)`, needsTime: false };
   }
 
-  // 2. Absolute time expressions e.g. "at 4:30 pm", "at 9 am", "by 9pm", "at 10:15"
-  const absRegex = /\b(?:at|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+  // 2. Absolute time expressions e.g. "at 4:30 pm", "at 9 am", "by 9pm", "by 9am", "9am", "at 10:15"
+  const absRegex =
+    /\b(?:(?:at|by)\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(?:at|by)\s+(\d{1,2})(?::(\d{2}))?\b/i;
   const absMatch = text.match(absRegex);
   if (absMatch) {
-    let hour = parseInt(absMatch[1], 10);
-    const min = absMatch[2] ? parseInt(absMatch[2], 10) : 0;
+    let hour = parseInt(absMatch[1] || absMatch[4], 10);
+    const min = absMatch[2]
+      ? parseInt(absMatch[2], 10)
+      : absMatch[5]
+      ? parseInt(absMatch[5], 10)
+      : 0;
     const ampm = absMatch[3] ? absMatch[3].toLowerCase() : null;
 
     if (ampm === "pm" && hour < 12) hour += 12;
     if (ampm === "am" && hour === 12) hour = 0;
 
     // Current time in WAT (Africa/Lagos)
-    const watNow = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+    const watNow = new Date(
+      now.toLocaleString("en-US", { timeZone: "Africa/Lagos" })
+    );
     let targetWatYear = watNow.getFullYear();
     let targetWatMonth = watNow.getMonth();
     let targetWatDay = watNow.getDate();
 
     const isExplicitTomorrow = /\btomorrow\b/i.test(text);
+    const isExplicitToday =
+      /\b(?:today|this\s+morning|this\s+afternoon|this\s+evening|tonight)\b/i.test(
+        text
+      );
+
     if (isExplicitTomorrow) {
       targetWatDay += 1;
+    } else if (isExplicitToday) {
+      // User explicitly specified today; keep targetWatDay
+      if (text.includes("this afternoon") && hour < 12) hour += 12;
+      if (text.includes("tonight") && hour < 12) hour += 12;
     } else {
       const curHour = watNow.getHours();
       const curMin = watNow.getMinutes();
@@ -408,7 +433,14 @@ export function computeTargetScheduledDate(input: {
     }
 
     // Convert WAT (UTC+1) to UTC timestamp: subtract 1 hour
-    const targetUtcMs = Date.UTC(targetWatYear, targetWatMonth, targetWatDay, hour - 1, min, 0);
+    const targetUtcMs = Date.UTC(
+      targetWatYear,
+      targetWatMonth,
+      targetWatDay,
+      hour - 1,
+      min,
+      0
+    );
     const targetDate = new Date(targetUtcMs);
 
     const isToday = !isExplicitTomorrow && targetWatDay === watNow.getDate();
@@ -456,21 +488,30 @@ export async function handleScheduledTaskConversation(params: {
   const hasTimeTrigger =
     /\b(?:in\s+(?:the\s+next\s+)?\d+|after\s+\d+)\s*(?:mins?|minutes?|hours?|hrs?|days?|secs?|seconds?)\b/i.test(lower) ||
     /\b(?:at|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/i.test(lower) ||
-    /\b(?:tomorrow|tonight|later|sometime\s+later)\b/i.test(lower) ||
+    /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(lower) ||
+    /\b(?:tomorrow|tonight|today|this\s+morning|this\s+afternoon|this\s+evening|later|sometime\s+later)\b/i.test(lower) ||
     /\b(?:get\s+back\s+to\s+me|send\s+(?:it\s+to\s+)?me|drop\s+(?:it\s+for\s+)?me|ping\s+me)\b/i.test(lower);
 
-  // 4. Task action triggers (remind, research, search, look up, check, etc.)
+  // 4. Task action triggers (remind, research, search, wake up, ping, message me, etc.)
   const hasTaskAction =
     /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
+    /\b(wake\s+(?:me\s+)?up|wake\s*up|wake-up|send\s+(?:me\s+)?(?:a\s+)?(?:message|msg|dm|ping|text|alert|notification)|ping\s+me|alert\s+me|notify\s+me|call\s+me|message\s+me|text\s+me|write\s+me)\b/i.test(lower) ||
     /\b(go\s+online|search|research|look\s+up|find\s+out|check|browse)\b/i.test(lower);
 
+  // 5. Follow-up correction triggers (e.g. "Wait, I mean this morning jàre", "change it to today")
+  const isTimeCorrection =
+    /\b(?:wait\s*,?\s*)?(?:i\s+mean|change\s+(?:it\s+to|time\s+to)|make\s+it|reschedule\s+to)\b/i.test(lower);
+
   const isAnsweringFollowupTime =
-    hasTimeTrigger && historyText.toLowerCase().includes("when should i remind you");
+    hasTimeTrigger &&
+    (historyText.toLowerCase().includes("when should i remind you") ||
+      historyText.toLowerCase().includes("when should i ping"));
 
   const isTaskOrReminderRequest =
     /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
     (hasTaskAction && hasTimeTrigger) ||
-    isAnsweringFollowupTime;
+    isAnsweringFollowupTime ||
+    isTimeCorrection;
 
   if (!isListQuery && !isCancelQuery && !isTaskOrReminderRequest) {
     return { handled: false };
@@ -554,6 +595,79 @@ export async function handleScheduledTaskConversation(params: {
       handled: true,
       replyText: `🗑️ *Task Cancelled!*\n\nI have cancelled your scheduled reminder:\n👉 *${mostRecent.prompt}*`,
     };
+  }
+
+  // 2.5 Handle Reschedule / Time Correction Query (e.g. "Wait, I mean this morning jàre", "change it to today")
+  if (isTimeCorrection) {
+    const pending = await dbGetPendingTasksForPhone(recipientPhone, workspaceId);
+    if (pending.length > 0) {
+      const mostRecent = pending[0];
+      const fastTime = computeTargetScheduledDate({ text: userText, now });
+      let newTargetDate: Date | null = fastTime.targetDate;
+
+      // If user said "this morning" or "today" without repeating the hour (e.g. "Wait, I mean this morning jàre")
+      if (!newTargetDate && /\b(?:this\s+morning|today)\b/i.test(lower)) {
+        const origDate = new Date(mostRecent.scheduled_at);
+        const watNow = new Date(
+          now.toLocaleString("en-US", { timeZone: "Africa/Lagos" })
+        );
+        const targetUtcMs = Date.UTC(
+          watNow.getFullYear(),
+          watNow.getMonth(),
+          watNow.getDate(),
+          origDate.getUTCHours(),
+          origDate.getUTCMinutes(),
+          0
+        );
+        newTargetDate = new Date(targetUtcMs);
+      }
+
+      if (newTargetDate && !isNaN(newTargetDate.getTime())) {
+        if (sql) {
+          await sql`
+            UPDATE obey_scheduled_tasks
+            SET scheduled_at = ${newTargetDate.toISOString()}, updated_at = NOW()
+            WHERE id = ${mostRecent.id}
+          `;
+        }
+        return {
+          handled: true,
+          replyText: `Got you sharp-sharp, Boss! 🫡 I have adjusted your scheduled task:\n👉 *${mostRecent.prompt}*\n🕒 *New Time:* Today at ${formatToWAT(newTargetDate)} WAT. Locked in! ⏰🚀`,
+        };
+      }
+    } else if (historyText) {
+      // If task was not in DB yet but was discussed in immediate history
+      const histTime = computeTargetScheduledDate({ text: historyText, now });
+      if (histTime.targetDate) {
+        const origDate = histTime.targetDate;
+        const watNow = new Date(
+          now.toLocaleString("en-US", { timeZone: "Africa/Lagos" })
+        );
+        const targetUtcMs = Date.UTC(
+          watNow.getFullYear(),
+          watNow.getMonth(),
+          watNow.getDate(),
+          origDate.getUTCHours(),
+          origDate.getUTCMinutes(),
+          0
+        );
+        const newTargetDate = new Date(targetUtcMs);
+        const taskPrompt = "Wake-up alert and morning briefing";
+        await dbScheduleTask({
+          workspace_id: workspaceId,
+          instance_name: instanceName || "obey",
+          recipient_phone: recipientPhone,
+          sender_name: senderName || "Obey",
+          task_type: "reminder",
+          prompt: taskPrompt,
+          scheduled_at: newTargetDate,
+        });
+        return {
+          handled: true,
+          replyText: `Got you sharp-sharp, Boss! 🫡 I have scheduled your wake-up message:\n👉 *${taskPrompt}*\n🕒 *Time:* Today at ${formatToWAT(newTargetDate)} WAT. Locked in! ⏰🚀`,
+        };
+      }
+    }
   }
 
   // 3. Handle Schedule / Ask-Time Request
@@ -668,8 +782,24 @@ Return ONLY a valid JSON object:
       };
     }
 
-    const taskPrompt = parsed?.task_prompt || userText.replace(/^(?:remind\s+me(?:\s+to)?|reminder\s+for|set\s+a\s+reminder(?:\s+to)?)\s*/i, "").trim();
-    const taskType = parsed?.task_type || (/\b(go\s+online|search|research|look\s+up)\b/i.test(userText) ? "research" : "reminder");
+    let taskPrompt =
+      parsed?.task_prompt ||
+      userText
+        .replace(
+          /^(?:remind\s+me(?:\s+to)?|reminder\s+for|set\s+a\s+reminder(?:\s+to)?|send\s+me(?:\s+a)?\s+message(?:\s+by\s+[^\s]+)?(?:\s+to)?)\s*/i,
+          ""
+        )
+        .trim();
+
+    if (/\b(?:wake\s*up|wake\s+me)\b/i.test(userText)) {
+      taskPrompt = "Wake-up alert and morning briefing";
+    }
+
+    const taskType =
+      parsed?.task_type ||
+      (/\b(go\s+online|search|research|look\s+up)\b/i.test(userText)
+        ? "research"
+        : "reminder");
 
     const scheduled = await dbScheduleTask({
       workspace_id: workspaceId,
@@ -688,10 +818,12 @@ Return ONLY a valid JSON object:
       };
     }
 
-    const humanTime = finalHumanDesc || `${formatDateTimeWAT(finalTargetDate)} WAT`;
+    const humanTime =
+      finalHumanDesc || `${formatDateTimeWAT(finalTargetDate)} WAT`;
 
     // Ghost Hunter: Autonomous real-time web & social monitoring trigger
-    const isWatchRequest = /\b(watch|monitor|keep\s+(?:an?\s+)?eye\s+on|track)\b/i.test(userText);
+    const isWatchRequest =
+      /\b(watch|monitor|keep\s+(?:an?\s+)?eye\s+on|track)\b/i.test(userText);
     if (isWatchRequest) {
       try {
         const { createWebWatcher } = await import("@/lib/web-watcher");
@@ -711,7 +843,9 @@ Return ONLY a valid JSON object:
           replyText:
             `⚡ *Ghost Hunter Activated, Boss!* 🎯\n\n` +
             `📌 *Target:* ${taskPrompt}\n` +
-            `🕒 *Active Watch Window:* ${formatToWAT(activeFrom)} – ${formatToWAT(activeUntil)} WAT\n\n` +
+            `🕒 *Active Watch Window:* ${formatToWAT(activeFrom)} – ${formatToWAT(
+              activeUntil
+            )} WAT\n\n` +
             `I am locked onto this feed and will poll it continuously. The split-second the drop or code appears, I will grab it and ping you here immediately! 🚀`,
         };
       } catch (watchErr) {
@@ -720,7 +854,6 @@ Return ONLY a valid JSON object:
     }
 
     if (taskType === "research") {
-
       return {
         handled: true,
         replyText:
@@ -728,6 +861,17 @@ Return ONLY a valid JSON object:
           `📌 *Topic:* ${taskPrompt}\n` +
           `🕒 *Briefing Due:* ${humanTime}\n\n` +
           `I will research this online and deliver a full report right here on WhatsApp when it's time! 🚀`,
+      };
+    }
+
+    const isWakeUpPrompt = taskPrompt.toLowerCase().includes("wake");
+    if (isWakeUpPrompt) {
+      const isTomorrow = !finalHumanDesc?.includes("Today");
+      return {
+        handled: true,
+        replyText: `Locked in, Boss! 🔒 I will send you a wake-up message right here by *${formatToWAT(
+          finalTargetDate
+        )} WAT* (${isTomorrow ? "Tomorrow" : "Today"}). Have a good rest, I dey watch everything! ⏰✨`,
       };
     }
 

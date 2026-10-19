@@ -544,13 +544,13 @@ function CallInterface() {
       recognitionRef.current = null;
     }
 
-    // Stop HTML5 Audio Player
+    // Stop HTML5 Audio Player (preserve unlocked instance for mobile replay)
     if (audioPlayerRef.current) {
       try {
         audioPlayerRef.current.pause();
-        audioPlayerRef.current.src = "";
+        audioPlayerRef.current.removeAttribute("src");
+        audioPlayerRef.current.load();
       } catch {}
-      audioPlayerRef.current = null;
     }
 
     // Stop Speech Synthesis
@@ -675,9 +675,6 @@ function CallInterface() {
       isSpeakingRef.current = false;
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current = null;
-      }
 
       // 250ms buffer for room speaker echo to dissipate before reopening mic
       setTimeout(() => {
@@ -708,25 +705,35 @@ function CallInterface() {
     // 1. Primary: Play authentic neural MP3 audio (flawless on iOS, Android, and PC)
     if (audioBase64) {
       try {
-        const audio = new Audio("data:audio/mp3;base64," + audioBase64);
-        audioPlayerRef.current = audio;
-        audio.onplay = () => {
-          isSpeakingRef.current = true;
-          setIsSpeaking(true);
-          setIsListening(false);
-        };
-        audio.onended = () => {
-          handleFinish();
-        };
-        audio.onerror = (e) => {
-          console.warn("[Voice Engine] HTML5 audio error, falling back to speech synthesis:", e);
-          fallbackSpeechSynthesis(cleanSpoken, handleFinish);
-        };
-        audio.play().catch((playErr) => {
-          console.warn("[Voice Engine] Autoplay audio error, falling back:", playErr);
-          fallbackSpeechSynthesis(cleanSpoken, handleFinish);
-        });
-        return;
+        let audio: HTMLAudioElement | null = audioPlayerRef.current;
+        if (!audio) {
+          audio = new Audio();
+          audioPlayerRef.current = audio;
+        }
+        if (audio) {
+          audio.pause();
+          audio.src = "data:audio/mp3;base64," + audioBase64;
+          audio.onplay = () => {
+            isSpeakingRef.current = true;
+            setIsSpeaking(true);
+            setIsListening(false);
+          };
+          audio.onended = () => {
+            handleFinish();
+          };
+          audio.onerror = (e: any) => {
+            console.warn("[Voice Engine] HTML5 audio error, falling back to speech synthesis:", e);
+            fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+          };
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((playErr: any) => {
+              console.warn("[Voice Engine] Autoplay audio error, falling back:", playErr);
+              fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+            });
+          }
+          return;
+        }
       } catch (audioErr) {
         console.warn("[Voice Engine] Audio initialization exception:", audioErr);
       }
@@ -802,13 +809,18 @@ function CallInterface() {
         recognitionRef.current = null;
       }
 
+      const isMobile =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
       const recognition = new SpeechRecClass();
-      // Continuous listening across both desktop and mobile ensures Android Chrome does not cut off speech
-      recognition.continuous = true;
+      // On mobile (Android/iOS), continuous=false allows the OS speech engine to cleanly complete each utterance without hanging
+      recognition.continuous = !isMobile;
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
       let accumulatedFinal = "";
+      let currentCandidate = "";
 
       recognition.onstart = () => {
         if (!isSpeakingRef.current && !isThinkingRef.current) {
@@ -841,21 +853,23 @@ function CallInterface() {
           accumulatedFinal += " " + finalStr;
         }
 
-        const candidateText = (accumulatedFinal + " " + interim).trim();
+        currentCandidate = (accumulatedFinal + " " + interim).trim();
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // When user pauses speaking for 1.1 seconds, trigger Obey AI thinking
-        if (candidateText.length >= 2) {
+        // Responsive turn-taking: 700ms on mobile, 950ms on desktop
+        const pauseDelay = isMobile ? 700 : 950;
+        if (currentCandidate.length >= 2) {
           silenceTimerRef.current = setTimeout(() => {
             if (
               isCallActiveRef.current &&
               !isSpeakingRef.current &&
               !isThinkingRef.current &&
-              candidateText.trim().length >= 2
+              currentCandidate.trim().length >= 2
             ) {
-              const statementToSend = candidateText.trim();
+              const statementToSend = currentCandidate.trim();
               accumulatedFinal = "";
+              currentCandidate = "";
               if (recognitionRef.current) {
                 try {
                   recognitionRef.current.onend = null;
@@ -865,7 +879,7 @@ function CallInterface() {
               }
               processUserVoiceStatement(statementToSend);
             }
-          }, 1100);
+          }, pauseDelay);
         }
       };
 
@@ -883,6 +897,24 @@ function CallInterface() {
       recognition.onend = () => {
         setIsListening(false);
         recognitionRef.current = null;
+
+        // If user finished an utterance on mobile, onend fires immediately.
+        // Promptly process the captured speech statement so words are never lost!
+        if (
+          currentCandidate &&
+          currentCandidate.trim().length >= 2 &&
+          isCallActiveRef.current &&
+          !isSpeakingRef.current &&
+          !isThinkingRef.current
+        ) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          const statementToSend = currentCandidate.trim();
+          currentCandidate = "";
+          accumulatedFinal = "";
+          processUserVoiceStatement(statementToSend);
+          return;
+        }
+
         // Automatically restart listening if call is active and Obey is not thinking or speaking or muted
         if (
           isCallActiveRef.current &&
@@ -899,7 +931,7 @@ function CallInterface() {
             ) {
               startSpeechRecognitionLoop();
             }
-          }, 350);
+          }, isMobile ? 200 : 350);
         }
       };
 
@@ -980,15 +1012,19 @@ function CallInterface() {
     // Synchronously prime/unlock audio playback for mobile browsers (iOS & Android)
     if (typeof window !== "undefined") {
       try {
-        if (window.speechSynthesis) {
-          const dummy = new SpeechSynthesisUtterance(" ");
-          dummy.volume = 0.01;
-          window.speechSynthesis.speak(dummy);
+        if (!audioPlayerRef.current) {
+          audioPlayerRef.current = new Audio();
         }
-        const prime = new Audio();
-        prime.src =
+        audioPlayerRef.current.src =
           "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        prime.play().catch(() => {});
+        const primePromise = audioPlayerRef.current.play();
+        if (primePromise !== undefined) {
+          primePromise
+            .then(() => {
+              audioPlayerRef.current?.pause();
+            })
+            .catch(() => {});
+        }
       } catch {}
     }
 
@@ -1021,8 +1057,9 @@ function CallInterface() {
       // 2. Setup audio frequency visualizer for the glowing orb
       setupAudioVisualizer(stream);
 
-      // 2.5 Start MediaRecorder to capture call audio recording for WhatsApp
+      // 2.5 Start MediaRecorder on cloned stream to capture audio recording without interfering with SpeechRecognition
       try {
+        const recStream = stream.clone();
         const mimeType =
           typeof MediaRecorder !== "undefined" &&
           MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -1032,7 +1069,7 @@ function CallInterface() {
             ? "audio/ogg;codecs=opus"
             : "";
         const options = mimeType ? { mimeType } : undefined;
-        const recorder = new MediaRecorder(stream, options);
+        const recorder = new MediaRecorder(recStream, options);
         recordedChunksRef.current = [];
         recorder.ondataavailable = (event) => {
           if (event.data && event.data.size > 0) {
@@ -1050,36 +1087,38 @@ function CallInterface() {
       setCallDuration(0);
       setTranscripts([]);
 
-      // 4. Fetch customized voice greeting from server
+      // 4. Fetch customized voice greeting from server with neural MP3 audio
       let initialGreeting = bizInfo?.greeting;
       let initialGreetingAudio: string | null = null;
-      if (!initialGreeting) {
-        try {
-          const greetRes = await fetch("/api/obey/calls/talk", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              isGreeting: true,
-              bizSlug: bizInfo?.slug || rawBiz,
-              userName: effectiveName || "Friend",
-              voice_id: selectedVoice,
-              voice_personality: selectedPersonality,
-            }),
-          });
-          const greetData = await greetRes.json();
-          if (greetData.reply) {
-            initialGreeting = greetData.reply;
-          }
-          if (greetData.audio_base64) {
-            initialGreetingAudio = greetData.audio_base64;
-          }
-          if (greetData.voice_id) {
-            setSelectedVoice(greetData.voice_id);
-          }
-          if (greetData.voice_personality) {
-            setSelectedPersonality(greetData.voice_personality);
-          }
-        } catch {}
+      try {
+        const greetRes = await fetch("/api/obey/calls/talk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            isGreeting: true,
+            greetingText: initialGreeting,
+            bizSlug: bizInfo?.slug || rawBiz,
+            userName: effectiveName || "Friend",
+            userPhone: effectivePhone,
+            voice_id: selectedVoice,
+            voice_personality: selectedPersonality,
+          }),
+        });
+        const greetData = await greetRes.json();
+        if (greetData.reply) {
+          initialGreeting = greetData.reply;
+        }
+        if (greetData.audio_base64) {
+          initialGreetingAudio = greetData.audio_base64;
+        }
+        if (greetData.voice_id) {
+          setSelectedVoice(greetData.voice_id);
+        }
+        if (greetData.voice_personality) {
+          setSelectedPersonality(greetData.voice_personality);
+        }
+      } catch (greetErr) {
+        console.warn("[Voice Call] Greeting fetch notice:", greetErr);
       }
 
       if (!initialGreeting) {

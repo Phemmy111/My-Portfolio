@@ -91,56 +91,66 @@ export async function POST(req: NextRequest) {
         console.warn("[Calls Talk] Spoken voice summary error:", speechErr);
       }
 
-      const notificationMsg =
+      const rawRecordingPayload = recordingUrl || body.audioBase64 || "";
+
+      // 1. Report and Transcript for Boss Femi
+      const femiReportMsg =
         `🎙️ *Obey Voice Hotline Report*\n\n` +
         `👤 *Caller:* ${callerName}\n` +
         `📞 *Phone:* ${callerPhone ? `+${callerPhone}` : "Web Voice User"}\n` +
         `🏢 *Workspace:* ${workspace ? workspace.name : "Femi Adeleke Portfolio"}\n` +
         `⏱️ *Duration:* ${body.durationSeconds || 0}s\n` +
-        (recordingUrl ? `🎵 *Audio Recording:* ${recordingUrl}\n\n` : "\n") +
+        (recordingUrl ? `🎵 *Audio Link:* ${recordingUrl}\n\n` : "\n") +
         `📝 *Conversation Transcript:*\n${summaryText}`;
 
-      // 1. Send text transcript to caller if valid phone number provided
-      if (callerPhone && callerPhone.length >= 10) {
-        await sendWhatsAppMessage(notificationMsg, callerPhone);
-      }
-      // Always notify Femi with transcript report
-      await sendWhatsAppMessage(notificationMsg, FEMI_PERSONAL_NUMBER);
+      // Notify Boss Femi with executive report & transcript
+      await sendWhatsAppMessage(femiReportMsg, FEMI_PERSONAL_NUMBER);
 
-      // 2. Deliver actual Voice Note briefing to WhatsApp
+      // Deliver voice briefing to Boss Femi
       if (spokenVoiceBase64) {
-        if (callerPhone && callerPhone.length >= 10) {
-          try {
-            await sendWhatsAppAudio(
-              spokenVoiceBase64,
-              callerPhone,
-              `🎙️ Call Summary (${body.durationSeconds || 0}s)`
-            );
-          } catch (audioErr) {
-            console.warn("[Calls Talk] Error sending audio to caller:", audioErr);
-          }
-        }
         try {
           await sendWhatsAppAudio(
             spokenVoiceBase64,
             FEMI_PERSONAL_NUMBER,
-            `🎙️ Call Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`
+            `🎙️ Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`
           );
         } catch (audioErr) {
           console.warn("[Calls Talk] Error sending audio briefing to Femi:", audioErr);
         }
       }
 
-      // 3. Deliver raw call recording file to Femi if uploaded
-      if (recordingUrl) {
+      // Deliver exact raw call recording to Boss Femi
+      if (rawRecordingPayload) {
         try {
           await sendWhatsAppAudio(
-            recordingUrl,
+            rawRecordingPayload,
             FEMI_PERSONAL_NUMBER,
-            `🎙️ Raw Call Recording (${body.durationSeconds || 0}s)`
+            `🎙️ Exact Call Recording: ${callerName} (${body.durationSeconds || 0}s)`
           );
         } catch (recErr) {
           console.warn("[Calls Talk] Error sending recording audio to Femi:", recErr);
+        }
+      }
+
+      // 2. Dispatches to Caller: ONLY raw audio recording and conversation transcript (no internal metrics/reports)
+      if (callerPhone && callerPhone.length >= 10 && callerPhone !== FEMI_PERSONAL_NUMBER) {
+        const callerTranscriptMsg =
+          `🎙️ *Your Call with Obey*\n\n` +
+          `Thank you for speaking with me today! Here is your conversation transcript:\n\n` +
+          `📝 *Conversation Transcript:*\n${summaryText}`;
+
+        await sendWhatsAppMessage(callerTranscriptMsg, callerPhone);
+
+        if (rawRecordingPayload) {
+          try {
+            await sendWhatsAppAudio(
+              rawRecordingPayload,
+              callerPhone,
+              `🎙️ Your Call Recording (${body.durationSeconds || 0}s)`
+            );
+          } catch (audioErr) {
+            console.warn("[Calls Talk] Error sending audio recording to caller:", audioErr);
+          }
         }
       }
 
@@ -252,10 +262,12 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
 
     // If this is a greeting request
     if (isGreeting) {
-      const greeting = workspace
-        ? wsSettings?.voice_greeting ||
-          `Hello ${callerName}! Welcome to ${workspace.name}. What can I help you with today?`
-        : `Hello ${callerName}! Great to hear from you today! I am Obey, what is on your mind?`;
+      const greeting =
+        body.greetingText ||
+        (workspace
+          ? wsSettings?.voice_greeting ||
+            `Hello ${callerName}! Welcome to ${workspace.name}. What can I help you with today?`
+          : `Hello ${callerName}! Great to hear from you today! I am Obey, what is on your mind?`);
 
       // Clean greeting of markdown
       const cleanGreeting = greeting.replace(/[*#_~`[\]()]/g, "").trim();
