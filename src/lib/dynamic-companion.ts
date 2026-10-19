@@ -386,8 +386,13 @@ AVAILABLE TOOLS & ACTIONS:
 8. "generate_n8n_workflow": Use ONLY when the user has confirmed or approved a proposed automation blueprint, chosen an architecture method (e.g. "Generate Method 2", "Option B", "Use Method 1", "Let's build that"), or explicitly commanded you to generate/build the JSON file (e.g. "Generate it", "Build this blueprint", "Create the JSON now", "Yes, create it").
    - CRITICAL: When the user describes what kind of bot, automation, pipeline, or workflow they want (e.g. "It is going to be a WhatsApp chat bot", "I want an n8n workflow for customer support", "It should capture leads"), DO NOT select "generate_n8n_workflow"! That is the requirement-gathering & consultation phase. Choose "none"!
    - Parameters: "workflow_title" (e.g. "AI WhatsApp Customer Chatbot"), "workflow_description" (what it automates), "workflow_nodes_summary" (key nodes).
-9. "search_live_web": Use when the user asks for real-time internet information, news, current facts, or job market search.
-   - Parameters: "search_query".
+9. "search_live_web": Use whenever the user asks for real-time information, facts, trivia, news, or verification:
+   - Music, songs, lyrics, completing song lyrics, music artists, discography, album details (e.g. Nigerian gospel, Afrobeats, rap, Yoruba/Igbo/Hausa ministers like BBO, Dunsin Oyekan, Moses Bliss, Asake, Burna Boy, Nathaniel Bassey).
+   - Real people, celebrities, ministers, politicians, public figures, or anyone's full government name, biography, or background.
+   - Acronyms, abbreviations, company/brand meanings, trivia, quotes, definitions, or specific historical or cultural facts.
+   - Current news in Nigeria or globally, real-time sports scores, weather, market exchange rates, dollar/naira rates, prices.
+   - Any question where factual accuracy, specific lyrics, or identity verification is needed!
+   - Parameters: "search_query" (a clean, targeted Google/web search query to find the exact fact, song lyrics, or person).
 10. "notify_femi": Use when a guest or user asks you to tell your boss, tell Femi, forward feedback, or suggest something to Femi Adeleke (e.g. "tell him", "tell your boss", "suggest this to Femi", "tell your boss to implement that", "let Femi know").
 11. "direct_voice_call": Use ONLY when the user's latest message explicitly asks to speak on voice or call you (e.g. "call me", "can we speak on voice call", "let's talk on call"). NEVER choose direct_voice_call for "yes", "sure", "ok", or general conversational responses!
 12. "none": Use when the user is chatting, asking a question, asking for advice, greeting, brainstorming a workflow, scoping a chatbot, or when required parameters (like phone number) are missing and need polite clarification.
@@ -452,8 +457,10 @@ REASONING GUIDELINES:
   NEVER claim or tell the user that you don't have access to their contacts, phone, or computer address book!
   You CAN view, search, count, and message any contact in their address book at any time.
   If the user asks if you have access to their contacts or to see/count them, enthusiastically confirm and state that you have full access to their saved WhatsApp contacts and CRM leads!
-- AUTONOMOUS LIVE WEB SEARCH:
-  If the user asks any question about current facts, news in Nigeria or globally, real-time sports, politics, prices, or questions where factual certainty is needed, ALWAYS choose "search_live_web" with a specific "search_query" so you give verified, accurate answers!
+- AUTONOMOUS LIVE WEB SEARCH & ZERO GUESSWORK (CRITICAL):
+  NEVER GUESS OR FABRICATE! If the user asks about ANY song, song lyrics, music artist, real person's full name, biography, acronyms, quotes, current news, sports, or factual trivia:
+  ALWAYS select "search_live_web" with a specific "search_query" (e.g. "BBO gospel artist full name" or "BBO Amin lyrics Nigerian gospel")!
+  NEVER select "none" for queries that require specific factual knowledge or lyrics you might not have 100% verified.
 - NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, what you told someone, who it was sent to, or questions about a recent dispatch, ALWAYS choose "check_action_status".
@@ -1532,14 +1539,37 @@ If you encounter any error or want to adjust or diagnose any node, send me a scr
   if (decision.action === "search_live_web") {
     try {
       const query = decision.action_params?.search_query || userText;
-      const tavilyRes = await searchTavily(query, { maxResults: 3 });
+      const tavilyRes = await searchTavily(query, { maxResults: 5 });
       if (tavilyRes.success && tavilyRes.results.length > 0) {
-        liveSearchFindings = tavilyRes.results
-          .map((r) => `• [${r.title}](${r.url}): ${r.content.slice(0, 200)}`)
-          .join("\n");
+        liveSearchFindings = (tavilyRes.answer ? `Synthesized AI Summary: ${tavilyRes.answer}\n\n` : "") +
+          tavilyRes.results
+            .map((r) => `• [${r.title}](${r.url}): ${r.content.slice(0, 300)}`)
+            .join("\n");
       }
     } catch (e) {
       console.warn("[Companion] Live web search fallback:", e);
+    }
+  }
+
+  // Autonomous Fallback Search: If decision chose "none", but query is asking for factual facts, music, lyrics, or person info:
+  if (!liveSearchFindings) {
+    const lookupPattern = /\b(lyrics?|sing|song|track|album|who is|who be|who's|full name|real name|government name|what does .* stand for|meaning of|what is|search (?:the )?(?:web|online|google)|look up|tavily|current price|naira rate|dollar rate|exchange rate|artist|minister)\b/i;
+    if (lookupPattern.test(userText) || (decision.thought && /search|look\s*up|verify|lyrics|who is|artist|singer|real name/i.test(decision.thought))) {
+      try {
+        const cleanQuery = userText
+          .replace(/^(can you|please|kindly|oya|help me|tell me|send me|give me|what is|who is|complete)\s+/i, "")
+          .replace(/(\s+(?:and send it as vn|as vn|in vn|vn|voice note|please|nau))$/i, "")
+          .trim();
+        const searchRes = await searchTavily(cleanQuery.length > 3 ? cleanQuery : userText, { maxResults: 5 });
+        if (searchRes.success && searchRes.results.length > 0) {
+          liveSearchFindings = (searchRes.answer ? `Synthesized AI Summary: ${searchRes.answer}\n\n` : "") +
+            searchRes.results
+              .map((r) => `• [${r.title}](${r.url}): ${r.content.slice(0, 300)}`)
+              .join("\n");
+        }
+      } catch (fallbackSearchErr) {
+        console.warn("[Companion] Autonomous fallback live search error:", fallbackSearchErr);
+      }
     }
   }
 
@@ -1676,6 +1706,15 @@ When anyone asks about pricing, packages, trials, or platform features, quote th
   2. Propose 2 Architectural Methods: Method 1 (Lean & Direct) vs. Method 2 (Production Agentic with Tools & Persistence).
   3. Map the node pipeline [Node 1] ➔ [Node 2] ➔ [Node 3].
   4. Invite them to answer the questions or pick Method 1 vs. 2 before you build and generate the production n8n JSON file!
+
+13. STRICT FACTUAL ACCURACY & ZERO HALLUCINATION MANDATE (CRITICAL):
+- ABSOLUTE POLICY: NEVER GUESS, FABRICATE, OR INVENT FACTS, NAMES, ACRONYMS, LYRICS, BIOGRAPHIES, OR REAL-WORLD INFORMATION!
+- NEVER make up what an acronym or artist moniker stands for (e.g. claiming BBO stands for "Builders of Grace" when you don't know).
+- NEVER fabricate song lyrics or invent lines to "complete" a song (e.g. inventing "My business is growing, my cup is running over" or fake verses).
+- When asked to complete lyrics, identify a person's full name, or quote a fact:
+  * Check the LIVE WEB SEARCH RESULTS provided in your prompt.
+  * If live search results are present, use them accurately and cite the authentic words.
+  * If the answer is not in your training data or search results, BE HONEST AND DIRECT: state what you know and do not know (e.g. "I don't have their verified full name/lyrics right now, Boss", or "Let me look that up for you!"), rather than making up answers with "pure vibes and guessing"!
 
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 

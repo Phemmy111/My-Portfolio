@@ -59,25 +59,36 @@ export async function sendWhatsAppMessage(
       payload.quoted = quoted;
     }
 
-    const res = await fetch(
-      `${evoUrl}/message/sendText/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: evoKey,
-        },
-        body: JSON.stringify(payload),
+    let res: Response | null = null;
+    let attempts = 0;
+    while (attempts < 2) {
+      attempts++;
+      try {
+        res = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoKey,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (res.ok) {
+          return { success: true };
+        }
+      } catch (fetchErr: any) {
+        if (attempts >= 2) throw fetchErr;
+        await new Promise((r) => setTimeout(r, 800));
       }
-    );
+    }
 
-    if (res.ok) {
+    if (res && res.ok) {
       return { success: true };
     }
 
-    const errBody = await res.text();
-    console.error("[WhatsApp] Evolution API error:", res.status, errBody);
-    return { success: false, error: `HTTP ${res.status}: ${errBody}` };
+    const errBody = res ? await res.text() : "No response from gateway";
+    console.error("[WhatsApp] Evolution API error:", res?.status, errBody);
+    return { success: false, error: `HTTP ${res?.status}: ${errBody}` };
   } catch (err: any) {
     console.error("[WhatsApp] sendWhatsAppMessage exception:", err);
     return { success: false, error: err.message };

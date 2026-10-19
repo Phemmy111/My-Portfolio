@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
+
+export const dynamic = "force-dynamic";
+
 import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {
   sql,
