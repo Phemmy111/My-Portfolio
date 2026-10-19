@@ -1503,10 +1503,13 @@ How can I help you today?`;
     const finalReply = companionRes.reply;
 
     if (finalReply && finalReply.trim()) {
+      const hasNegativeVN = /\b(?:no|not|don'?t|dont|never|stop|without)\s+(?:send\s+)?(?:a\s+)?(?:voice\s*note|vn|audio)\b/i.test(userText);
       const userAskedForVN =
-        Boolean(isVoiceNote) ||
-        /(?:send|drop|record|give|reply with|send me a?)\s*(?:voice\s*note|vn|audio)|(?:talk to me|speak to me|voice note)/i.test(
-          userText
+        !hasNegativeVN && (
+          Boolean(isVoiceNote) ||
+          /\b(?:vn|vns|voice\s*note|voice\s*notes|audio\s*note|voice\s*memo)\b/i.test(userText) ||
+          /\b(?:send|drop|record|give|reply|answer|say|speak|talk)\b[\s\S]{0,40}\b(?:voice\s*note|vn|audio)\b/i.test(userText) ||
+          /\b(?:as|in|via|on|through)\s+(?:a\s+)?(?:voice\s*note|vn|audio)\b/i.test(userText)
         );
 
       if (userAskedForVN) {
@@ -1514,7 +1517,7 @@ How can I help you today?`;
         // If it's a longer breakdown, speak the first 2 punchy sentences in the VN and provide the full transcript below!
         const sentences = finalReply.split(/(?<=[.!?])\s+/);
         const spokenExcerpt =
-          sentences.length <= 2
+          sentences.length <= 2 || finalReply.split(/\s+/).length <= 45
             ? finalReply
             : sentences.slice(0, 2).join(" ");
         await replyVoiceNote(spokenExcerpt, finalReply);
