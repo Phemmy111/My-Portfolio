@@ -203,7 +203,26 @@ export async function sendWhatsAppAudio(
       cleanMedia = audioUrl.replace(/^data:[^;]+;base64,/, "").trim();
     }
 
-    // 1. Primary: Send as native WhatsApp Push-to-Talk (PTT) Voice Note via sendMedia
+    // 1. Primary: Send as true native WhatsApp Push-to-Talk (PTT) Voice Note with waveform & green mic
+    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: cleaned,
+        audio: cleanMedia,
+        encoding: true,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
+    // 2. Secondary fallback: sendMedia
     const mediaRes = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: {
@@ -223,25 +242,6 @@ export async function sendWhatsAppAudio(
     });
 
     if (mediaRes.ok) {
-      return { success: true };
-    }
-
-    // 2. Secondary fallback: sendWhatsAppAudio
-    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: evoKey,
-      },
-      body: JSON.stringify({
-        number: cleaned,
-        audio: cleanMedia,
-        encoding: true,
-      }),
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (res.ok) {
       return { success: true };
     }
 

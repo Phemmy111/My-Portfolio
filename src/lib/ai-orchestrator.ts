@@ -73,9 +73,6 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
           targetModel,
           "gemini-3.8-flash",
           "gemini-flash-latest",
-          "gemini-flash-lite-latest",
-          "gemini-3.5-flash",
-          "gemini-3.1-flash-lite",
         ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
@@ -98,7 +95,7 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${p.apiKey.trim()}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              signal: AbortSignal.timeout(9000),
+              signal: AbortSignal.timeout(7000),
               body: JSON.stringify({
                 contents: [{ role: "user", parts: userParts }],
                 systemInstruction: { parts: [{ text: systemPrompt }] },
