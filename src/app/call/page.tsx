@@ -8,6 +8,7 @@ import {
   PhoneOff,
   PhoneCall,
   Volume2,
+  VolumeX,
   Sparkles,
   ShieldCheck,
   ArrowLeft,
@@ -32,6 +33,7 @@ export const VOICE_PROFILES: Record<
     pitch: number;
     rate: number;
     preferredVoices: string[];
+    sampleText: string;
   }
 > = {
   nigerian_male: {
@@ -40,32 +42,36 @@ export const VOICE_PROFILES: Record<
     gender: "male",
     lang: "en-NG",
     pitch: 0.88,
-    rate: 1.0,
+    rate: 0.98,
     preferredVoices: [
-      "en-NG",
       "Nigeria",
+      "en-NG",
       "Arthur",
       "George",
       "David",
-      "Male",
+      "Guy",
       "Google UK English Male",
     ],
+    sampleText: "Hello my friend! I am Obey, your Nigerian executive brother. How can I assist you today?",
   },
   nigerian_female: {
-    name: "Nigerian Female (Warm Lady)",
+    name: "Nigerian Female (Warm Sister)",
     flag: "🇳🇬",
     gender: "female",
     lang: "en-NG",
-    pitch: 1.1,
-    rate: 1.02,
+    pitch: 1.12,
+    rate: 1.0,
     preferredVoices: [
-      "en-NG",
       "Nigeria",
+      "en-NG",
       "Samantha",
       "Victoria",
-      "Female",
+      "Karen",
+      "Zira",
       "Google UK English Female",
+      "Female",
     ],
+    sampleText: "Hello there! I am Obey, your warm sister and personal assistant. What can I do for you?",
   },
   british_male: {
     name: "British Male (Executive & Crisp)",
@@ -74,7 +80,8 @@ export const VOICE_PROFILES: Record<
     lang: "en-GB",
     pitch: 0.95,
     rate: 1.0,
-    preferredVoices: ["en-GB", "Daniel", "George", "Arthur", "UK English Male"],
+    preferredVoices: ["Daniel", "George", "Arthur", "Oliver", "UK English Male", "en-GB"],
+    sampleText: "Good day! I am Obey, your executive British assistant. How may I be of service to you?",
   },
   british_female: {
     name: "British Female (Polished & Refined)",
@@ -83,7 +90,8 @@ export const VOICE_PROFILES: Record<
     lang: "en-GB",
     pitch: 1.05,
     rate: 1.0,
-    preferredVoices: ["en-GB", "Victoria", "Hazel", "UK English Female"],
+    preferredVoices: ["Victoria", "Hazel", "Susan", "Fiona", "UK English Female", "en-GB"],
+    sampleText: "Hello! I am Obey, your refined British assistant. I am delighted to assist you today.",
   },
   american_male: {
     name: "American Male (Silicon Valley)",
@@ -91,19 +99,107 @@ export const VOICE_PROFILES: Record<
     gender: "male",
     lang: "en-US",
     pitch: 0.95,
-    rate: 1.05,
-    preferredVoices: ["en-US", "Alex", "Fred", "US English Male", "Natural"],
+    rate: 1.02,
+    preferredVoices: ["Alex", "Fred", "David", "Ryan", "US English Male", "en-US"],
+    sampleText: "Hey there! I am Obey, your Silicon Valley tech assistant. What are we building today?",
   },
   american_female: {
-    name: "American Female (Friendly & Energetic)",
+    name: "American Female (Friendly & Dynamic)",
     flag: "🇺🇸",
     gender: "female",
     lang: "en-US",
     pitch: 1.08,
-    rate: 1.05,
-    preferredVoices: ["en-US", "Samantha", "Zira", "US English Female", "Natural"],
+    rate: 1.02,
+    preferredVoices: ["Samantha", "Zira", "Jenny", "Aria", "US English Female", "en-US"],
+    sampleText: "Hi there! I am Obey, your friendly and dynamic assistant. How can I help you today?",
   },
 };
+
+export function pickBestVoice(
+  voices: SpeechSynthesisVoice[],
+  profile: (typeof VOICE_PROFILES)[string]
+): SpeechSynthesisVoice | null {
+  if (!voices || voices.length === 0) return null;
+
+  const isFemale = profile.gender === "female";
+
+  const femaleKeywords = [
+    "female",
+    "zira",
+    "samantha",
+    "victoria",
+    "karen",
+    "hazel",
+    "susan",
+    "catherine",
+    "helena",
+    "fiona",
+    "jenny",
+    "aria",
+    "linda",
+    "mary",
+  ];
+  const maleKeywords = [
+    "male",
+    "david",
+    "george",
+    "arthur",
+    "daniel",
+    "alex",
+    "guy",
+    "fred",
+    "ryan",
+    "mark",
+    "richard",
+    "james",
+  ];
+
+  const targetKeywords = isFemale ? femaleKeywords : maleKeywords;
+  const oppositeKeywords = isFemale ? maleKeywords : femaleKeywords;
+
+  let candidatePool = voices.filter((v) => {
+    const name = v.name.toLowerCase();
+    const hasTarget = targetKeywords.some((kw) => name.includes(kw));
+    const hasOpposite = oppositeKeywords.some((kw) => name.includes(kw));
+    return hasTarget || !hasOpposite;
+  });
+
+  if (candidatePool.length === 0) candidatePool = voices;
+
+  // 1. Exact name match from preferredVoices
+  for (const pref of profile.preferredVoices) {
+    if (pref.includes("-")) continue;
+    const v = candidatePool.find((voice) =>
+      voice.name.toLowerCase().includes(pref.toLowerCase())
+    );
+    if (v) return v;
+  }
+
+  // 2. Language code match in candidatePool
+  for (const pref of profile.preferredVoices) {
+    if (pref.includes("-")) {
+      const v = candidatePool.find((voice) =>
+        voice.lang.toLowerCase().replace("_", "-").startsWith(pref.toLowerCase())
+      );
+      if (v) return v;
+    }
+  }
+
+  // 3. Fallback: Any voice with target gender in English
+  const englishGender = candidatePool.find((v) => {
+    const name = v.name.toLowerCase();
+    const isEn = v.lang.toLowerCase().startsWith("en");
+    return isEn && targetKeywords.some((kw) => name.includes(kw));
+  });
+  if (englishGender) return englishGender;
+
+  // 4. Ultimate English fallback
+  return (
+    candidatePool.find((v) => v.lang.toLowerCase().startsWith("en")) ||
+    voices[0] ||
+    null
+  );
+}
 
 export const PERSONALITY_PROFILES: Record<
   string,
@@ -163,6 +259,7 @@ function CallInterface() {
   const [selectedVoice, setSelectedVoice] = useState<string>("nigerian_male");
   const [selectedPersonality, setSelectedPersonality] = useState<string>("professional");
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [previewVoiceId, setPreviewVoiceId] = useState<string | null>(null);
 
   const [callStatus, setCallStatus] = useState<
     "idle" | "loading" | "connecting" | "active" | "ended" | "error"
@@ -179,6 +276,7 @@ function CallInterface() {
   const [supportsSpeechRec, setSupportsSpeechRec] = useState(true);
 
   // Audio & Speech refs
+  const isSpeakingRef = useRef<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -191,6 +289,41 @@ function CallInterface() {
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Play voice preview sample
+  const previewVoice = (voiceKey: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    if (previewVoiceId === voiceKey) {
+      window.speechSynthesis.cancel();
+      setPreviewVoiceId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const prof = VOICE_PROFILES[voiceKey] || VOICE_PROFILES["nigerian_male"];
+    const text = prof.sampleText || "Hello! I am Obey, your personal assistant.";
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = prof.pitch;
+    utterance.rate = prof.rate;
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchedVoice = pickBestVoice(voices, prof);
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+
+    utterance.onend = () => {
+      setPreviewVoiceId(null);
+    };
+    utterance.onerror = () => {
+      setPreviewVoiceId(null);
+    };
+
+    setPreviewVoiceId(voiceKey);
+    window.speechSynthesis.speak(utterance);
+  };
 
   // Keep transcriptsRef synchronized
   useEffect(() => {
@@ -296,6 +429,7 @@ function CallInterface() {
 
   const stopAllMedia = () => {
     isCallActiveRef.current = false;
+    isSpeakingRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -383,7 +517,7 @@ function CallInterface() {
     }
   };
 
-  // Speak aloud using browser SpeechSynthesis with Voice Modulation & Android Chrome Watchdog
+  // Speak aloud using browser SpeechSynthesis with Voice Modulation & Turn-Taking Protection
   const speakAIspeech = (text: string, onDone?: () => void) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       if (onDone) onDone();
@@ -392,6 +526,13 @@ function CallInterface() {
 
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
+
+    // Turn-taking safety: immediately stop recognition so microphone does not capture device speaker audio
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+    }
 
     window.speechSynthesis.cancel();
 
@@ -413,23 +554,9 @@ function CallInterface() {
     utterance.pitch = profile.pitch;
     currentUtteranceRef.current = utterance;
 
-    // Pick best matching natural voice from browser
+    // Pick best matching natural voice from browser using intelligent gender & accent resolution
     const voices = window.speechSynthesis.getVoices();
-    let matchedVoice: SpeechSynthesisVoice | null = null;
-    for (const pref of profile.preferredVoices) {
-      const v = voices.find(
-        (voice) =>
-          voice.name.toLowerCase().includes(pref.toLowerCase()) ||
-          voice.lang.toLowerCase().replace("_", "-") === pref.toLowerCase()
-      );
-      if (v) {
-        matchedVoice = v;
-        break;
-      }
-    }
-    if (!matchedVoice) {
-      matchedVoice = voices.find((v) => v.lang.startsWith("en")) || null;
-    }
+    const matchedVoice = pickBestVoice(voices, profile);
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
@@ -440,15 +567,25 @@ function CallInterface() {
       finishTriggered = true;
       if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
       if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
+      isSpeakingRef.current = false;
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
-      if (isCallActiveRef.current && onDone) {
-        onDone();
-      }
+
+      // 350ms buffer for room speaker echo to dissipate before reopening mic
+      setTimeout(() => {
+        if (isCallActiveRef.current && !isMuted) {
+          startSpeechRecognitionLoop();
+        }
+        if (isCallActiveRef.current && onDone) {
+          onDone();
+        }
+      }, 350);
     };
 
     utterance.onstart = () => {
+      isSpeakingRef.current = true;
       setIsSpeaking(true);
+      setIsListening(false);
       // Keep-alive loop to prevent Android Chrome audio engine from stalling
       keepAliveIntervalRef.current = setInterval(() => {
         if (
@@ -481,9 +618,10 @@ function CallInterface() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Start speech recognition listening loop with Barge-In and mobile resilience
+  // Start speech recognition listening loop with clean turn-taking
   const startSpeechRecognitionLoop = () => {
-    if (!isCallActiveRef.current) return;
+    // Only listen when call is active, Obey is NOT speaking, and caller is not muted
+    if (!isCallActiveRef.current || isSpeakingRef.current || isMuted) return;
 
     const SpeechRecClass =
       (window as any).SpeechRecognition ||
@@ -517,19 +655,14 @@ function CallInterface() {
       let accumulatedFinal = "";
 
       recognition.onstart = () => {
-        setIsListening(true);
+        if (!isSpeakingRef.current) {
+          setIsListening(true);
+        }
       };
 
       recognition.onresult = (event: any) => {
-        if (!isCallActiveRef.current) return;
-
-        // Full Duplex Barge-in: If caller starts speaking while Obey is speaking aloud, cancel AI speech immediately!
-        if (isSpeaking) {
-          try {
-            window.speechSynthesis.cancel();
-            setIsSpeaking(false);
-          } catch {}
-        }
+        // Drop any results if call ended or Obey is currently speaking
+        if (!isCallActiveRef.current || isSpeakingRef.current) return;
 
         let interim = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -548,7 +681,7 @@ function CallInterface() {
         // When user pauses speaking for 1.2 seconds, trigger Obey AI thinking
         if (candidateText.length >= 2) {
           silenceTimerRef.current = setTimeout(() => {
-            if (isCallActiveRef.current && candidateText.trim().length >= 2) {
+            if (isCallActiveRef.current && !isSpeakingRef.current && candidateText.trim().length >= 2) {
               const statementToSend = candidateText.trim();
               accumulatedFinal = "";
               try {
@@ -564,7 +697,7 @@ function CallInterface() {
         // Non-fatal speech errors (no-speech, network timeout) are automatically recovered
         if (event.error === "no-speech" || event.error === "network") {
           setTimeout(() => {
-            if (isCallActiveRef.current && !isThinking && !isMuted) {
+            if (isCallActiveRef.current && !isThinking && !isMuted && !isSpeakingRef.current) {
               try {
                 recognition.start();
               } catch {}
@@ -575,14 +708,15 @@ function CallInterface() {
 
       recognition.onend = () => {
         setIsListening(false);
-        // Automatically restart listening if call is active and Obey is not thinking or muted
+        // Automatically restart listening if call is active and Obey is not thinking or speaking or muted
         if (
           isCallActiveRef.current &&
           !isThinking &&
-          !isMuted
+          !isMuted &&
+          !isSpeakingRef.current
         ) {
           setTimeout(() => {
-            if (isCallActiveRef.current && !isThinking && !isMuted) {
+            if (isCallActiveRef.current && !isThinking && !isMuted && !isSpeakingRef.current) {
               try {
                 recognition.start();
               } catch {}
@@ -741,15 +875,8 @@ function CallInterface() {
       // 5. Add greeting to transcripts
       setTranscripts([{ role: "assistant", text: initialGreeting }]);
 
-      // 6. HOT MIC: Start microphone listening immediately from second 1
-      startSpeechRecognitionLoop();
-
-      // 7. Speak greeting aloud (barge-in will seamlessly interrupt if caller speaks)
-      speakAIspeech(initialGreeting, () => {
-        if (isCallActiveRef.current && !isMuted && !isListening) {
-          startSpeechRecognitionLoop();
-        }
-      });
+      // 6. Speak greeting aloud. Once done, turn-taking automatically opens the microphone!
+      speakAIspeech(initialGreeting);
     } catch (err: any) {
       console.error("Failed to start voice call:", err);
       setErrorMessage(
@@ -1105,6 +1232,26 @@ function CallInterface() {
                 {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
               </button>
 
+              {/* Tap to Interrupt Button when Obey is Speaking */}
+              {isSpeaking && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      window.speechSynthesis.cancel();
+                    } catch {}
+                    isSpeakingRef.current = false;
+                    setIsSpeaking(false);
+                    startSpeechRecognitionLoop();
+                  }}
+                  className="px-4 py-2.5 rounded-full bg-emerald-500/20 border border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-black font-bold text-xs flex items-center gap-1.5 transition-all shadow-md animate-pulse cursor-pointer"
+                  title="Interrupt Obey and speak now"
+                >
+                  <Mic size={14} />
+                  <span>Tap to Speak</span>
+                </button>
+              )}
+
               {/* End Call Button */}
               <button
                 type="button"
@@ -1285,9 +1432,8 @@ function CallInterface() {
                   {Object.entries(VOICE_PROFILES).map(([key, prof]) => {
                     const isSelected = selectedVoice === key;
                     return (
-                      <button
+                      <div
                         key={key}
-                        type="button"
                         onClick={() => setSelectedVoice(key)}
                         className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center justify-between ${
                           isSelected
@@ -1304,8 +1450,23 @@ function CallInterface() {
                             </p>
                           </div>
                         </div>
-                        {isSelected && <Check size={14} className="text-emerald-400 shrink-0 ml-1" />}
-                      </button>
+                        <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                          <button
+                            type="button"
+                            onClick={(e) => previewVoice(key, e)}
+                            className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition flex items-center gap-1 ${
+                              previewVoiceId === key
+                                ? "bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse"
+                                : "bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700"
+                            }`}
+                            title={previewVoiceId === key ? "Stop voice sample" : "Test voice sample"}
+                          >
+                            {previewVoiceId === key ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                            <span>{previewVoiceId === key ? "Stop" : "Test"}</span>
+                          </button>
+                          {isSelected && <Check size={14} className="text-emerald-400 shrink-0" />}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>

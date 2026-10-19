@@ -65,7 +65,10 @@ import {
   Target,
   ShieldAlert,
   Power,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { VOICE_PROFILES, pickBestVoice } from "@/app/call/page";
 
 const WHATSAPP_STATUS_COLORS = [
   { name: "Teal", hex: "#075E54", bg: "#075E54" },
@@ -238,6 +241,42 @@ function ControlRoomContent() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navFilter, setNavFilter] = useState("");
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+
+  // Voice Preview player for Hotline configuration
+  const playVoicePreview = (voiceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    if (playingVoiceId === voiceId) {
+      window.speechSynthesis.cancel();
+      setPlayingVoiceId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const profile = VOICE_PROFILES[voiceId] || VOICE_PROFILES["nigerian_male"];
+    const text = profile.sampleText || "Hello! I am Obey, your personal assistant.";
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = profile.pitch;
+    utterance.rate = profile.rate;
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchedVoice = pickBestVoice(voices, profile);
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+
+    utterance.onend = () => {
+      setPlayingVoiceId(null);
+    };
+    utterance.onerror = () => {
+      setPlayingVoiceId(null);
+    };
+
+    setPlayingVoiceId(voiceId);
+    window.speechSynthesis.speak(utterance);
+  };
 
   // Status Automator states
   const [statuses, setStatuses] = useState<any[]>([]);
@@ -4968,23 +5007,40 @@ function ControlRoomContent() {
                       { id: "american_female", flag: "🇺🇸", label: "American Female", desc: "Friendly & Dynamic" },
                     ].map((v) => {
                       const isSelected = (settings.voice_id || "nigerian_male") === v.id;
+                      const isPlaying = playingVoiceId === v.id;
                       return (
-                        <button
+                        <div
                           key={v.id}
-                          type="button"
                           onClick={() => setSettings({ ...settings, voice_id: v.id })}
-                          className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                          className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
                             isSelected
                               ? "bg-teal-500/10 border-teal-500/80 ring-1 ring-teal-500/50"
                               : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
                           }`}
                         >
-                          <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-100">
-                            <span>{v.flag}</span>
-                            <span>{v.label}</span>
+                          <div>
+                            <div className="flex items-center justify-between gap-1 font-bold text-xs text-zinc-100">
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span>{v.flag}</span>
+                                <span className="truncate">{v.label}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => playVoicePreview(v.id, e)}
+                                className={`px-1.5 py-0.5 rounded-md border text-[9px] font-bold shrink-0 transition flex items-center gap-1 ${
+                                  isPlaying
+                                    ? "bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse"
+                                    : "bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700"
+                                }`}
+                                title={isPlaying ? "Stop audio preview" : "Test voice audio"}
+                              >
+                                {isPlaying ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                                <span>{isPlaying ? "Stop" : "Test"}</span>
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{v.desc}</p>
                           </div>
-                          <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{v.desc}</p>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
