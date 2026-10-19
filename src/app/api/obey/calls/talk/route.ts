@@ -196,12 +196,12 @@ BUSINESS PROFILE:
 - Voice Greeting: ${voiceGreeting}
 ${wsSettings?.custom_instructions ? `\nSPECIAL DIRECTIVES:\n${wsSettings.custom_instructions}` : ""}
 
-VOICE CONVERSATION RULES:
-1. Speak naturally, warmly, and concisely as if you are on a live phone call.
-2. Keep your answers to 1 to 3 punchy spoken sentences so the conversation flows back and forth smoothly.
-3. NEVER use markdown symbols (no asterisks *, no bullet points -, no hashes #, no emojis, no links). All text will be read aloud by a voice synthesizer!
-4. If the caller speaks Nigerian Pidgin or English, mirror their warmth and tone respectfully.
-5. If the caller expresses interest in buying or booking, politely confirm their request and mention the business will follow up immediately.`;
+VOICE CONVERSATION RULES (CRITICAL FOR LIVE PHONE CALL):
+1. ULTRA-CONCISE: Respond in 1 SINGLE, PUNCHY SPOKEN SENTENCE (maximum 15 to 22 words).
+2. NEVER give a monologue, lecture, or list. This is a real-time telephone conversation.
+3. Keep it natural, direct, and end with a quick, engaging question or confirmation so the caller speaks next.
+4. ZERO MARKDOWN: Never use asterisks *, bullet points -, hashes #, emojis, or links. Speak purely in plain words.
+5. If the caller expresses interest in buying or booking, politely confirm their request and mention the team will follow up immediately.`;
     } else {
       systemPrompt = `You are Obey, an ultra-intelligent, magnetic, witty, and deeply empathetic AI voice companion built by Femi Adeleke.
 You are having an actual spoken phone call with a caller named ${callerName}.
@@ -212,11 +212,11 @@ CREATOR BACKGROUND:
 Femi Adeleke is a visionary software engineer, AI automator, and educator based in Ibadan, Nigeria.
 
 YOUR VIBE & SPOKEN VOICE GUIDELINES:
-1. Sound energetic, charismatic, warm, and natural — like a knowledgeable close friend.
-2. Keep responses punchy and alive: 1 to 3 short spoken sentences per turn so the call stays interactive.
-3. NEVER use markdown symbols (no asterisks *, no bullet points -, no hashes #, no links, no emojis). Your text is read out loud directly by speech synthesis!
-4. Feel free to sprinkle in natural Nigerian Pidgin ("No wahala", "How you dey?", "I dey with you!", "Wetin dey sup?", "Omo!") whenever it adds flavor, but adapt smoothly to how the caller speaks.
-5. If they ask about Femi's services, portfolio, or want an AI assistant for their own business, tell them enthusiastically that Femi builds custom AI agents and they can connect directly!
+1. ULTRA-CONCISE: Respond in 1 SINGLE, PUNCHY SPOKEN SENTENCE (maximum 15 to 22 words).
+2. Keep responses fast and interactive: speak a brief thought and hand the floor back to the caller.
+3. ZERO MARKDOWN: Never use asterisks *, bullet points -, hashes #, links, or emojis. Output only plain spoken words.
+4. Feel free to sprinkle in natural Nigerian Pidgin ("No wahala", "How you dey?", "I dey with you!", "Wetin dey sup?", "Omo!") whenever it adds flavor.
+5. If they ask about Femi's services, tell them enthusiastically that Femi builds custom AI agents and they can connect directly!
 ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
     }
 
@@ -224,8 +224,8 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
     if (isGreeting) {
       const greeting = workspace
         ? wsSettings?.voice_greeting ||
-          `Hello ${callerName}! I am Obey, the AI assistant for ${workspace.name}. How can I help you today?`
-        : `Hello ${callerName}! Great to hear your voice today! I am Obey, your AI companion. How are you doing?`;
+          `Hello ${callerName}! Welcome to ${workspace.name}. What can I help you with today?`
+        : `Hello ${callerName}! Great to hear from you today! I am Obey, what is on your mind?`;
 
       // Clean greeting of markdown
       const cleanGreeting = greeting.replace(/[*#_~`[\]()]/g, "").trim();
@@ -246,15 +246,15 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
       : "";
 
     const userPrompt = conversationHistory
-      ? `${conversationHistory}\n${callerName}: ${message}\nObey:`
-      : `${callerName}: ${message}\nObey:`;
+      ? `${conversationHistory}\n${callerName}: ${message}\nObey (1 short sentence max):`
+      : `${callerName}: ${message}\nObey (1 short sentence max):`;
 
     // 5. Execute AI completion using multi-provider pool (Gemini / Groq / OpenAI)
     const result = await executeAICompletion({
       systemPrompt,
       userPrompt,
-      temperature: 0.7,
-      maxTokens: 250,
+      temperature: 0.6,
+      maxTokens: 50,
     });
 
     // Clean AI reply of any markdown characters (ensuring speech synthesis pronounces words cleanly)

@@ -670,7 +670,7 @@ function CallInterface() {
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
 
-      // 350ms buffer for room speaker echo to dissipate before reopening mic
+      // 200ms buffer for room speaker echo to dissipate before reopening mic
       setTimeout(() => {
         if (
           isCallActiveRef.current &&
@@ -683,24 +683,13 @@ function CallInterface() {
         if (onDone) {
           onDone();
         }
-      }, 350);
+      }, 200);
     };
 
     utterance.onstart = () => {
       isSpeakingRef.current = true;
       setIsSpeaking(true);
       setIsListening(false);
-      // Keep-alive loop to prevent Android Chrome audio engine from stalling
-      keepAliveIntervalRef.current = setInterval(() => {
-        if (
-          typeof window !== "undefined" &&
-          window.speechSynthesis &&
-          window.speechSynthesis.speaking
-        ) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
-        }
-      }, 3500);
     };
 
     utterance.onend = handleFinish;
@@ -709,9 +698,9 @@ function CallInterface() {
       handleFinish();
     };
 
-    // Resilient Watchdog Timer: prevents Android Chrome from indefinitely freezing if onend fails to fire
+    // Resilient Watchdog Timer: ensures mic always reopens cleanly even if browser drops onend
     const wordCount = cleanSpoken.split(/\s+/).length;
-    const maxExpectedMs = Math.max(3500, (wordCount / 2.0) * 1000 + 2500);
+    const maxExpectedMs = Math.max(2500, (wordCount / 2.0) * 1000 + 1500);
     watchdogTimerRef.current = setTimeout(() => {
       if (!finishTriggered && isCallActiveRef.current) {
         console.log("[Voice Engine] Watchdog timer fired: ensuring mic listening resumes");
@@ -1166,7 +1155,7 @@ function CallInterface() {
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 max-w-xl mx-auto w-full text-center">
         {/* User Greeting & Status Indicator */}
         <div className="mb-4 sm:mb-6 space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-300">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-xs font-bold text-zinc-800 dark:text-zinc-300 shadow-xs">
             <div className="relative w-4 h-4 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
               <img src="/obey-logo.jpg" alt="Obey" className="w-full h-full object-cover" />
             </div>
@@ -1177,7 +1166,7 @@ function CallInterface() {
             </span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-950 dark:text-white">
             {bizInfo?.name
               ? `${bizInfo.name} Voice Hotline`
               : rawName
@@ -1185,7 +1174,7 @@ function CallInterface() {
               : "Voice Call with Obey"}
           </h1>
 
-          <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
             {callStatus === "idle" &&
               "Tap the microphone below to begin your completely free live voice call."}
             {callStatus === "connecting" &&
@@ -1209,7 +1198,7 @@ function CallInterface() {
             <button
               type="button"
               onClick={() => setShowVoiceModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-[11px] font-semibold text-zinc-300 hover:text-white transition-all cursor-pointer shadow-sm mx-auto"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900/90 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700/80 text-[11px] font-semibold text-zinc-800 dark:text-zinc-300 hover:text-black dark:hover:text-white transition-all cursor-pointer shadow-sm mx-auto"
               title="Click to customize Obey Voice and Personality"
             >
               <span>{VOICE_PROFILES[selectedVoice]?.flag || "🇳🇬"}</span>
@@ -1312,24 +1301,24 @@ function CallInterface() {
 
         {/* Live Conversation Transcript Preview */}
         {transcripts.length > 0 && (
-          <div className="w-full max-h-36 overflow-y-auto mb-5 p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-left space-y-2">
+          <div className="w-full max-h-36 overflow-y-auto mb-5 p-3.5 rounded-2xl bg-white dark:bg-zinc-900/60 border border-zinc-300 dark:border-zinc-800 text-left space-y-2 shadow-xs">
             <div className="flex items-center justify-between text-[10px] font-black uppercase text-zinc-500 tracking-wider">
               <div className="flex items-center gap-1.5">
                 <MessageSquare size={12} />
                 <span>Live Spoken Transcript</span>
               </div>
-              <span className="text-emerald-400 font-bold">100% Free Voice</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Free Voice</span>
             </div>
             {transcripts.slice(-3).map((t, idx) => (
               <p key={idx} className="text-xs leading-relaxed">
                 <span
                   className={`font-black ${
-                    t.role === "assistant" ? "text-emerald-400" : "text-amber-300"
+                    t.role === "assistant" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-300"
                   }`}
                 >
                   {t.role === "assistant" ? "Obey: " : "You: "}
                 </span>
-                <span className="text-zinc-300">{t.text}</span>
+                <span className="text-zinc-800 dark:text-zinc-200">{t.text}</span>
               </p>
             ))}
           </div>
@@ -1346,7 +1335,7 @@ function CallInterface() {
               value={textFallbackInput}
               onChange={(e) => setTextFallbackInput(e.target.value)}
               placeholder="Or type anything here to talk..."
-              className="flex-1 px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-700 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+              className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900/90 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-900 dark:text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 shadow-xs"
             />
             <button
               type="submit"
