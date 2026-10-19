@@ -96,6 +96,21 @@ function cleanWhatsAppFormatting(text: string): string {
     .replace(/\*\s*\*/g, "*")
     .trim();
 }
+
+/**
+ * Strips meta audio stage directions, generated disclaimers, or bracketed audio commentary
+ * so they are never spoken aloud by voice notes or displayed in WhatsApp chat text.
+ */
+function stripAudioStageDirections(text: string): string {
+  if (!text) return "";
+  return text
+    // Strip meta audio disclaimers and stage directions in brackets/parentheses
+    .replace(/\s*\*?\s*\([^)]*(?:audio|voice|vn|dispatched|generating|record|speaking)[^)]*\)\s*\*?/gi, "")
+    .replace(/\s*\*?\s*\[[^\]]*(?:audio|voice|vn|dispatched|generating|record|speaking)[^\]]*\]\s*\*?/gi, "")
+    .replace(/\s*\*(?:Audio note dispatched[^*]*|Audio generating[^*]*)\*\s*/gi, "")
+    .trim();
+}
+
 // Enterprise scale sliding-window deduplication (up to 10,000 entries, 5-minute TTL)
 const recentlyProcessedWebhookMessageIds = new Map<string, number>();
 
@@ -732,9 +747,12 @@ async function processMessage(params: ProcessMessageParams) {
   async function replyVoiceNote(spokenText: string, companionText?: string) {
     const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
     let voiceSent = false;
+    const cleanSpoken = stripAudioStageDirections(spokenText);
+    const cleanCompanion = stripAudioStageDirections(companionText || spokenText);
+
     try {
       const speech = await generateSpeechAudio({
-        text: spokenText,
+        text: cleanSpoken,
         personality: currentWs?.voice_personality || (isDefaultFemi ? "nigerian_pidgin" : "friendly"),
       });
 
@@ -751,10 +769,9 @@ async function processMessage(params: ProcessMessageParams) {
       console.warn("[WA Webhook] Voice note generation notice:", ttsErr);
     }
 
-    // Deliver accompanying text record
-    const textToSend = companionText || spokenText;
-    if (textToSend) {
-      await reply(textToSend);
+    // Deliver accompanying text record (never revealing bracketed audio markers)
+    if (cleanCompanion) {
+      await reply(cleanCompanion);
     }
     return voiceSent;
   }
@@ -1503,7 +1520,8 @@ How can I help you today?`;
       workspaceId: wsId,
     });
 
-    const finalReply = companionRes.reply;
+    const rawReply = companionRes.reply;
+    const finalReply = stripAudioStageDirections(rawReply);
 
     if (finalReply && finalReply.trim()) {
       const hasNegativeVN = /\b(?:no|not|don'?t|dont|never|stop|without)\s+(?:send\s+)?(?:a\s+)?(?:voice\s*note|vn|audio)\b/i.test(userText);
