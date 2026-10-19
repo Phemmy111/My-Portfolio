@@ -22,13 +22,14 @@ export async function uploadToCloudinary(
     folder?: string;
     publicId?: string;
     transformation?: object;
+    resourceType?: "auto" | "image" | "video" | "raw";
   }
 ): Promise<{ url: string; publicId: string }> {
   const result = await cloudinary.uploader.upload(source, {
     folder: options?.folder ?? "femi-portfolio",
     public_id: options?.publicId,
     overwrite: true,
-    resource_type: "auto",
+    resource_type: options?.resourceType ?? "auto",
     transformation: options?.transformation,
   });
 

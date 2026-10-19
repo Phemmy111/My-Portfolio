@@ -9,6 +9,7 @@ import {
 import { getObeyBrainContext, getSetting } from "@/lib/settings";
 import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
 import { uploadToCloudinary } from "@/lib/cloudinary";
+import { generateSpeechAudio } from "@/lib/tts-engine";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -57,13 +58,15 @@ export async function POST(req: NextRequest) {
               .join("\n")
           : `Call completed by ${callerName}.`;
 
-      // Upload recorded audio to Cloudinary if available
+      // Upload recorded audio to Cloudinary with raw resource_type and proper extension
       let recordingUrl = "";
       if (body.audioBase64) {
         try {
+          const extension = body.audioBase64.includes("ogg") ? "ogg" : "webm";
           const uploadRes = await uploadToCloudinary(body.audioBase64, {
             folder: "obey-call-recordings",
-            publicId: `call_${Date.now()}_${callerPhone || "web"}`,
+            publicId: `call_${Date.now()}_${callerPhone || "web"}.${extension}`,
+            resourceType: "raw",
           });
           if (uploadRes?.url) {
             recordingUrl = uploadRes.url;
@@ -71,6 +74,21 @@ export async function POST(req: NextRequest) {
         } catch (uploadErr) {
           console.warn("[Calls Talk] Cloudinary audio upload notice:", uploadErr);
         }
+      }
+
+      // Synthesize spoken voice note briefing via TTS engine
+      let spokenVoiceBase64 = "";
+      try {
+        const spokenText = `Boss Femi, ${callerName} just concluded a ${body.durationSeconds || 0} seconds voice hotline call on ${workspace ? workspace.name : "your platform"}. The full conversation transcript is ready.`;
+        const speechRes = await generateSpeechAudio({
+          text: spokenText,
+          personality: "nigerian_pidgin",
+        });
+        if (speechRes?.base64) {
+          spokenVoiceBase64 = speechRes.base64;
+        }
+      } catch (speechErr) {
+        console.warn("[Calls Talk] Spoken voice summary error:", speechErr);
       }
 
       const notificationMsg =
@@ -86,18 +104,18 @@ export async function POST(req: NextRequest) {
       if (callerPhone && callerPhone.length >= 10) {
         await sendWhatsAppMessage(notificationMsg, callerPhone);
       }
-      // Always notify Femi
+      // Always notify Femi with transcript report
       await sendWhatsAppMessage(notificationMsg, FEMI_PERSONAL_NUMBER);
 
-      // 2. Send recorded call audio / voice note to WhatsApp
-      const audioPayload = recordingUrl || body.audioBase64;
-      if (audioPayload) {
-        if (callerPhone && callerPhone.length >= 10) {
+      // 2. Deliver actual Voice Note to WhatsApp
+      const audioToSend = spokenVoiceBase64 || recordingUrl;
+      if (audioToSend) {
+        if (callerPhone && callerPhone.length >= 10 && spokenVoiceBase64) {
           try {
             await sendWhatsAppAudio(
-              audioPayload,
+              spokenVoiceBase64,
               callerPhone,
-              `🎙️ Call Recording (${body.durationSeconds || 0}s)`
+              `🎙️ Call Summary (${body.durationSeconds || 0}s)`
             );
           } catch (audioErr) {
             console.warn("[Calls Talk] Error sending audio to caller:", audioErr);
@@ -105,9 +123,9 @@ export async function POST(req: NextRequest) {
         }
         try {
           await sendWhatsAppAudio(
-            audioPayload,
+            audioToSend,
             FEMI_PERSONAL_NUMBER,
-            `🎙️ Call Recording: ${callerName} (${body.durationSeconds || 0}s)`
+            `🎙️ Call Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`
           );
         } catch (audioErr) {
           console.warn("[Calls Talk] Error sending audio to Femi:", audioErr);
@@ -229,9 +247,25 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
 
       // Clean greeting of markdown
       const cleanGreeting = greeting.replace(/[*#_~`[\]()]/g, "").trim();
+
+      let greetingAudio: string | null = null;
+      try {
+        const speechRes = await generateSpeechAudio({
+          text: cleanGreeting,
+          personality: effectivePersonality,
+          voice: effectiveVoiceId === "nigerian_male" ? "en-NG-AbeoNeural" : undefined,
+        });
+        if (speechRes?.base64) {
+          greetingAudio = speechRes.base64;
+        }
+      } catch (ttsErr) {
+        console.warn("[Calls Talk] Greeting TTS notice:", ttsErr);
+      }
+
       return NextResponse.json({
         ok: true,
         reply: cleanGreeting,
+        audio_base64: greetingAudio,
         voice_id: effectiveVoiceId,
         voice_personality: effectivePersonality,
       });
@@ -270,6 +304,21 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
         : "I hear you clearly! Tell me more about that, I am listening.";
     }
 
+    // 5.5 Synthesize natural neural voice audio (ensures mobile phones get authentic male/configured voice)
+    let audioBase64: string | null = null;
+    try {
+      const speechRes = await generateSpeechAudio({
+        text: cleanReply,
+        personality: effectivePersonality,
+        voice: effectiveVoiceId === "nigerian_male" ? "en-NG-AbeoNeural" : undefined,
+      });
+      if (speechRes?.base64) {
+        audioBase64 = speechRes.base64;
+      }
+    } catch (ttsErr) {
+      console.warn("[Calls Talk] Speech synthesis warning:", ttsErr);
+    }
+
     // 6. Asynchronously record lead or call log in background if caller provided details
     if (workspace?.id && callerPhone) {
       try {
@@ -288,6 +337,7 @@ ${brainContext ? `\nCORE KNOWLEDGE:\n${brainContext}` : ""}`;
     return NextResponse.json({
       ok: true,
       reply: cleanReply,
+      audio_base64: audioBase64,
       voice_id: effectiveVoiceId,
       voice_personality: effectivePersonality,
       provider: result.provider,

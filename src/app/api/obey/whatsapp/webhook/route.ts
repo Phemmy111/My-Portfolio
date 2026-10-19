@@ -36,12 +36,14 @@ import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator
 import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   sendWhatsAppMessage,
+  sendWhatsAppAudio,
   sendWhatsAppStatusPost,
   fetchEvolutionMediaBase64,
   markWhatsAppMessageRead,
   sendWhatsAppPresence,
   sendWhatsAppReaction,
 } from "@/lib/whatsapp-gateway";
+import { generateSpeechAudio } from "@/lib/tts-engine";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
 import { runUpworkLiveScout } from "@/lib/upwork-scout";
 import { runB2BLeadHunter } from "@/lib/apollo-hunter";
@@ -721,6 +723,37 @@ async function processMessage(params: ProcessMessageParams) {
         });
       } catch {}
     }
+  }
+
+  // Helper: synthesize & send native WhatsApp Voice Note (PTT) + companion text
+  async function replyVoiceNote(spokenText: string, companionText?: string) {
+    const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
+    let voiceSent = false;
+    try {
+      const speech = await generateSpeechAudio({
+        text: spokenText,
+        personality: currentWs?.voice_personality || (isDefaultFemi ? "nigerian_pidgin" : "friendly"),
+      });
+
+      if (speech?.base64) {
+        const audioRes = await sendWhatsAppAudio(
+          speech.base64,
+          replyTo,
+          undefined,
+          sendInstance
+        );
+        voiceSent = audioRes.success;
+      }
+    } catch (ttsErr) {
+      console.warn("[WA Webhook] Voice note generation notice:", ttsErr);
+    }
+
+    // Deliver accompanying text record
+    const textToSend = companionText || spokenText;
+    if (textToSend) {
+      await reply(textToSend);
+    }
+    return voiceSent;
   }
 
   // 0. OWNER COMMANDS: BOT BYPASS TOGGLE (/stop, /start, /status)
@@ -1470,7 +1503,24 @@ How can I help you today?`;
     const finalReply = companionRes.reply;
 
     if (finalReply && finalReply.trim()) {
-      await reply(finalReply);
+      const userAskedForVN =
+        Boolean(isVoiceNote) ||
+        /(?:send|drop|record|give|reply with|send me a?)\s*(?:voice\s*note|vn|audio)|(?:talk to me|speak to me|voice note)/i.test(
+          userText
+        );
+
+      if (userAskedForVN) {
+        // If the reply is concise, speak all of it in the voice note.
+        // If it's a longer breakdown, speak the first 2 punchy sentences in the VN and provide the full transcript below!
+        const sentences = finalReply.split(/(?<=[.!?])\s+/);
+        const spokenExcerpt =
+          sentences.length <= 2
+            ? finalReply
+            : sentences.slice(0, 2).join(" ");
+        await replyVoiceNote(spokenExcerpt, finalReply);
+      } else {
+        await reply(finalReply);
+      }
     }
 
     // Save assistant reply to guest DB

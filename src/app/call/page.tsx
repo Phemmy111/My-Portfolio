@@ -344,6 +344,7 @@ function CallInterface() {
   const transcriptsRef = useRef<TranscriptMessage[]>([]);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -543,6 +544,15 @@ function CallInterface() {
       recognitionRef.current = null;
     }
 
+    // Stop HTML5 Audio Player
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = "";
+      } catch {}
+      audioPlayerRef.current = null;
+    }
+
     // Stop Speech Synthesis
     if (typeof window !== "undefined" && window.speechSynthesis) {
       try {
@@ -616,26 +626,36 @@ function CallInterface() {
     }
   };
 
-  // Speak aloud using browser SpeechSynthesis with Voice Modulation & Turn-Taking Protection
-  const speakAIspeech = (text: string, onDone?: () => void) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      if (onDone) onDone();
-      return;
-    }
-
+  // Speak aloud using high-fidelity server neural MP3 audio with SpeechSynthesis fallback
+  const speakAIspeech = (
+    text: string,
+    onDone?: () => void,
+    audioBase64?: string | null
+  ) => {
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
 
-    // Turn-taking safety: immediately stop recognition so microphone does not capture device speaker audio
+    // Turn-taking safety: immediately stop recognition so microphone does not capture speaker audio
     if (recognitionRef.current) {
       try {
+        recognitionRef.current.onend = null;
         recognitionRef.current.abort();
       } catch {}
+      recognitionRef.current = null;
     }
 
-    window.speechSynthesis.cancel();
+    // Stop ongoing audio or speech synthesis
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = "";
+      } catch {}
+      audioPlayerRef.current = null;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
 
-    // Clean any remaining markdown characters for flawless voice pronunciation
     const cleanSpoken = text
       .replace(/[*#_~`[\]()]/g, "")
       .replace(/https?:\/\/\S+/gi, "")
@@ -644,20 +664,6 @@ function CallInterface() {
     if (!cleanSpoken) {
       if (onDone) onDone();
       return;
-    }
-
-    const profile =
-      VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
-    const utterance = new SpeechSynthesisUtterance(cleanSpoken);
-    utterance.rate = profile.rate;
-    utterance.pitch = profile.pitch;
-    currentUtteranceRef.current = utterance;
-
-    // Pick best matching natural voice from browser using intelligent gender & accent resolution
-    const voices = window.speechSynthesis.getVoices();
-    const matchedVoice = pickBestVoice(voices, profile);
-    if (matchedVoice) {
-      utterance.voice = matchedVoice;
     }
 
     let finishTriggered = false;
@@ -669,8 +675,11 @@ function CallInterface() {
       isSpeakingRef.current = false;
       setIsSpeaking(false);
       currentUtteranceRef.current = null;
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current = null;
+      }
 
-      // 200ms buffer for room speaker echo to dissipate before reopening mic
+      // 250ms buffer for room speaker echo to dissipate before reopening mic
       setTimeout(() => {
         if (
           isCallActiveRef.current &&
@@ -683,30 +692,79 @@ function CallInterface() {
         if (onDone) {
           onDone();
         }
-      }, 200);
-    };
-
-    utterance.onstart = () => {
-      isSpeakingRef.current = true;
-      setIsSpeaking(true);
-      setIsListening(false);
-    };
-
-    utterance.onend = handleFinish;
-    utterance.onerror = (e) => {
-      console.warn("Speech synthesis notice:", e);
-      handleFinish();
+      }, 250);
     };
 
     // Resilient Watchdog Timer: ensures mic always reopens cleanly even if browser drops onend
     const wordCount = cleanSpoken.split(/\s+/).length;
-    const maxExpectedMs = Math.max(2500, (wordCount / 2.0) * 1000 + 1500);
+    const maxExpectedMs = Math.max(3000, (wordCount / 2.0) * 1000 + 2000);
     watchdogTimerRef.current = setTimeout(() => {
       if (!finishTriggered && isCallActiveRef.current) {
         console.log("[Voice Engine] Watchdog timer fired: ensuring mic listening resumes");
         handleFinish();
       }
     }, maxExpectedMs);
+
+    // 1. Primary: Play authentic neural MP3 audio (flawless on iOS, Android, and PC)
+    if (audioBase64) {
+      try {
+        const audio = new Audio("data:audio/mp3;base64," + audioBase64);
+        audioPlayerRef.current = audio;
+        audio.onplay = () => {
+          isSpeakingRef.current = true;
+          setIsSpeaking(true);
+          setIsListening(false);
+        };
+        audio.onended = () => {
+          handleFinish();
+        };
+        audio.onerror = (e) => {
+          console.warn("[Voice Engine] HTML5 audio error, falling back to speech synthesis:", e);
+          fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+        };
+        audio.play().catch((playErr) => {
+          console.warn("[Voice Engine] Autoplay audio error, falling back:", playErr);
+          fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+        });
+        return;
+      } catch (audioErr) {
+        console.warn("[Voice Engine] Audio initialization exception:", audioErr);
+      }
+    }
+
+    // 2. Secondary Fallback: Browser SpeechSynthesis
+    fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+  };
+
+  const fallbackSpeechSynthesis = (cleanSpoken: string, onFinish: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onFinish();
+      return;
+    }
+
+    const profile =
+      VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
+    const utterance = new SpeechSynthesisUtterance(cleanSpoken);
+    utterance.rate = profile.rate;
+    utterance.pitch = profile.pitch;
+    currentUtteranceRef.current = utterance;
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchedVoice = pickBestVoice(voices, profile);
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+
+    utterance.onstart = () => {
+      isSpeakingRef.current = true;
+      setIsSpeaking(true);
+      setIsListening(false);
+    };
+    utterance.onend = onFinish;
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis notice:", e);
+      onFinish();
+    };
 
     window.speechSynthesis.speak(utterance);
   };
@@ -744,14 +802,10 @@ function CallInterface() {
         recognitionRef.current = null;
       }
 
-      const isMobile =
-        typeof navigator !== "undefined" &&
-        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
       const recognition = new SpeechRecClass();
-      recognition.continuous = !isMobile;
+      // Continuous listening across both desktop and mobile ensures Android Chrome does not cut off speech
+      recognition.continuous = true;
       recognition.interimResults = true;
-      // In Web Speech API, en-US is the universal continuous model that does not disconnect or drop
       recognition.lang = "en-US";
 
       let accumulatedFinal = "";
@@ -817,8 +871,12 @@ function CallInterface() {
 
       recognition.onerror = (event: any) => {
         console.warn("[Voice Engine] Speech recognition error:", event.error);
+        if (event.error === "no-speech" || event.error === "aborted") {
+          // Normal pause or quiet moment on mobile; do not treat as fatal error
+          return;
+        }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          setErrorMessage("Microphone permission was denied. Please allow microphone access.");
+          setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser settings.");
         }
       };
 
@@ -841,7 +899,7 @@ function CallInterface() {
             ) {
               startSpeechRecognitionLoop();
             }
-          }, 200);
+          }, 350);
         }
       };
 
@@ -888,7 +946,7 @@ function CallInterface() {
       setIsThinking(false);
 
       // 3. Speak reply aloud (handleFinish will cleanly start recognition when finished)
-      speakAIspeech(reply);
+      speakAIspeech(reply, undefined, data.audio_base64);
     } catch (err) {
       console.error("AI Talk error:", err);
       isThinkingRef.current = false;
@@ -918,6 +976,21 @@ function CallInterface() {
       return;
     }
     setShowPhoneModal(false);
+
+    // Synchronously prime/unlock audio playback for mobile browsers (iOS & Android)
+    if (typeof window !== "undefined") {
+      try {
+        if (window.speechSynthesis) {
+          const dummy = new SpeechSynthesisUtterance(" ");
+          dummy.volume = 0.01;
+          window.speechSynthesis.speak(dummy);
+        }
+        const prime = new Audio();
+        prime.src =
+          "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        prime.play().catch(() => {});
+      } catch {}
+    }
 
     try {
       setCallStatus("connecting");
@@ -979,6 +1052,7 @@ function CallInterface() {
 
       // 4. Fetch customized voice greeting from server
       let initialGreeting = bizInfo?.greeting;
+      let initialGreetingAudio: string | null = null;
       if (!initialGreeting) {
         try {
           const greetRes = await fetch("/api/obey/calls/talk", {
@@ -995,6 +1069,9 @@ function CallInterface() {
           const greetData = await greetRes.json();
           if (greetData.reply) {
             initialGreeting = greetData.reply;
+          }
+          if (greetData.audio_base64) {
+            initialGreetingAudio = greetData.audio_base64;
           }
           if (greetData.voice_id) {
             setSelectedVoice(greetData.voice_id);
@@ -1014,8 +1091,8 @@ function CallInterface() {
       // 5. Add greeting to transcripts
       setTranscripts([{ role: "assistant", text: initialGreeting }]);
 
-      // 6. Speak greeting aloud. Once done, turn-taking automatically opens the microphone!
-      speakAIspeech(initialGreeting);
+      // 6. Speak greeting aloud via high-fidelity neural MP3 audio
+      speakAIspeech(initialGreeting, undefined, initialGreetingAudio);
     } catch (err: any) {
       console.error("Failed to start voice call:", err);
       setErrorMessage(
@@ -1036,8 +1113,17 @@ function CallInterface() {
       try {
         await new Promise<void>((resolve) => {
           if (!mediaRecorderRef.current) return resolve();
-          mediaRecorderRef.current.onstop = () => resolve();
-          mediaRecorderRef.current.stop();
+          const safetyTimer = setTimeout(() => resolve(), 800);
+          mediaRecorderRef.current.onstop = () => {
+            clearTimeout(safetyTimer);
+            resolve();
+          };
+          try {
+            mediaRecorderRef.current.stop();
+          } catch {
+            clearTimeout(safetyTimer);
+            resolve();
+          }
         });
       } catch {}
     }
