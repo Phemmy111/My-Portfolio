@@ -41,35 +41,40 @@ export const VOICE_PROFILES: Record<
     flag: "🇳🇬",
     gender: "male",
     lang: "en-NG",
-    pitch: 0.88,
+    pitch: 0.82,
     rate: 0.98,
     preferredVoices: [
-      "Nigeria",
-      "en-NG",
-      "Arthur",
-      "George",
-      "David",
-      "Guy",
+      "Nigerian Male",
       "Google UK English Male",
+      "UK English Male",
+      "David",
+      "George",
+      "Mark",
+      "Daniel",
+      "Arthur",
+      "Alex",
+      "Guy",
     ],
-    sampleText: "Hello my friend! I am Obey, your Nigerian executive brother. How can I assist you today?",
+    sampleText: "Hello my brother! I am Obey, your Nigerian executive companion. How can I assist you today?",
   },
   nigerian_female: {
     name: "Nigerian Female (Warm Sister)",
     flag: "🇳🇬",
     gender: "female",
     lang: "en-NG",
-    pitch: 1.12,
+    pitch: 1.05,
     rate: 1.0,
     preferredVoices: [
+      "Google English (Nigeria)",
       "Nigeria",
       "en-NG",
+      "Google UK English Female",
+      "UK English Female",
       "Samantha",
       "Victoria",
-      "Karen",
       "Zira",
-      "Google UK English Female",
-      "Female",
+      "Jenny",
+      "Aria",
     ],
     sampleText: "Hello there! I am Obey, your warm sister and personal assistant. What can I do for you?",
   },
@@ -78,9 +83,17 @@ export const VOICE_PROFILES: Record<
     flag: "🇬🇧",
     gender: "male",
     lang: "en-GB",
-    pitch: 0.95,
+    pitch: 0.88,
     rate: 1.0,
-    preferredVoices: ["Daniel", "George", "Arthur", "Oliver", "UK English Male", "en-GB"],
+    preferredVoices: [
+      "Google UK English Male",
+      "UK English Male",
+      "George",
+      "Daniel",
+      "Arthur",
+      "Oliver",
+      "David",
+    ],
     sampleText: "Good day! I am Obey, your executive British assistant. How may I be of service to you?",
   },
   british_female: {
@@ -90,7 +103,15 @@ export const VOICE_PROFILES: Record<
     lang: "en-GB",
     pitch: 1.05,
     rate: 1.0,
-    preferredVoices: ["Victoria", "Hazel", "Susan", "Fiona", "UK English Female", "en-GB"],
+    preferredVoices: [
+      "Google UK English Female",
+      "UK English Female",
+      "Victoria",
+      "Hazel",
+      "Susan",
+      "Fiona",
+      "Samantha",
+    ],
     sampleText: "Hello! I am Obey, your refined British assistant. I am delighted to assist you today.",
   },
   american_male: {
@@ -98,9 +119,17 @@ export const VOICE_PROFILES: Record<
     flag: "🇺🇸",
     gender: "male",
     lang: "en-US",
-    pitch: 0.95,
+    pitch: 0.88,
     rate: 1.02,
-    preferredVoices: ["Alex", "Fred", "David", "Ryan", "US English Male", "en-US"],
+    preferredVoices: [
+      "David",
+      "Mark",
+      "Alex",
+      "Fred",
+      "Ryan",
+      "US English Male",
+      "Google UK English Male",
+    ],
     sampleText: "Hey there! I am Obey, your Silicon Valley tech assistant. What are we building today?",
   },
   american_female: {
@@ -110,7 +139,14 @@ export const VOICE_PROFILES: Record<
     lang: "en-US",
     pitch: 1.08,
     rate: 1.02,
-    preferredVoices: ["Samantha", "Zira", "Jenny", "Aria", "US English Female", "en-US"],
+    preferredVoices: [
+      "Google US English",
+      "Samantha",
+      "Zira",
+      "Jenny",
+      "Aria",
+      "US English Female",
+    ],
     sampleText: "Hi there! I am Obey, your friendly and dynamic assistant. How can I help you today?",
   },
 };
@@ -123,6 +159,7 @@ export function pickBestVoice(
 
   const isFemale = profile.gender === "female";
 
+  // Known female voice identifiers across browsers & operating systems
   const femaleKeywords = [
     "female",
     "zira",
@@ -138,7 +175,14 @@ export function pickBestVoice(
     "aria",
     "linda",
     "mary",
+    "eva",
+    "katja",
+    "google us english", // Google US English in Chrome is a woman's voice
+    "google english (nigeria)", // Google Nigerian English in Chrome/Android is a woman's voice
+    "english (nigeria)",
   ];
+
+  // Known male voice identifiers across browsers & operating systems
   const maleKeywords = [
     "male",
     "david",
@@ -152,53 +196,62 @@ export function pickBestVoice(
     "mark",
     "richard",
     "james",
+    "oliver",
+    "peter",
+    "brian",
+    "christopher",
+    "eric",
+    "tom",
+    "uk english male",
+    "google uk english male",
   ];
 
-  const targetKeywords = isFemale ? femaleKeywords : maleKeywords;
-  const oppositeKeywords = isFemale ? maleKeywords : femaleKeywords;
+  const isExcluded = (v: SpeechSynthesisVoice): boolean => {
+    const str = `${v.name} ${v.voiceURI}`.toLowerCase();
+    if (isFemale) {
+      return maleKeywords.some((kw) => str.includes(kw));
+    } else {
+      return femaleKeywords.some((kw) => str.includes(kw));
+    }
+  };
 
-  let candidatePool = voices.filter((v) => {
-    const name = v.name.toLowerCase();
-    const hasTarget = targetKeywords.some((kw) => name.includes(kw));
-    const hasOpposite = oppositeKeywords.some((kw) => name.includes(kw));
-    return hasTarget || !hasOpposite;
-  });
+  const isTargetGender = (v: SpeechSynthesisVoice): boolean => {
+    const str = `${v.name} ${v.voiceURI}`.toLowerCase();
+    const targets = isFemale ? femaleKeywords : maleKeywords;
+    return targets.some((kw) => str.includes(kw));
+  };
 
-  if (candidatePool.length === 0) candidatePool = voices;
+  // Strictly filter out opposite gender voices
+  let cleanPool = voices.filter((v) => !isExcluded(v));
+  if (cleanPool.length === 0) {
+    cleanPool = voices;
+  }
 
-  // 1. Exact name match from preferredVoices
+  // 1. Preferred names match within clean pool
   for (const pref of profile.preferredVoices) {
-    if (pref.includes("-")) continue;
-    const v = candidatePool.find((voice) =>
-      voice.name.toLowerCase().includes(pref.toLowerCase())
-    );
+    const prefLower = pref.toLowerCase();
+    const v = cleanPool.find((voice) => {
+      const name = voice.name.toLowerCase();
+      const uri = voice.voiceURI.toLowerCase();
+      return name.includes(prefLower) || uri.includes(prefLower);
+    });
     if (v) return v;
   }
 
-  // 2. Language code match in candidatePool
-  for (const pref of profile.preferredVoices) {
-    if (pref.includes("-")) {
-      const v = candidatePool.find((voice) =>
-        voice.lang.toLowerCase().replace("_", "-").startsWith(pref.toLowerCase())
-      );
-      if (v) return v;
-    }
-  }
-
-  // 3. Fallback: Any voice with target gender in English
-  const englishGender = candidatePool.find((v) => {
-    const name = v.name.toLowerCase();
+  // 2. Any English voice with target gender keyword
+  const englishGender = cleanPool.find((v) => {
     const isEn = v.lang.toLowerCase().startsWith("en");
-    return isEn && targetKeywords.some((kw) => name.includes(kw));
+    return isEn && isTargetGender(v);
   });
   if (englishGender) return englishGender;
 
-  // 4. Ultimate English fallback
-  return (
-    candidatePool.find((v) => v.lang.toLowerCase().startsWith("en")) ||
-    voices[0] ||
-    null
+  // 3. Any English voice in clean pool
+  const anyEnglish = cleanPool.find((v) =>
+    v.lang.toLowerCase().startsWith("en")
   );
+  if (anyEnglish) return anyEnglish;
+
+  return cleanPool[0] || voices[0] || null;
 }
 
 export const PERSONALITY_PROFILES: Record<
@@ -277,11 +330,15 @@ function CallInterface() {
 
   // Audio & Speech refs
   const isSpeakingRef = useRef<boolean>(false);
+  const isThinkingRef = useRef<boolean>(false);
+  const isMutedRef = useRef<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const isCallActiveRef = useRef<boolean>(false);
   const transcriptsRef = useRef<TranscriptMessage[]>([]);
@@ -289,6 +346,17 @@ function CallInterface() {
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve((reader.result as string) || "");
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  };
 
   // Play voice preview sample
   const previewVoice = (voiceKey: string, e: React.MouseEvent) => {
@@ -427,18 +495,49 @@ function CallInterface() {
     };
   }, []);
 
+  // Continuous Liveness Heartbeat: ensures microphone speech recognition stays alive for entire call
+  useEffect(() => {
+    const heartbeat = setInterval(() => {
+      if (
+        isCallActiveRef.current &&
+        !isSpeakingRef.current &&
+        !isThinkingRef.current &&
+        !isMutedRef.current
+      ) {
+        if (!recognitionRef.current) {
+          console.log("[Voice Engine] Heartbeat watchdog: reviving speech recognition");
+          startSpeechRecognitionLoop();
+        }
+      }
+    }, 2500);
+    return () => clearInterval(heartbeat);
+  }, []);
+
   const stopAllMedia = () => {
     isCallActiveRef.current = false;
     isSpeakingRef.current = false;
+    isThinkingRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
 
+    // Stop MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+      mediaRecorderRef.current = null;
+    }
+
     // Stop Speech Recognition
     if (recognitionRef.current) {
       try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
         recognitionRef.current.abort();
       } catch {}
       recognitionRef.current = null;
@@ -573,10 +672,15 @@ function CallInterface() {
 
       // 350ms buffer for room speaker echo to dissipate before reopening mic
       setTimeout(() => {
-        if (isCallActiveRef.current && !isMuted) {
+        if (
+          isCallActiveRef.current &&
+          !isMutedRef.current &&
+          !isThinkingRef.current &&
+          !isSpeakingRef.current
+        ) {
           startSpeechRecognitionLoop();
         }
-        if (isCallActiveRef.current && onDone) {
+        if (onDone) {
           onDone();
         }
       }, 350);
@@ -620,8 +724,15 @@ function CallInterface() {
 
   // Start speech recognition listening loop with clean turn-taking
   const startSpeechRecognitionLoop = () => {
-    // Only listen when call is active, Obey is NOT speaking, and caller is not muted
-    if (!isCallActiveRef.current || isSpeakingRef.current || isMuted) return;
+    // Only listen when call is active, Obey is NOT speaking, NOT thinking, and caller is not muted
+    if (
+      !isCallActiveRef.current ||
+      isSpeakingRef.current ||
+      isThinkingRef.current ||
+      isMutedRef.current
+    ) {
+      return;
+    }
 
     const SpeechRecClass =
       (window as any).SpeechRecognition ||
@@ -635,93 +746,113 @@ function CallInterface() {
     try {
       if (recognitionRef.current) {
         try {
+          recognitionRef.current.onstart = null;
+          recognitionRef.current.onresult = null;
+          recognitionRef.current.onerror = null;
+          recognitionRef.current.onend = null;
           recognitionRef.current.abort();
         } catch {}
+        recognitionRef.current = null;
       }
 
       const isMobile =
         typeof navigator !== "undefined" &&
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      const profile =
-        VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
-
       const recognition = new SpeechRecClass();
-      // On mobile browsers, continuous mode drops after first pause; false + seamless onend loop is 100% resilient
       recognition.continuous = !isMobile;
       recognition.interimResults = true;
-      recognition.lang = profile.lang || "en-NG";
+      // In Web Speech API, en-US is the universal continuous model that does not disconnect or drop
+      recognition.lang = "en-US";
 
       let accumulatedFinal = "";
 
       recognition.onstart = () => {
-        if (!isSpeakingRef.current) {
+        if (!isSpeakingRef.current && !isThinkingRef.current) {
           setIsListening(true);
         }
       };
 
       recognition.onresult = (event: any) => {
-        // Drop any results if call ended or Obey is currently speaking
-        if (!isCallActiveRef.current || isSpeakingRef.current) return;
+        // Drop any results if call ended or Obey is currently speaking or thinking
+        if (
+          !isCallActiveRef.current ||
+          isSpeakingRef.current ||
+          isThinkingRef.current
+        ) {
+          return;
+        }
 
         let interim = "";
+        let finalStr = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const trans = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            accumulatedFinal += " " + trans;
+            finalStr += " " + trans;
           } else {
             interim += trans;
           }
+        }
+
+        if (finalStr) {
+          accumulatedFinal += " " + finalStr;
         }
 
         const candidateText = (accumulatedFinal + " " + interim).trim();
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // When user pauses speaking for 1.2 seconds, trigger Obey AI thinking
+        // When user pauses speaking for 1.1 seconds, trigger Obey AI thinking
         if (candidateText.length >= 2) {
           silenceTimerRef.current = setTimeout(() => {
-            if (isCallActiveRef.current && !isSpeakingRef.current && candidateText.trim().length >= 2) {
+            if (
+              isCallActiveRef.current &&
+              !isSpeakingRef.current &&
+              !isThinkingRef.current &&
+              candidateText.trim().length >= 2
+            ) {
               const statementToSend = candidateText.trim();
               accumulatedFinal = "";
-              try {
-                recognition.stop();
-              } catch {}
+              if (recognitionRef.current) {
+                try {
+                  recognitionRef.current.onend = null;
+                  recognitionRef.current.abort();
+                } catch {}
+                recognitionRef.current = null;
+              }
               processUserVoiceStatement(statementToSend);
             }
-          }, 1200);
+          }, 1100);
         }
       };
 
       recognition.onerror = (event: any) => {
-        // Non-fatal speech errors (no-speech, network timeout) are automatically recovered
-        if (event.error === "no-speech" || event.error === "network") {
-          setTimeout(() => {
-            if (isCallActiveRef.current && !isThinking && !isMuted && !isSpeakingRef.current) {
-              try {
-                recognition.start();
-              } catch {}
-            }
-          }, 250);
+        console.warn("[Voice Engine] Speech recognition error:", event.error);
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          setErrorMessage("Microphone permission was denied. Please allow microphone access.");
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        recognitionRef.current = null;
         // Automatically restart listening if call is active and Obey is not thinking or speaking or muted
         if (
           isCallActiveRef.current &&
-          !isThinking &&
-          !isMuted &&
+          !isThinkingRef.current &&
+          !isMutedRef.current &&
           !isSpeakingRef.current
         ) {
           setTimeout(() => {
-            if (isCallActiveRef.current && !isThinking && !isMuted && !isSpeakingRef.current) {
-              try {
-                recognition.start();
-              } catch {}
+            if (
+              isCallActiveRef.current &&
+              !isThinkingRef.current &&
+              !isMutedRef.current &&
+              !isSpeakingRef.current
+            ) {
+              startSpeechRecognitionLoop();
             }
-          }, 150);
+          }, 200);
         }
       };
 
@@ -738,6 +869,7 @@ function CallInterface() {
 
     // 1. Add user statement to transcript
     setTranscripts((prev) => [...prev, { role: "user", text: userText }]);
+    isThinkingRef.current = true;
     setIsThinking(true);
     setIsListening(false);
 
@@ -763,16 +895,14 @@ function CallInterface() {
 
       // 2. Add assistant statement to transcript
       setTranscripts((prev) => [...prev, { role: "assistant", text: reply }]);
+      isThinkingRef.current = false;
       setIsThinking(false);
 
-      // 3. Speak reply aloud, then resume listening
-      speakAIspeech(reply, () => {
-        if (isCallActiveRef.current && !isMuted) {
-          startSpeechRecognitionLoop();
-        }
-      });
+      // 3. Speak reply aloud (handleFinish will cleanly start recognition when finished)
+      speakAIspeech(reply);
     } catch (err) {
       console.error("AI Talk error:", err);
+      isThinkingRef.current = false;
       setIsThinking(false);
       const fallbackReply =
         "I got your point. Let's keep going, what else can I assist you with?";
@@ -780,11 +910,7 @@ function CallInterface() {
         ...prev,
         { role: "assistant", text: fallbackReply },
       ]);
-      speakAIspeech(fallbackReply, () => {
-        if (isCallActiveRef.current && !isMuted) {
-          startSpeechRecognitionLoop();
-        }
-      });
+      speakAIspeech(fallbackReply);
     }
   };
 
@@ -832,6 +958,30 @@ function CallInterface() {
 
       // 2. Setup audio frequency visualizer for the glowing orb
       setupAudioVisualizer(stream);
+
+      // 2.5 Start MediaRecorder to capture call audio recording for WhatsApp
+      try {
+        const mimeType =
+          typeof MediaRecorder !== "undefined" &&
+          MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+            ? "audio/webm;codecs=opus"
+            : typeof MediaRecorder !== "undefined" &&
+              MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+            ? "audio/ogg;codecs=opus"
+            : "";
+        const options = mimeType ? { mimeType } : undefined;
+        const recorder = new MediaRecorder(stream, options);
+        recordedChunksRef.current = [];
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunksRef.current.push(event.data);
+          }
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+      } catch (recErr) {
+        console.warn("MediaRecorder start notice:", recErr);
+      }
 
       // 3. Set call active
       setCallStatus("active");
@@ -892,10 +1042,34 @@ function CallInterface() {
     const finalTranscripts = [...transcriptsRef.current];
     const finalDuration = callDuration;
 
+    let audioDataUri = "";
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        await new Promise<void>((resolve) => {
+          if (!mediaRecorderRef.current) return resolve();
+          mediaRecorderRef.current.onstop = () => resolve();
+          mediaRecorderRef.current.stop();
+        });
+      } catch {}
+    }
+
+    if (recordedChunksRef.current.length > 0) {
+      try {
+        const audioBlob = new Blob(recordedChunksRef.current, {
+          type: mediaRecorderRef.current?.mimeType || "audio/webm",
+        });
+        if (audioBlob.size > 500) {
+          audioDataUri = await blobToBase64(audioBlob);
+        }
+      } catch (blobErr) {
+        console.warn("Failed to convert audio blob:", blobErr);
+      }
+    }
+
     stopAllMedia();
     setCallStatus("ended");
 
-    // Asynchronously dispatch WhatsApp summary report
+    // Asynchronously dispatch WhatsApp summary report & Audio Voice Note
     try {
       fetch("/api/obey/calls/talk", {
         method: "POST",
@@ -904,6 +1078,7 @@ function CallInterface() {
           isEndReport: true,
           history: finalTranscripts,
           durationSeconds: finalDuration,
+          audioBase64: audioDataUri,
           bizSlug: bizInfo?.slug || rawBiz,
           userName: inputName || "Friend",
           userPhone: inputPhone,
@@ -916,6 +1091,7 @@ function CallInterface() {
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
+    isMutedRef.current = nextMuted;
 
     if (nextMuted) {
       // Mute: stop recognition & speech
@@ -931,7 +1107,7 @@ function CallInterface() {
       setIsSpeaking(false);
     } else {
       // Unmute: resume listening
-      if (isCallActiveRef.current && !isSpeaking && !isThinking) {
+      if (isCallActiveRef.current && !isSpeakingRef.current && !isThinkingRef.current) {
         startSpeechRecognitionLoop();
       }
     }

@@ -7,7 +7,8 @@ import {
   dbAddWorkspaceCallLog,
 } from "@/lib/db";
 import { getObeyBrainContext, getSetting } from "@/lib/settings";
-import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 const FEMI_PERSONAL_NUMBER = "2348120934828";
 
@@ -56,20 +57,62 @@ export async function POST(req: NextRequest) {
               .join("\n")
           : `Call completed by ${callerName}.`;
 
+      // Upload recorded audio to Cloudinary if available
+      let recordingUrl = "";
+      if (body.audioBase64) {
+        try {
+          const uploadRes = await uploadToCloudinary(body.audioBase64, {
+            folder: "obey-call-recordings",
+            publicId: `call_${Date.now()}_${callerPhone || "web"}`,
+          });
+          if (uploadRes?.url) {
+            recordingUrl = uploadRes.url;
+          }
+        } catch (uploadErr) {
+          console.warn("[Calls Talk] Cloudinary audio upload notice:", uploadErr);
+        }
+      }
+
       const notificationMsg =
         `🎙️ *Obey Voice Hotline Report*\n\n` +
         `👤 *Caller:* ${callerName}\n` +
         `📞 *Phone:* ${callerPhone ? `+${callerPhone}` : "Web Voice User"}\n` +
         `🏢 *Workspace:* ${workspace ? workspace.name : "Femi Adeleke Portfolio"}\n` +
-        `⏱️ *Duration:* ${body.durationSeconds || 0}s\n\n` +
+        `⏱️ *Duration:* ${body.durationSeconds || 0}s\n` +
+        (recordingUrl ? `🎵 *Audio Recording:* ${recordingUrl}\n\n` : "\n") +
         `📝 *Conversation Transcript:*\n${summaryText}`;
 
-      // Send to caller if valid phone number provided
+      // 1. Send text transcript to caller if valid phone number provided
       if (callerPhone && callerPhone.length >= 10) {
         await sendWhatsAppMessage(notificationMsg, callerPhone);
       }
       // Always notify Femi
       await sendWhatsAppMessage(notificationMsg, FEMI_PERSONAL_NUMBER);
+
+      // 2. Send recorded call audio / voice note to WhatsApp
+      const audioPayload = recordingUrl || body.audioBase64;
+      if (audioPayload) {
+        if (callerPhone && callerPhone.length >= 10) {
+          try {
+            await sendWhatsAppAudio(
+              audioPayload,
+              callerPhone,
+              `🎙️ Call Recording (${body.durationSeconds || 0}s)`
+            );
+          } catch (audioErr) {
+            console.warn("[Calls Talk] Error sending audio to caller:", audioErr);
+          }
+        }
+        try {
+          await sendWhatsAppAudio(
+            audioPayload,
+            FEMI_PERSONAL_NUMBER,
+            `🎙️ Call Recording: ${callerName} (${body.durationSeconds || 0}s)`
+          );
+        } catch (audioErr) {
+          console.warn("[Calls Talk] Error sending audio to Femi:", audioErr);
+        }
+      }
 
       // Record in workspace call log if workspace exists
       if (workspace?.id) {
@@ -80,14 +123,14 @@ export async function POST(req: NextRequest) {
             caller_name: callerName,
             duration_seconds: body.durationSeconds || 0,
             summary: `Spoken conversation with ${callerName} (${body.durationSeconds || 0}s)`,
-            recording_url: "",
+            recording_url: recordingUrl || "",
           });
         } catch (logErr) {
           console.warn("[Calls Talk] Call log error:", logErr);
         }
       }
 
-      return NextResponse.json({ ok: true, sent: true });
+      return NextResponse.json({ ok: true, sent: true, recording_url: recordingUrl });
     }
 
     // 2. Fetch master Obey brain context
