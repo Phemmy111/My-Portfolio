@@ -68,22 +68,25 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     try {
       // 1. Google Gemini (Multimodal Native: Audio, Images, Documents, Text)
       if (p.provider === "gemini") {
-        const targetModel = p.model?.trim() || "gemini-flash-lite-latest";
+        const targetModel = p.model?.trim() || "gemini-3.8-flash";
         const candidateModels = [
           targetModel,
-          "gemini-flash-lite-latest",
-          "gemini-2.5-flash",
-          "gemini-3.5-flash-lite",
+          "gemini-3.8-flash",
           "gemini-flash-latest",
+          "gemini-flash-lite-latest",
+          "gemini-3.5-flash",
+          "gemini-3.1-flash-lite",
         ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
         // Build user parts (with media if present)
         const userParts: any[] = [];
         if (mediaBase64) {
+          const rawMime = mimeType || "image/jpeg";
+          const cleanMime = rawMime.split(";")[0].trim();
           userParts.push({
             inlineData: {
-              mimeType: mimeType || "image/jpeg",
+              mimeType: cleanMime,
               data: mediaBase64.replace(/^data:[^;]+;base64,/, ""),
             },
           });
@@ -333,11 +336,13 @@ export async function transcribeAudio(
       return { text: "", success: false, error: "Empty audio buffer" };
     }
 
+    const cleanMime = (mimeType || "audio/ogg").split(";")[0].trim();
+
     const res = await executeAICompletion({
       systemPrompt: "You are an expert audio transcription engine. Listen carefully to this voice note and transcribe the exact words spoken in English or Nigerian Pidgin. Output ONLY the raw spoken words. Do not add quotes, greetings, or explanations. If the audio is completely silent or unrecognizable, output [unclear audio].",
       userPrompt: "Transcribe the attached voice note accurately.",
       mediaBase64: cleanBase64,
-      mimeType: mimeType || "audio/ogg",
+      mimeType: cleanMime,
       temperature: 0.1,
       maxTokens: 1024,
     });

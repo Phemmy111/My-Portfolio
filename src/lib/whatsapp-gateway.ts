@@ -146,6 +146,7 @@ export async function fetchEvolutionMediaBase64(
           message: msgObj,
           convertToMp4: false,
         }),
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -153,14 +154,16 @@ export async function fetchEvolutionMediaBase64(
       const data = await res.json();
       const b64 = data.base64 || data.data?.base64;
       if (b64 && typeof b64 === "string") {
+        const rawMime = data.mimetype || mimetype || "application/octet-stream";
+        const cleanMime = rawMime.split(";")[0].trim();
         return {
-          base64: b64.replace(/^data:[^;]+;base64,/, ""),
-          mimetype: data.mimetype || mimetype,
+          base64: b64.replace(/^data:[^;]+;base64,/, "").trim(),
+          mimetype: cleanMime,
         };
       }
     }
-  } catch (err) {
-    console.warn("[WhatsApp] fetchEvolutionMediaBase64 error:", err);
+  } catch (err: any) {
+    console.warn("[WhatsApp] fetchEvolutionMediaBase64 notice:", err?.name === "TimeoutError" ? "Evolution API fetch timeout (10s)" : err?.message || err);
   }
 
   return null;
@@ -216,6 +219,7 @@ export async function sendWhatsAppAudio(
         fileName: "voice_note.mp3",
         caption: caption || undefined,
       }),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (mediaRes.ok) {
@@ -234,6 +238,7 @@ export async function sendWhatsAppAudio(
         audio: cleanMedia,
         encoding: true,
       }),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (res.ok) {

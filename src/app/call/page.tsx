@@ -345,6 +345,8 @@ function CallInterface() {
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const currentBufferSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -553,6 +555,15 @@ function CallInterface() {
       } catch {}
     }
 
+    // Stop Web Audio Buffer
+    if (currentBufferSourceRef.current) {
+      try {
+        currentBufferSourceRef.current.onended = null;
+        currentBufferSourceRef.current.stop();
+      } catch {}
+      currentBufferSourceRef.current = null;
+    }
+
     // Stop Speech Synthesis
     if (typeof window !== "undefined" && window.speechSynthesis) {
       try {
@@ -599,6 +610,15 @@ function CallInterface() {
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
 
+      // Create Web Audio destination for recording to leave physical hardware microphone free for SpeechRecognition
+      try {
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        recordingStreamRef.current = dest.stream;
+      } catch {
+        recordingStreamRef.current = null;
+      }
+
       audioContextRef.current = audioCtx;
       analyserRef.current = analyser;
 
@@ -644,13 +664,21 @@ function CallInterface() {
       recognitionRef.current = null;
     }
 
-    // Stop ongoing audio or speech synthesis
+    // Stop ongoing Web Audio buffer playback
+    if (currentBufferSourceRef.current) {
+      try {
+        currentBufferSourceRef.current.onended = null;
+        currentBufferSourceRef.current.stop();
+      } catch {}
+      currentBufferSourceRef.current = null;
+    }
+
+    // Stop ongoing HTML5 audio without destroying the primed player instance
     if (audioPlayerRef.current) {
       try {
         audioPlayerRef.current.pause();
-        audioPlayerRef.current.src = "";
+        audioPlayerRef.current.currentTime = 0;
       } catch {}
-      audioPlayerRef.current = null;
     }
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -704,39 +732,93 @@ function CallInterface() {
 
     // 1. Primary: Play authentic neural MP3 audio (flawless on iOS, Android, and PC)
     if (audioBase64) {
-      try {
-        let audio: HTMLAudioElement | null = audioPlayerRef.current;
-        if (!audio) {
-          audio = new Audio();
-          audioPlayerRef.current = audio;
-        }
-        if (audio) {
-          audio.pause();
-          audio.src = "data:audio/mp3;base64," + audioBase64;
-          audio.onplay = () => {
-            isSpeakingRef.current = true;
-            setIsSpeaking(true);
-            setIsListening(false);
-          };
-          audio.onended = () => {
-            handleFinish();
-          };
-          audio.onerror = (e: any) => {
-            console.warn("[Voice Engine] HTML5 audio error, falling back to speech synthesis:", e);
-            fallbackSpeechSynthesis(cleanSpoken, handleFinish);
-          };
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((playErr: any) => {
-              console.warn("[Voice Engine] Autoplay audio error, falling back:", playErr);
-              fallbackSpeechSynthesis(cleanSpoken, handleFinish);
-            });
+      // Decode and play via Web Audio Context if available (100% immune to mobile browser autoplay blocks)
+      if (audioContextRef.current) {
+        try {
+          const ctx = audioContextRef.current;
+          if (ctx.state === "suspended") {
+            ctx.resume().catch(() => {});
           }
+          const binaryStr = window.atob(audioBase64);
+          const len = binaryStr.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          ctx.decodeAudioData(
+            bytes.buffer.slice(0),
+            (buffer) => {
+              try {
+                if (!isCallActiveRef.current) return;
+                const srcNode = ctx.createBufferSource();
+                srcNode.buffer = buffer;
+                srcNode.connect(ctx.destination);
+                currentBufferSourceRef.current = srcNode;
+
+                srcNode.onended = () => {
+                  currentBufferSourceRef.current = null;
+                  handleFinish();
+                };
+
+                isSpeakingRef.current = true;
+                setIsSpeaking(true);
+                setIsListening(false);
+                srcNode.start(0);
+              } catch (startErr) {
+                console.warn("[Voice Engine] BufferSource start notice:", startErr);
+                playViaHtmlAudio();
+              }
+            },
+            (decodeErr) => {
+              console.warn("[Voice Engine] decodeAudioData error:", decodeErr);
+              playViaHtmlAudio();
+            }
+          );
           return;
+        } catch (ctxErr) {
+          console.warn("[Voice Engine] Web Audio decode exception:", ctxErr);
         }
-      } catch (audioErr) {
-        console.warn("[Voice Engine] Audio initialization exception:", audioErr);
       }
+
+      // Secondary audio playback: HTML5 Audio
+      const playViaHtmlAudio = () => {
+        try {
+          let audio: HTMLAudioElement | null = audioPlayerRef.current;
+          if (!audio) {
+            audio = new Audio();
+            audioPlayerRef.current = audio;
+          }
+          if (audio) {
+            audio.pause();
+            audio.src = "data:audio/mp3;base64," + audioBase64;
+            audio.onplay = () => {
+              isSpeakingRef.current = true;
+              setIsSpeaking(true);
+              setIsListening(false);
+            };
+            audio.onended = () => {
+              handleFinish();
+            };
+            audio.onerror = (e: any) => {
+              console.warn("[Voice Engine] HTML5 audio error, falling back to speech synthesis:", e);
+              fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+            };
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((playErr: any) => {
+                console.warn("[Voice Engine] Autoplay audio error, falling back:", playErr);
+                fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+              });
+            }
+          }
+        } catch (audioErr) {
+          console.warn("[Voice Engine] Audio initialization exception:", audioErr);
+          fallbackSpeechSynthesis(cleanSpoken, handleFinish);
+        }
+      };
+
+      playViaHtmlAudio();
+      return;
     }
 
     // 2. Secondary Fallback: Browser SpeechSynthesis
@@ -752,8 +834,9 @@ function CallInterface() {
     const profile =
       VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
     const utterance = new SpeechSynthesisUtterance(cleanSpoken);
+    // Deepen pitch for male profile so it never sounds like a high-pitched female on mobile devices
+    utterance.pitch = profile.gender === "male" ? Math.min(profile.pitch, 0.72) : profile.pitch;
     utterance.rate = profile.rate;
-    utterance.pitch = profile.pitch;
     currentUtteranceRef.current = utterance;
 
     const voices = window.speechSynthesis.getVoices();
@@ -813,11 +896,14 @@ function CallInterface() {
         typeof navigator !== "undefined" &&
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+      const selectedProfile =
+        VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
+
       const recognition = new SpeechRecClass();
       // On mobile (Android/iOS), continuous=false allows the OS speech engine to cleanly complete each utterance without hanging
       recognition.continuous = !isMobile;
       recognition.interimResults = true;
-      recognition.lang = "en-US";
+      recognition.lang = selectedProfile.lang || "en-NG";
 
       let accumulatedFinal = "";
       let currentCandidate = "";
@@ -885,8 +971,8 @@ function CallInterface() {
 
       recognition.onerror = (event: any) => {
         console.warn("[Voice Engine] Speech recognition error:", event.error);
-        if (event.error === "no-speech" || event.error === "aborted") {
-          // Normal pause or quiet moment on mobile; do not treat as fatal error
+        if (event.error === "no-speech" || event.error === "aborted" || event.error === "audio-capture") {
+          // Normal pause, audio refocus, or quiet moment on mobile; do not treat as fatal error
           return;
         }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -931,7 +1017,7 @@ function CallInterface() {
             ) {
               startSpeechRecognitionLoop();
             }
-          }, isMobile ? 200 : 350);
+          }, isMobile ? 500 : 350);
         }
       };
 
@@ -1057,9 +1143,9 @@ function CallInterface() {
       // 2. Setup audio frequency visualizer for the glowing orb
       setupAudioVisualizer(stream);
 
-      // 2.5 Start MediaRecorder on cloned stream to capture audio recording without interfering with SpeechRecognition
+      // 2.5 Start MediaRecorder on the isolated Web Audio destination stream (leaves physical hardware mic free for SpeechRecognition!)
       try {
-        const recStream = stream.clone();
+        const recStream = recordingStreamRef.current || stream;
         const mimeType =
           typeof MediaRecorder !== "undefined" &&
           MediaRecorder.isTypeSupported("audio/webm;codecs=opus")

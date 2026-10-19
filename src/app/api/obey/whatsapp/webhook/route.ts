@@ -2090,17 +2090,22 @@ Output ONLY the comment text.`,
 
       // 1. Voice Note Transcription
       if (isAudio) {
-        const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
-        if (media?.base64) {
-          const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
-          if (transRes.success && transRes.text) {
-            activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
-            isVoiceNote = true;
+        isVoiceNote = true;
+        try {
+          const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
+          if (media?.base64) {
+            const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
+            if (transRes.success && transRes.text) {
+              activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
+            } else {
+              activeText = userText ? `${userText} [Voice note audio was unclear]` : "I sent you a voice note, but the audio was unclear or silent.";
+            }
           } else {
-            activeText = "[Unclear Voice Note]";
+            activeText = userText ? `${userText} [Voice note download delayed]` : "I sent you a voice note.";
           }
-        } else {
-          activeText = "[Unclear Voice Note]";
+        } catch (audioErr) {
+          console.warn("[WA Webhook] Voice note handling notice:", audioErr);
+          activeText = userText || "I sent you a voice note.";
         }
       }
 
@@ -2137,6 +2142,12 @@ Output ONLY the comment text.`,
       console.error("[WA] processMessage background task error:", err);
       if (queueId) {
         await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
+      }
+    } finally {
+      if (queueId) {
+        try {
+          await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
+        } catch {}
       }
     }
   });
