@@ -107,10 +107,9 @@ export async function POST(req: NextRequest) {
       // Always notify Femi with transcript report
       await sendWhatsAppMessage(notificationMsg, FEMI_PERSONAL_NUMBER);
 
-      // 2. Deliver actual Voice Note to WhatsApp
-      const audioToSend = spokenVoiceBase64 || recordingUrl;
-      if (audioToSend) {
-        if (callerPhone && callerPhone.length >= 10 && spokenVoiceBase64) {
+      // 2. Deliver actual Voice Note briefing to WhatsApp
+      if (spokenVoiceBase64) {
+        if (callerPhone && callerPhone.length >= 10) {
           try {
             await sendWhatsAppAudio(
               spokenVoiceBase64,
@@ -123,12 +122,25 @@ export async function POST(req: NextRequest) {
         }
         try {
           await sendWhatsAppAudio(
-            audioToSend,
+            spokenVoiceBase64,
             FEMI_PERSONAL_NUMBER,
             `🎙️ Call Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`
           );
         } catch (audioErr) {
-          console.warn("[Calls Talk] Error sending audio to Femi:", audioErr);
+          console.warn("[Calls Talk] Error sending audio briefing to Femi:", audioErr);
+        }
+      }
+
+      // 3. Deliver raw call recording file to Femi if uploaded
+      if (recordingUrl) {
+        try {
+          await sendWhatsAppAudio(
+            recordingUrl,
+            FEMI_PERSONAL_NUMBER,
+            `🎙️ Raw Call Recording (${body.durationSeconds || 0}s)`
+          );
+        } catch (recErr) {
+          console.warn("[Calls Talk] Error sending recording audio to Femi:", recErr);
         }
       }
 

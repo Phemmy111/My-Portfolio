@@ -194,29 +194,13 @@ export async function sendWhatsAppAudio(
     }
 
 
-    let formattedAudio = audioUrl;
-    if (audioUrl && !audioUrl.startsWith("http://") && !audioUrl.startsWith("https://") && !audioUrl.startsWith("data:")) {
-      formattedAudio = `data:audio/mp3;base64,${audioUrl}`;
+    // Clean audio payload: Evolution API v2 expects pure raw base64 string or public URL
+    let cleanMedia = audioUrl;
+    if (audioUrl && !audioUrl.startsWith("http://") && !audioUrl.startsWith("https://")) {
+      cleanMedia = audioUrl.replace(/^data:[^;]+;base64,/, "").trim();
     }
 
-    // 1. Try sending as native WhatsApp Voice Note
-    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: evoKey,
-      },
-      body: JSON.stringify({
-        number: cleaned,
-        audio: formattedAudio,
-      }),
-    });
-
-    if (res.ok) {
-      return { success: true };
-    }
-
-    // 2. Fallback: Send as audio media file
+    // 1. Primary: Send as native WhatsApp Push-to-Talk (PTT) Voice Note via sendMedia
     const mediaRes = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: {
@@ -225,10 +209,12 @@ export async function sendWhatsAppAudio(
       },
       body: JSON.stringify({
         number: cleaned,
-        media: formattedAudio,
+        media: cleanMedia,
         mediatype: "audio",
         mimetype: "audio/mp3",
-        caption: caption || "🎙️ Call Audio Recording",
+        ptt: true,
+        fileName: "voice_note.mp3",
+        caption: caption || undefined,
       }),
     });
 
@@ -236,7 +222,26 @@ export async function sendWhatsAppAudio(
       return { success: true };
     }
 
+    // 2. Secondary fallback: sendWhatsAppAudio
+    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify({
+        number: cleaned,
+        audio: cleanMedia,
+        encoding: true,
+      }),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
     const err = await mediaRes.text();
+    console.error("[WhatsApp] sendWhatsAppAudio failed:", mediaRes.status, err);
     return { success: false, error: err };
   } catch (err: any) {
     console.error("[WhatsApp] sendWhatsAppAudio error:", err);
