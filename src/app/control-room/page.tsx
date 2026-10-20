@@ -15,6 +15,8 @@ import {
   Settings,
   Plus,
   Search,
+  Globe,
+  Laptop,
   ExternalLink,
   Copy,
   Check,
@@ -237,13 +239,25 @@ function ControlRoomContent() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "whatsapp" | "status" | "brain" | "rules" | "leads" | "hotline" | "intents"
+    "overview" | "whatsapp" | "status" | "brain" | "rules" | "leads" | "hotline" | "intents" | "widget"
   >("overview");
   const [copiedLink, setCopiedLink] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navFilter, setNavFilter] = useState("");
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  // Website Live Chat Widget State
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [savingWebsite, setSavingWebsite] = useState(false);
+  const [previewViewport, setPreviewViewport] = useState<"desktop" | "mobile">("desktop");
+  const [widgetSnippetCopied, setWidgetSnippetCopied] = useState(false);
+  const [widgetSimOpen, setWidgetSimOpen] = useState(false);
+  const [widgetGuideTab, setWidgetGuideTab] = useState<"wordpress" | "shopify" | "wix" | "cloudflare">("wordpress");
+  const [simMessages, setSimMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([
+    { role: "assistant", text: "Hello! Welcome to our website. How can I assist you with our services today?" },
+  ]);
+  const [simInput, setSimInput] = useState("");
 
   // Studio Voice Preview player (Plays exact ElevenLabs / Vapi dashboard audio)
   const playVoicePreview = (voiceId: string, previewUrl?: string, e?: React.MouseEvent) => {
@@ -648,6 +662,7 @@ function ControlRoomContent() {
           localStorage.setItem("obey_current_workspace", data.workspace.slug);
         } catch {}
         setSettings(data.settings);
+        setWebsiteUrl(data.settings?.website_url || "");
         setRules(data.rules || []);
         setLeads(data.leads || []);
         fetchContacts(data.workspace.slug, "all");
@@ -1816,6 +1831,33 @@ function ControlRoomContent() {
     }
   };
 
+  const handleSaveWebsiteUrl = async (urlToSave?: string) => {
+    if (!currentWs) return;
+    const targetUrl = (urlToSave !== undefined ? urlToSave : websiteUrl).trim();
+    setSavingWebsite(true);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...settings,
+          website_url: targetUrl,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.settings) setSettings(data.settings);
+        setWebsiteUrl(targetUrl);
+        setStatusSuccessMsg("✅ Website URL saved & synchronized! Live chat widget ready.");
+        setTimeout(() => setStatusSuccessMsg(""), 4000);
+      }
+    } catch (err) {
+      console.error("Failed to save website url:", err);
+    } finally {
+      setSavingWebsite(false);
+    }
+  };
+
   const handleInsertBioTemplate = (templateType: string) => {
     if (!settings) return;
     let bio = "";
@@ -2169,6 +2211,13 @@ function ControlRoomContent() {
       icon: HelpCircle,
       badge: missedIntents.filter((i) => i.status === "unresolved").length > 0 ? `${missedIntents.filter((i) => i.status === "unresolved").length} New` : undefined,
       badgeColor: "text-amber-300 bg-amber-950/60 border-amber-800/50",
+    },
+    {
+      id: "widget",
+      label: "Website Live Chat",
+      icon: Globe,
+      badge: "Embed",
+      badgeColor: "text-emerald-300 bg-emerald-950/60 border-emerald-800/50",
     },
   ];
 
@@ -5681,6 +5730,503 @@ function ControlRoomContent() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB: WEBSITE LIVE CHAT & EMBED SUITE */}
+        {/* ============================================================== */}
+        {activeTab === "widget" && (
+          <div className="space-y-6">
+            {/* Header & Feature Explanation */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      <Globe className="w-5 h-5 text-emerald-400" />
+                      <span>Website Live Chat &amp; Floating Obey Suite</span>
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Omnichannel Embed
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    Paste your website link below to connect Obey Business. Visitors on your website can chat with Obey in real-time, initiate live WebRTC voice calls, or seamlessly continue the conversation on WhatsApp with one click!
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `<script src="https://obeyai.vercel.app/widget.js" data-workspace="${currentWs?.slug || "femi-adeleke"}" data-hotline="${currentWs?.owner_phone || "2348120934828"}"></script>`;
+                      navigator.clipboard.writeText(snippet);
+                      setWidgetSnippetCopied(true);
+                      setTimeout(() => setWidgetSnippetCopied(false), 2500);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition cursor-pointer"
+                  >
+                    {widgetSnippetCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Snippet Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Embed Script</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 1. Website Link Configuration & Auto-Sync Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-emerald-400" />
+                    <span>Your Website URL</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Save your website domain. Obey will automatically whitelist your domain and render your live site in the interactive preview below.
+                  </p>
+                </div>
+                {websiteUrl && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                    Whitelisted Domain Active
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative flex-1">
+                  <Globe className="w-4 h-4 text-slate-500 absolute left-3 top-3.5 pointer-events-none" />
+                  <input
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://autolearnspot.com or https://yourcompany.com"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-100 text-xs sm:text-sm pl-9 pr-4 py-3 rounded-xl focus:outline-none focus:border-emerald-500 transition font-mono"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveWebsiteUrl()}
+                  disabled={savingWebsite}
+                  className="px-6 py-3 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs sm:text-sm shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                >
+                  {savingWebsite ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Saving Website...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 text-slate-950" />
+                      <span>Save &amp; Sync Website</span>
+                    </>
+                  )}
+                </button>
+
+                {websiteUrl && (
+                  <a
+                    href={websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center justify-center shrink-0 border border-slate-700"
+                    title="Open your website in new tab"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Interactive Live Website Simulator */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+              {/* Browser Mockup Top Bar */}
+              <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-red-500/80 inline-block" />
+                    <span className="w-3 h-3 rounded-full bg-yellow-500/80 inline-block" />
+                    <span className="w-3 h-3 rounded-full bg-green-500/80 inline-block" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-400 ml-2 hidden sm:inline">
+                    Live Website &amp; Obey Widget Simulator
+                  </span>
+                </div>
+
+                {/* Simulated URL Bar */}
+                <div className="flex-1 max-w-md bg-slate-900 border border-slate-800 rounded-lg px-3 py-1 flex items-center gap-2 text-[11px] text-slate-400 truncate font-mono">
+                  <span className="text-emerald-400">🔒</span>
+                  <span className="truncate">{websiteUrl || "https://autolearnspot.com"}</span>
+                </div>
+
+                {/* Viewport Toggles (Desktop vs Mobile) */}
+                <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewViewport("desktop")}
+                    className={`p-1.5 rounded-md transition ${
+                      previewViewport === "desktop"
+                        ? "bg-emerald-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Desktop Preview"
+                  >
+                    <Laptop className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewViewport("mobile")}
+                    className={`p-1.5 rounded-md transition ${
+                      previewViewport === "mobile"
+                        ? "bg-emerald-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Mobile Viewport Preview"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview Canvas with Floating Obey Widget Overlaid */}
+              <div className="relative bg-[#020617] min-h-[500px] flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+                <div
+                  className={`relative transition-all duration-300 w-full h-[520px] rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-inner ${
+                    previewViewport === "mobile" ? "max-w-[375px]" : "max-w-full"
+                  }`}
+                >
+                  {/* Website Iframe or Clean Mockup */}
+                  {websiteUrl ? (
+                    <iframe
+                      src={websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`}
+                      title="Website Preview"
+                      className="w-full h-full border-0 pointer-events-auto"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-slate-900 to-slate-950">
+                      <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
+                        <Globe className="w-8 h-8" />
+                      </div>
+                      <h4 className="text-base font-bold text-white">Enter Your Website URL Above</h4>
+                      <p className="text-xs text-slate-400 max-w-sm mt-1.5">
+                        Type your link (e.g. <code>https://autolearnspot.com</code>) to see your actual website loaded here with your floating Obey Business assistant!
+                      </p>
+                    </div>
+                  )}
+
+                  {/* FLOATING OBEY BUSINESS WIDGET IN SIMULATOR */}
+                  <div className="absolute bottom-4 right-4 z-30 flex flex-col items-end">
+                    {/* Expanded Chat Popover */}
+                    {widgetSimOpen && (
+                      <div className="w-80 sm:w-88 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden mb-3 animate-in fade-in zoom-in-95 duration-200">
+                        {/* Widget Header */}
+                        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-3.5 text-white flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full overflow-hidden border border-white/30 bg-slate-950 shrink-0">
+                              <Image src="/obey-logo.jpg" alt="Obey Logo" width={32} height={32} className="w-full h-full object-cover" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-xs leading-tight flex items-center gap-1.5">
+                                <span>{currentWs?.name || "Obey Business"}</span>
+                                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                              </div>
+                              <span className="text-[10px] text-emerald-100/80">AI Assistant • Online 24/7</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            {/* Call Button */}
+                            <Link
+                              href="/call"
+                              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition text-xs flex items-center gap-1"
+                              title="Voice Call Obey"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                            </Link>
+
+                            {/* WhatsApp Handoff Button */}
+                            <a
+                              href={`https://wa.me/${(currentWs?.owner_phone || "2348120934828").replace(/\D/g, "")}?text=${encodeURIComponent("Hello! I was just chatting on your website and would like to continue here on WhatsApp.")}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition text-xs font-bold flex items-center"
+                              title="Continue on WhatsApp"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </a>
+
+                            {/* Close */}
+                            <button
+                              type="button"
+                              onClick={() => setWidgetSimOpen(false)}
+                              className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Widget Messages */}
+                        <div className="p-3 space-y-2.5 max-h-60 overflow-y-auto text-xs bg-slate-950/60">
+                          {simMessages.map((msg, idx) => (
+                            <div
+                              key={idx}
+                              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                            >
+                              <div
+                                className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                                  msg.role === "user"
+                                    ? "bg-emerald-500 text-slate-950 font-medium rounded-br-none"
+                                    : "bg-slate-800 text-slate-200 border border-slate-700/80 rounded-bl-none"
+                                }`}
+                              >
+                                {msg.text}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Quick Prompts */}
+                        <div className="px-3 py-2 bg-slate-900 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                          {[
+                            "What services do you offer?",
+                            "Book a consultation",
+                            "Pricing & Packages",
+                          ].map((prompt, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                setSimMessages((prev) => [
+                                  ...prev,
+                                  { role: "user", text: prompt },
+                                  {
+                                    role: "assistant",
+                                    text: `We specialize in providing top-tier solutions for ${currentWs?.name || "our clients"}. You can also click the WhatsApp button above to chat directly with our team!`,
+                                  },
+                                ]);
+                              }}
+                              className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700 transition"
+                            >
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Widget Input */}
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!simInput.trim()) return;
+                            const text = simInput.trim();
+                            setSimInput("");
+                            setSimMessages((prev) => [
+                              ...prev,
+                              { role: "user", text },
+                              {
+                                role: "assistant",
+                                text: `Thank you for reaching out! I've noted: "${text}". Would you like to connect with ${currentWs?.owner_name || "our team"} on WhatsApp?`,
+                              },
+                            ]);
+                          }}
+                          className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
+                        >
+                          <input
+                            type="text"
+                            value={simInput}
+                            onChange={(e) => setSimInput(e.target.value)}
+                            placeholder="Type a message to test..."
+                            className="flex-1 bg-slate-950 border border-slate-800 text-white text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-emerald-500"
+                          />
+                          <button
+                            type="submit"
+                            className="p-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition shrink-0"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* Floating Launcher Pill */}
+                    <button
+                      type="button"
+                      onClick={() => setWidgetSimOpen((prev) => !prev)}
+                      className="group flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs shadow-2xl shadow-emerald-500/40 transition-all transform hover:scale-105 cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-full overflow-hidden border border-slate-950/20 shrink-0">
+                        <Image src="/obey-logo.jpg" alt="Obey Logo" width={24} height={24} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="tracking-tight">Chat with Obey</span>
+                      <span className="w-2 h-2 rounded-full bg-slate-950 animate-pulse" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. 1-Click Code Snippet & Webmaster Export */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Code2 className="w-5 h-5 text-emerald-400" />
+                    <span>Your 1-Line Embed Snippet</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Paste this snippet anywhere in your HTML <code>&lt;head&gt;</code> or <code>&lt;body&gt;</code>. Obey will automatically float on every page!
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* WhatsApp Developer Export Button */}
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `Hello! Please add our Obey Business Live Chat widget to our website (${websiteUrl || "our domain"}).\n\nJust paste this 1-line script into the header:\n<script src="https://obeyai.vercel.app/widget.js" data-workspace="${currentWs?.slug || "femi-adeleke"}" data-hotline="${currentWs?.owner_phone || "2348120934828"}"></script>\n\nThank you!`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Send to Developer via WhatsApp</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `<script src="https://obeyai.vercel.app/widget.js" data-workspace="${currentWs?.slug || "femi-adeleke"}" data-hotline="${currentWs?.owner_phone || "2348120934828"}"></script>`;
+                      navigator.clipboard.writeText(snippet);
+                      setWidgetSnippetCopied(true);
+                      setTimeout(() => setWidgetSnippetCopied(false), 2500);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer"
+                  >
+                    {widgetSnippetCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Script</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Code Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 overflow-x-auto relative group">
+                <pre className="leading-relaxed">
+{`<!-- Obey Business Live Chat & WebRTC Voice Widget -->
+<script 
+  src="https://obeyai.vercel.app/widget.js" 
+  data-workspace="${currentWs?.slug || "femi-adeleke"}" 
+  data-hotline="${currentWs?.owner_phone || "2348120934828"}">
+</script>`}
+                </pre>
+              </div>
+            </div>
+
+            {/* 4. Platform-Specific Quick Install Guides */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-indigo-400" />
+                <span>Platform Quick Setup (Takes 60 Seconds)</span>
+              </h3>
+
+              {/* Guide Tabs */}
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                {[
+                  { id: "wordpress", label: "WordPress" },
+                  { id: "shopify", label: "Shopify" },
+                  { id: "wix", label: "Wix / Squarespace" },
+                  { id: "cloudflare", label: "Cloudflare (Zero-Code)" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setWidgetGuideTab(t.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      widgetGuideTab === t.id
+                        ? "bg-slate-800 text-emerald-400 border border-slate-700"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Guide Contents */}
+              <div className="text-xs text-slate-300 leading-relaxed space-y-2 pt-2">
+                {widgetGuideTab === "wordpress" && (
+                  <ol className="list-decimal pl-5 space-y-1.5 text-slate-300">
+                    <li>In your WordPress Admin Dashboard, go to <strong>Plugins &rarr; Add New</strong>.</li>
+                    <li>Search for <strong>&quot;WPCode&quot;</strong> or <strong>&quot;Insert Headers and Footers&quot;</strong> and click Install &amp; Activate.</li>
+                    <li>Go to <strong>Code Snippets &rarr; Header &amp; Footer</strong>.</li>
+                    <li>Paste your Obey snippet into the <strong>Header</strong> box and click <strong>Save Changes</strong>.</li>
+                    <li>Done! Refresh your website and Obey will be floating in the bottom-right corner.</li>
+                  </ol>
+                )}
+
+                {widgetGuideTab === "shopify" && (
+                  <ol className="list-decimal pl-5 space-y-1.5 text-slate-300">
+                    <li>Log in to your <strong>Shopify Admin</strong>.</li>
+                    <li>Go to <strong>Online Store &rarr; Themes</strong>.</li>
+                    <li>Click the <strong>&hellip; (three dots)</strong> next to your active theme and choose <strong>Edit code</strong>.</li>
+                    <li>In the left sidebar, click <code>theme.liquid</code> under Layout.</li>
+                    <li>Scroll down and paste the Obey script tag right before the closing <code>&lt;/head&gt;</code> tag.</li>
+                    <li>Click <strong>Save</strong>. Obey is now live on your Shopify store!</li>
+                  </ol>
+                )}
+
+                {widgetGuideTab === "wix" && (
+                  <ol className="list-decimal pl-5 space-y-1.5 text-slate-300">
+                    <li>Open your <strong>Wix or Squarespace Dashboard</strong>.</li>
+                    <li>Navigate to <strong>Settings &rarr; Custom Code</strong> (or <strong>Developer Tools &rarr; Code Injection</strong>).</li>
+                    <li>Click <strong>+ Add Custom Code</strong>.</li>
+                    <li>Paste your 1-line Obey snippet and set placement to <strong>Head - All Pages</strong>.</li>
+                    <li>Click <strong>Apply / Save</strong>. Refresh your live site to test!</li>
+                  </ol>
+                )}
+
+                {widgetGuideTab === "cloudflare" && (
+                  <div className="space-y-2">
+                    <p className="text-slate-400">
+                      If your domain is managed on <strong>Cloudflare</strong>, you can inject Obey into your website at the network edge with zero code changes to your servers:
+                    </p>
+                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-teal-400">
+                      <code>{`addEventListener("fetch", event => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request) {
+  const response = await fetch(request);
+  const rewriter = new HTMLRewriter().on("head", {
+    element(e) {
+      e.append(\`<script src="https://obeyai.vercel.app/widget.js" data-workspace="${currentWs?.slug || "femi-adeleke"}"></script>\`, { html: true });
+    }
+  });
+  return rewriter.transform(response);
+}`}</code>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

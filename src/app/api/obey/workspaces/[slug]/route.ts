@@ -42,6 +42,7 @@ export async function GET(
         fallback_action: "ai_reply",
         voice_id: "nigerian_male",
         voice_personality: "professional",
+        website_url: "",
       },
       rules: rules || [],
       leads: leads || [],
@@ -80,6 +81,7 @@ export async function PATCH(
       fallback_action,
       voice_id,
       voice_personality,
+      website_url,
     } = body;
 
     let updatedWorkspace = ws;
@@ -110,6 +112,7 @@ export async function PATCH(
       fallback_action,
       voice_id,
       voice_personality,
+      website_url,
     });
 
     if (voice_id) {
