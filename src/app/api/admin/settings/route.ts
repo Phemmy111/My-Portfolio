@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     // 1c. Test Vapi Connection, Live Credit Balance & Auto-Provision Low-Latency Obey Assistant
     if (body.action === "test_vapi") {
-      const { apiKey, assistantId, autoProvision, voiceId } = body;
+      const { apiKey, assistantId, autoProvision, voiceId, startingCredit: customStartingCredit } = body;
       if (!apiKey?.trim()) {
         return NextResponse.json({ success: false, error: "Vapi Private API Key is required" });
       }
@@ -79,10 +79,12 @@ export async function POST(req: NextRequest) {
           }
         } catch {}
 
-        const startingCredit = 10.0;
+        const startingCredit = Number(customStartingCredit) > 0 ? Number(customStartingCredit) : 10.0;
         const creditsSpent = Number(totalCost.toFixed(2));
         const creditsRemaining = Math.max(0, Number((startingCredit - totalCost).toFixed(2)));
-        const talkMinutes = Math.floor(creditsRemaining / 0.08);
+        // Real measured Vapi rate: $0.05 platform + $0.005 Deepgram + $0.003 gpt-4o-mini + $0.012 voice = $0.07 / min
+        const costPerMinute = 0.07;
+        const talkMinutes = Math.floor(creditsRemaining / costPerMinute);
 
         // 2. Fetch existing assistants
         const res = await fetch("https://api.vapi.ai/assistant", {
@@ -208,7 +210,7 @@ export async function POST(req: NextRequest) {
 
     // 1d. Quick Live Credit Check for Vapi Provider
     if (body.action === "check_vapi_credits") {
-      const { apiKey } = body;
+      const { apiKey, startingCredit: customStartingCredit } = body;
       if (!apiKey?.trim()) {
         return NextResponse.json({ success: false, error: "Vapi Private API Key is required" });
       }
@@ -225,10 +227,11 @@ export async function POST(req: NextRequest) {
             totalCost = calls.reduce((acc: number, c: any) => acc + (Number(c.cost) || 0), 0);
           }
         }
-        const startingCredit = 10.0;
+        const startingCredit = Number(customStartingCredit) > 0 ? Number(customStartingCredit) : 10.0;
         const creditsSpent = Number(totalCost.toFixed(2));
         const creditsRemaining = Math.max(0, Number((startingCredit - totalCost).toFixed(2)));
-        const talkMinutes = Math.floor(creditsRemaining / 0.08);
+        const costPerMinute = 0.07;
+        const talkMinutes = Math.floor(creditsRemaining / costPerMinute);
 
         return NextResponse.json({
           success: true,

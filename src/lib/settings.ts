@@ -26,6 +26,7 @@ export interface VapiProviderConfig {
   assistantId?: string;
   phoneNumberId?: string;
   enabled: boolean;
+  startingCredit?: number;
   creditsRemaining?: number;
   creditsSpent?: number;
   totalCalls?: number;

@@ -69,6 +69,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { VOICE_PROFILES, pickBestVoice } from "@/app/call/page";
+import { VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
 const WHATSAPP_STATUS_COLORS = [
   { name: "Teal", hex: "#075E54", bg: "#075E54" },
@@ -243,6 +244,58 @@ function ControlRoomContent() {
   const [navFilter, setNavFilter] = useState("");
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
 
+  // Vapi Voice Previews with custom sample text & acoustic profiles
+  const VAPI_PREVIEW_MAP: Record<string, { sampleText: string; lang: string; pitch: number; rate: number; gender: "male" | "female"; preferredVoices: string[] }> = {
+    elliot: {
+      sampleText: "Hello! I am Obey, your Nigerian executive companion. Great to have you on the line! How can I assist your business today?",
+      lang: "en-NG",
+      pitch: 0.82,
+      rate: 0.98,
+      gender: "male",
+      preferredVoices: ["Nigerian Male", "Google UK English Male", "David", "Guy"],
+    },
+    george: {
+      sampleText: "Good day. I am Obey, your British executive companion with ultra-low latency audio. Articulate and ready to assist.",
+      lang: "en-GB",
+      pitch: 0.95,
+      rate: 1.0,
+      gender: "male",
+      preferredVoices: ["George", "Oliver", "UK English Male"],
+    },
+    sarah: {
+      sampleText: "Hello there! I am Obey, your warm and empathetic executive companion. Ready to support your clients.",
+      lang: "en-US",
+      pitch: 1.1,
+      rate: 1.0,
+      gender: "female",
+      preferredVoices: ["Samantha", "Aria", "Jenny", "Victoria"],
+    },
+    callum: {
+      sampleText: "How far my brother! I am Obey, your street-smart and charismatic voice companion. Sharp-sharp!",
+      lang: "en-NG",
+      pitch: 0.9,
+      rate: 1.05,
+      gender: "male",
+      preferredVoices: ["Nigerian Male", "Daniel", "Alex"],
+    },
+    brian: {
+      sampleText: "Good day. I am Obey, your executive voice companion. Deep, authoritative, and direct to the point.",
+      lang: "en-GB",
+      pitch: 0.75,
+      rate: 0.95,
+      gender: "male",
+      preferredVoices: ["Brian", "Richard", "George"],
+    },
+    alloy: {
+      sampleText: "Hey there! I am Obey, your modern conversational AI voice assistant. How can I help you today?",
+      lang: "en-US",
+      pitch: 1.0,
+      rate: 1.0,
+      gender: "male",
+      preferredVoices: ["Alex", "Google US English", "Fred"],
+    },
+  };
+
   // Voice Preview player for Hotline configuration
   const playVoicePreview = (voiceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -255,14 +308,15 @@ function ControlRoomContent() {
     }
 
     window.speechSynthesis.cancel();
-    const profile = VOICE_PROFILES[voiceId] || VOICE_PROFILES["nigerian_male"];
-    const text = profile.sampleText || "Hello! I am Obey, your personal assistant.";
+    const vapiProfile = VAPI_PREVIEW_MAP[voiceId];
+    const profile = vapiProfile || (VOICE_PROFILES as any)[voiceId] || VAPI_PREVIEW_MAP["elliot"];
+    const text = profile.sampleText || "Hello! I am Obey, your personal executive companion.";
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = profile.pitch;
     utterance.rate = profile.rate;
 
     const voices = window.speechSynthesis.getVoices();
-    const matchedVoice = pickBestVoice(voices, profile);
+    const matchedVoice = pickBestVoice(voices, { ...profile, flag: "", name: voiceId });
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
@@ -2198,7 +2252,7 @@ function ControlRoomContent() {
             <Link
               href={hotlineUrl}
               target="_blank"
-              className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition flex items-center justify-between"
+              className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
                 <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
@@ -2425,7 +2479,7 @@ function ControlRoomContent() {
             </button>
             <button
               onClick={copyHotlineLink}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
             >
               {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
               <span>{copiedLink ? "Copied!" : "Hotline Link"}</span>
@@ -2531,7 +2585,7 @@ function ControlRoomContent() {
               <div className="flex flex-wrap items-center gap-2 pt-1 md:pt-0">
                 <button
                   onClick={() => setActiveTab("brain")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium border border-slate-800 transition cursor-pointer"
                 >
                   <Settings className="w-3.5 h-3.5 text-slate-400" />
                   <span>Settings Room</span>
@@ -2648,7 +2702,7 @@ function ControlRoomContent() {
                     {leads.slice(0, 5).map((lead) => (
                       <div
                         key={lead.id}
-                        className="bg-slate-850 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3"
+                        className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3"
                       >
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
@@ -2694,14 +2748,14 @@ function ControlRoomContent() {
                 {callLogs.length === 0 ? (
                   <div className="text-center py-8 text-slate-500 text-xs space-y-2">
                     <PhoneCall className="w-8 h-8 mx-auto opacity-30" />
-                    <p>No voice calls logged yet. Tap &apos;Open Hotline&apos; to test live WebRTC!</p>
+                    <p>No voice calls logged yet. Tap &apos;Open Hotline&apos; to test Obey Voice Hotline!</p>
                   </div>
                 ) : (
                   <div className="space-y-2.5">
                     {callLogs.slice(0, 5).map((log) => (
                       <div
                         key={log.id}
-                        className="bg-slate-850 border border-slate-800 rounded-xl p-3 space-y-2"
+                        className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -3007,7 +3061,7 @@ function ControlRoomContent() {
                         </div>
 
                         <div className="space-y-2.5">
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               1
                             </span>
@@ -3021,7 +3075,7 @@ function ControlRoomContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               2
                             </span>
@@ -3035,7 +3089,7 @@ function ControlRoomContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               3
                             </span>
@@ -3063,7 +3117,7 @@ function ControlRoomContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               5
                             </span>
@@ -3078,7 +3132,7 @@ function ControlRoomContent() {
                           </div>
                         </div>
 
-                        <div className="p-3 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                           <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                             <ShieldCheck className="w-4 h-4 text-emerald-400" />
                             <span>Cloud-Powered by Evolution API</span>
@@ -3090,7 +3144,7 @@ function ControlRoomContent() {
                       </div>
 
                       {/* Pairing Code Generator & Display Card */}
-                      <div className="lg:col-span-6 bg-slate-850 border border-slate-800 rounded-2xl p-6 space-y-5">
+                      <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
                         <div>
                           <label className="block text-xs font-bold text-slate-200 mb-1.5">
                             Enter Your WhatsApp Phone Number
@@ -3208,7 +3262,7 @@ function ControlRoomContent() {
                         </h3>
 
                         <div className="space-y-3">
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               1
                             </span>
@@ -3222,7 +3276,7 @@ function ControlRoomContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               2
                             </span>
@@ -3236,7 +3290,7 @@ function ControlRoomContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-3 bg-slate-850 border border-slate-800 p-3.5 rounded-xl">
+                          <div className="flex items-start gap-3 bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                             <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                               3
                             </span>
@@ -3251,7 +3305,7 @@ function ControlRoomContent() {
                           </div>
                         </div>
 
-                        <div className="p-3.5 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                        <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                           <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                             <ShieldCheck className="w-4 h-4 text-emerald-400" />
                             <span>Cloud-Powered by Evolution API</span>
@@ -3263,7 +3317,7 @@ function ControlRoomContent() {
                       </div>
 
                       {/* QR Code Container */}
-                      <div className="lg:col-span-5 flex flex-col items-center justify-center p-6 bg-slate-850 border border-slate-800 rounded-2xl space-y-4 text-center">
+                      <div className="lg:col-span-5 flex flex-col items-center justify-center p-6 bg-slate-900 border border-slate-800 rounded-2xl space-y-4 text-center">
                         {waQrCode ? (
                           <div className="p-3 bg-white rounded-2xl shadow-2xl inline-block">
                             <img
@@ -4969,44 +5023,40 @@ function ControlRoomContent() {
                 />
               </div>
 
-              {/* Card 3: WebRTC Voice Call Hotline Settings */}
+              {/* Card 3: Obey AI Voice Call Hotline Settings */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
                   <div>
                     <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
-                      <PhoneCall className="w-4 h-4 text-teal-400" />
-                      3. WebRTC Voice Call Hotline & AI Voice Profile
+                      <PhoneCall className="w-4 h-4 text-emerald-400" />
+                      3. Obey AI Voice Call Hotline (Vapi Engine)
                     </h3>
                     <p className="text-[11px] text-zinc-400 mt-0.5">
-                      Configure Obey&apos;s spoken voice accent, gender, personality style, and opening greeting for your live WebRTC phone link.
+                      Configure Obey&apos;s spoken voice (Vapi / Cartesia / ElevenLabs), personality style, and opening greeting for your live AI phone link.
                     </p>
                   </div>
                   {hotlineUrl && (
                     <Link
                       href={hotlineUrl}
                       target="_blank"
-                      className="text-xs text-teal-400 hover:underline flex items-center gap-1 font-medium"
+                      className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-medium"
                     >
                       Test Live Call &rarr;
                     </Link>
                   )}
                 </div>
 
-                {/* Voice Accent & Gender Selection */}
+                {/* Vapi Spoken Voice Selection */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
-                    🎙️ Voice Accent & Gender
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      🎙️ Spoken Voice Selection (Vapi / Cartesia / ElevenLabs)
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-medium">Sub-400ms Ultra-Low Latency</span>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      { id: "nigerian_male", flag: "🇳🇬", label: "Nigerian Male (Default)", desc: "Warm Executive Brother" },
-                      { id: "nigerian_female", flag: "🇳🇬", label: "Nigerian Female", desc: "Warm Sister / Lady" },
-                      { id: "british_male", flag: "🇬🇧", label: "British Male", desc: "Crisp & Executive" },
-                      { id: "british_female", flag: "🇬🇧", label: "British Female", desc: "Polished & Refined" },
-                      { id: "american_male", flag: "🇺🇸", label: "American Male", desc: "Silicon Valley Tech" },
-                      { id: "american_female", flag: "🇺🇸", label: "American Female", desc: "Friendly & Dynamic" },
-                    ].map((v) => {
-                      const isSelected = (settings.voice_id || "nigerian_male") === v.id;
+                    {VAPI_VOICE_OPTIONS.map((v) => {
+                      const isSelected = (settings.voice_id || "elliot") === v.id;
                       const isPlaying = playingVoiceId === v.id;
                       return (
                         <div
@@ -5014,7 +5064,7 @@ function ControlRoomContent() {
                           onClick={() => setSettings({ ...settings, voice_id: v.id })}
                           className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
                             isSelected
-                              ? "bg-teal-500/10 border-teal-500/80 ring-1 ring-teal-500/50"
+                              ? "bg-emerald-500/10 border-emerald-500/80 ring-1 ring-emerald-500/50"
                               : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
                           }`}
                         >
@@ -5022,12 +5072,12 @@ function ControlRoomContent() {
                             <div className="flex items-center justify-between gap-1 font-bold text-xs text-zinc-100">
                               <div className="flex items-center gap-1.5 truncate">
                                 <span>{v.flag}</span>
-                                <span className="truncate">{v.label}</span>
+                                <span className="truncate">{v.name}</span>
                               </div>
                               <button
                                 type="button"
                                 onClick={(e) => playVoicePreview(v.id, e)}
-                                className={`px-1.5 py-0.5 rounded-md border text-[9px] font-bold shrink-0 transition flex items-center gap-1 ${
+                                className={`px-2 py-0.5 rounded-md border text-[9px] font-bold shrink-0 transition flex items-center gap-1 cursor-pointer ${
                                   isPlaying
                                     ? "bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse"
                                     : "bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700"
@@ -5231,7 +5281,7 @@ function ControlRoomContent() {
                   onChange={(e) => setTestInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && runTestSimulation()}
                   placeholder="e.g. How much is your tomato greenhouse?"
-                  className="flex-1 bg-slate-850 border border-slate-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
                 />
                 <button
                   onClick={runTestSimulation}
@@ -5808,7 +5858,7 @@ function ControlRoomContent() {
                           <tr
                             key={contact.id || contact.phone}
                             className={`transition cursor-pointer ${
-                              isTicked ? "bg-emerald-950/20 hover:bg-emerald-950/30" : "hover:bg-slate-850/60"
+                              isTicked ? "bg-emerald-950/20 hover:bg-emerald-950/30" : "hover:bg-slate-800/60"
                             }`}
                             onClick={() => handleToggleSelectPhone(contact.phone)}
                           >
@@ -6001,7 +6051,7 @@ function ControlRoomContent() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <PhoneCall className="w-5 h-5 text-teal-400" />
-                Branded WebRTC Voice Hotline
+                Branded Obey AI Voice Hotline (Vapi Engine)
               </h2>
               <p className="text-xs sm:text-sm text-slate-400">
                 Share this direct link with your customers or on your Instagram bio, flyers, and WhatsApp status.
@@ -6047,73 +6097,84 @@ function ControlRoomContent() {
             </div>
 
             {/* Monetization / Pricing Tiers */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
                 Monetization & Subscription Plans
               </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Each business owner can subscribe via Paystack to unlock unlimited leads, WhatsApp multi-agent bots, and dedicated WebRTC hotlines.
+              <p className="text-xs text-slate-400">
+                Each business owner can subscribe via Paystack to unlock unlimited leads, WhatsApp multi-agent bots, and dedicated Obey Voice hotlines.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                {/* Starter Plan */}
+                <div className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 space-y-4 flex flex-col justify-between shadow-lg">
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Starter Plan</div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.starter_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
-                      <li>• Up to 250 auto-saved leads</li>
-                      <li>• 10 Keyword Auto-responders</li>
-                      <li>• WebRTC Voice Hotline (15 hrs/mo)</li>
-                      <li>• CSV & Phone VCF Export</li>
+                    <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Starter Plan</div>
+                    <div className="text-2xl font-black text-white">
+                      ₦{platformPricing.starter_price.toLocaleString()} <span className="text-xs text-slate-400 font-normal">/ month</span>
+                    </div>
+                    <ul className="text-xs text-slate-300 space-y-2">
+                      <li className="flex items-center gap-1.5">• Up to 250 auto-saved leads</li>
+                      <li className="flex items-center gap-1.5">• 10 Keyword Auto-responders</li>
+                      <li className="flex items-center gap-1.5">• Obey AI Voice Hotline (15 hrs/mo)</li>
+                      <li className="flex items-center gap-1.5">• CSV & Phone VCF Export</li>
                     </ul>
                   </div>
                   <button
                     onClick={() => handleCheckoutPlan("starter")}
                     disabled={checkoutLoading === "starter"}
-                    className="w-full py-2 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition border border-slate-300 dark:border-slate-700 disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700 disabled:opacity-50 cursor-pointer shadow-sm"
                   >
                     {checkoutLoading === "starter" ? "Redirecting..." : "Activate Starter"}
                   </button>
                 </div>
 
-                <div className="bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/40 rounded-xl p-4 space-y-3 relative flex flex-col justify-between">
-                  <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 uppercase">Popular</span>
+                {/* Pro Business Plan (Popular) */}
+                <div className="bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-900 border-2 border-emerald-500 rounded-xl p-5 space-y-4 relative flex flex-col justify-between shadow-xl shadow-emerald-500/10">
+                  <span className="absolute top-3 right-3 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 uppercase tracking-wider shadow-md">
+                    Popular
+                  </span>
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase">Pro Business</div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.pro_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
-                      <li>• Unlimited auto-saved leads</li>
-                      <li>• 50 Keyword Auto-responders</li>
-                      <li>• WebRTC Voice Hotline (50 hrs/mo)</li>
-                      <li>• WhatsApp audio recordings & transcripts</li>
-                      <li>• Custom Business Catalog & Payment Info</li>
+                    <div className="text-xs font-black text-emerald-400 uppercase tracking-widest">Pro Business</div>
+                    <div className="text-2xl font-black text-white">
+                      ₦{platformPricing.pro_price.toLocaleString()} <span className="text-xs text-slate-400 font-normal">/ month</span>
+                    </div>
+                    <ul className="text-xs text-slate-200 space-y-2">
+                      <li className="flex items-center gap-1.5">• Unlimited auto-saved leads</li>
+                      <li className="flex items-center gap-1.5">• 50 Keyword Auto-responders</li>
+                      <li className="flex items-center gap-1.5">• Obey AI Voice Hotline (50 hrs/mo)</li>
+                      <li className="flex items-center gap-1.5">• WhatsApp audio recordings & transcripts</li>
+                      <li className="flex items-center gap-1.5">• Custom Business Catalog & Payment Info</li>
                     </ul>
                   </div>
                   <button
                     onClick={() => handleCheckoutPlan("pro")}
                     disabled={checkoutLoading === "pro"}
-                    className="w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition shadow-lg shadow-emerald-500/25 disabled:opacity-50 cursor-pointer"
                   >
                     {checkoutLoading === "pro" ? "Redirecting..." : "Upgrade to Pro"}
                   </button>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                {/* Enterprise / Founder */}
+                <div className="bg-slate-900 border border-slate-800 hover:border-purple-500/40 rounded-xl p-5 space-y-4 flex flex-col justify-between shadow-lg">
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Enterprise / Founder</div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white">₦{platformPricing.enterprise_price.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">/ month</span></div>
-                    <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
-                      <li>• Full Multi-tenant WhatsApp bot</li>
-                      <li>• Unlimited Voice Hotline minutes</li>
-                      <li>• Autonomous Web App & Document Generator</li>
-                      <li>• Priority 24/7 dedicated server support</li>
+                    <div className="text-xs font-black text-purple-400 uppercase tracking-widest">Enterprise / Founder</div>
+                    <div className="text-2xl font-black text-white">
+                      ₦{platformPricing.enterprise_price.toLocaleString()} <span className="text-xs text-slate-400 font-normal">/ month</span>
+                    </div>
+                    <ul className="text-xs text-slate-300 space-y-2">
+                      <li className="flex items-center gap-1.5">• Full Multi-tenant WhatsApp bot</li>
+                      <li className="flex items-center gap-1.5">• Unlimited Voice Hotline minutes</li>
+                      <li className="flex items-center gap-1.5">• Autonomous Web App & Document Generator</li>
+                      <li className="flex items-center gap-1.5">• Priority 24/7 dedicated server support</li>
                     </ul>
                   </div>
                   <button
                     onClick={() => handleCheckoutPlan("enterprise")}
                     disabled={checkoutLoading === "enterprise"}
-                    className="w-full py-2 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition border border-slate-300 dark:border-slate-700 disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow-md shadow-purple-600/20 disabled:opacity-50 cursor-pointer"
                   >
                     {checkoutLoading === "enterprise" ? "Redirecting..." : "Activate Enterprise"}
                   </button>
@@ -6864,7 +6925,7 @@ function ControlRoomContent() {
                       .replace(/-+/g, "-");
                     setNewWsForm({ ...newWsForm, name, slug });
                   }}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -6883,7 +6944,7 @@ function ControlRoomContent() {
                       slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""),
                     })
                   }
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <p className="text-[10px] text-slate-500 mt-0.5">
                   Your hotline will be: /call?biz={newWsForm.slug || "slug"}
@@ -6900,7 +6961,7 @@ function ControlRoomContent() {
                   onChange={(e) =>
                     setNewWsForm({ ...newWsForm, owner_name: e.target.value })
                   }
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -6912,7 +6973,7 @@ function ControlRoomContent() {
                   <select
                     value={modalCountryCode}
                     onChange={(e) => setModalCountryCode(e.target.value)}
-                    className="bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     {COUNTRY_CODES.map((c) => (
                       <option key={c.label} value={c.code} className="bg-slate-900 text-white">
@@ -6926,7 +6987,7 @@ function ControlRoomContent() {
                     placeholder="e.g. 9074027451"
                     value={modalLocalPhone}
                     onChange={(e) => setModalLocalPhone(e.target.value.replace(/^0+/, "").replace(/[^0-9]/g, ""))}
-                    className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 font-mono">
@@ -6943,7 +7004,7 @@ function ControlRoomContent() {
                   onChange={(e) =>
                     setNewWsForm({ ...newWsForm, owner_email: e.target.value })
                   }
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -6952,7 +7013,7 @@ function ControlRoomContent() {
                 <select
                   value={newWsForm.plan}
                   onChange={(e) => setNewWsForm({ ...newWsForm, plan: e.target.value })}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 >
                   <option value="trial">🎉 7-Day Free Trial (Pro Features — ₦0 Today)</option>
                   <option value="starter">Starter Plan</option>
@@ -7004,7 +7065,7 @@ function ControlRoomContent() {
                   placeholder="e.g. price, cost, how much, pricing"
                   value={newRuleKeywords}
                   onChange={(e) => setNewRuleKeywords(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -7015,7 +7076,7 @@ function ControlRoomContent() {
                 <select
                   value={newRuleAction}
                   onChange={(e) => setNewRuleAction(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
                 >
                   <option value="reply_only">Direct Auto-Reply Only</option>
                   <option value="send_catalog">Send Catalog & Pricing</option>
@@ -7034,7 +7095,7 @@ function ControlRoomContent() {
                   placeholder="Here is our current pricing and catalog details..."
                   value={newRuleResponse}
                   onChange={(e) => setNewRuleResponse(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -7087,7 +7148,7 @@ function ControlRoomContent() {
                   placeholder="e.g. David Adeleke"
                   value={ownerEditName}
                   onChange={(e) => setOwnerEditName(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-xl p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 />
               </div>
 
@@ -7102,7 +7163,7 @@ function ControlRoomContent() {
                   placeholder="e.g. 2348120934828 or 08120934828"
                   value={ownerEditPhone}
                   onChange={(e) => setOwnerEditPhone(e.target.value)}
-                  className="w-full bg-slate-850 border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   Nigerian numbers (08...) automatically convert to international format (234...).

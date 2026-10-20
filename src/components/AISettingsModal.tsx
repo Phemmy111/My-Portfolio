@@ -133,7 +133,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     setVapiPool(next);
   };
 
-  const handleTestVapi = async (id: string, apiKey: string, assistantId?: string) => {
+  const getInitialCredit = (prov: VapiProviderConfig) => {
+    if (prov.startingCredit !== undefined && prov.startingCredit > 0) return prov.startingCredit;
+    if (prov.name.toLowerCase().includes("5 credit") || prov.name.includes("5")) return 5;
+    return 10;
+  };
+
+  const handleTestVapi = async (id: string, apiKey: string, assistantId?: string, startingCredit?: number) => {
     setTestResults((prev) => ({ ...prev, [id]: { testing: true } }));
     try {
       const res = await fetch("/api/admin/settings", {
@@ -145,6 +151,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           assistantId,
           autoProvision: true,
           voiceId: generalKeys.VOICE_ID || "elliot",
+          startingCredit: startingCredit || 10,
         }),
       });
       const data = await res.json();
@@ -152,6 +159,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         updateVapiProvider(id, {
           ...(data.assistantId ? { assistantId: data.assistantId } : {}),
           ...(data.credits ? {
+            startingCredit: data.credits.starting,
             creditsRemaining: data.credits.remaining,
             creditsSpent: data.credits.spent,
             totalCalls: data.credits.calls,
@@ -176,17 +184,18 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     }
   };
 
-  const handleCheckVapiCredits = async (id: string, apiKey: string) => {
+  const handleCheckVapiCredits = async (id: string, apiKey: string, startingCredit?: number) => {
     if (!apiKey) return;
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_vapi_credits", apiKey }),
+        body: JSON.stringify({ action: "check_vapi_credits", apiKey, startingCredit: startingCredit || 10 }),
       });
       const data = await res.json();
       if (data.success && data.credits) {
         updateVapiProvider(id, {
+          startingCredit: data.credits.starting,
           creditsRemaining: data.credits.remaining,
           creditsSpent: data.credits.spent,
           totalCalls: data.credits.calls,
@@ -1772,41 +1781,89 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                               </div>
 
                               {/* Live Account Credit Balance & Minutes Remaining */}
-                              {prov.creditsRemaining !== undefined ? (
-                                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`w-2 h-2 rounded-full ${
-                                      (prov.creditsRemaining ?? 10) > 3 ? "bg-emerald-400" : (prov.creditsRemaining ?? 10) > 1 ? "bg-amber-400" : "bg-red-400"
-                                    } animate-pulse`} />
-                                    <span className="font-bold text-zinc-200">
-                                      💳 Credit Remaining: ${(prov.creditsRemaining ?? 10).toFixed(2)} / $10.00
-                                    </span>
-                                    <span className="text-[11px] text-zinc-400">
-                                      (~{prov.talkMinutes ?? Math.floor(((prov.creditsRemaining ?? 10) / 0.08))} mins talk time)
-                                    </span>
+                              {(() => {
+                                const starting = prov.startingCredit || ((prov.name || "").toLowerCase().includes("5") ? 5 : 10);
+                                const spent = prov.creditsSpent ?? 0;
+                                const remaining = prov.creditsRemaining !== undefined 
+                                  ? prov.creditsRemaining 
+                                  : Math.max(0, starting - spent);
+                                const realMins = prov.talkMinutes !== undefined 
+                                  ? prov.talkMinutes 
+                                  : Math.floor(remaining / 0.07);
+
+                                return (
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 text-xs">
+                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                      <span className={`w-2.5 h-2.5 rounded-full ${
+                                        remaining > 2 ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : remaining > 0.5 ? "bg-amber-400" : "bg-red-500"
+                                      } animate-pulse`} />
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-extrabold text-white text-sm">
+                                          ${remaining.toFixed(2)} <span className="text-zinc-500 font-normal text-xs">/ ${starting}.00</span>
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                          ~{realMins} real minutes left
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                                      {/* Plan Switcher: $5 or $10 */}
+                                      <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-lg p-0.5 text-[10px]">
+                                        <span className="text-zinc-400 px-1.5 font-medium">Plan:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newStarting = 5;
+                                            const newRemaining = Math.max(0, newStarting - spent);
+                                            updateVapiProvider(prov.id, {
+                                              startingCredit: newStarting,
+                                              creditsRemaining: newRemaining,
+                                              talkMinutes: Math.floor(newRemaining / 0.07)
+                                            });
+                                          }}
+                                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                                            starting === 5 ? "bg-rose-500 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                          }`}
+                                          title="$5 Starter Credit Account"
+                                        >
+                                          $5
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newStarting = 10;
+                                            const newRemaining = Math.max(0, newStarting - spent);
+                                            updateVapiProvider(prov.id, {
+                                              startingCredit: newStarting,
+                                              creditsRemaining: newRemaining,
+                                              talkMinutes: Math.floor(newRemaining / 0.07)
+                                            });
+                                          }}
+                                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                                            starting === 10 ? "bg-rose-500 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                          }`}
+                                          title="$10 Standard Free Credit Account"
+                                        >
+                                          $10
+                                        </button>
+                                      </div>
+
+                                      <span className="text-[10px] text-zinc-500 hidden md:inline">
+                                        {prov.totalCalls ?? 0} calls (${spent.toFixed(2)} spent)
+                                      </span>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCheckVapiCredits(prov.id, prov.apiKey, starting)}
+                                        className="text-[11px] text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer hover:opacity-80 transition-opacity"
+                                      >
+                                        Refresh
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-zinc-500">
-                                      {prov.totalCalls ?? 0} calls completed (${((prov.creditsSpent ?? 0)).toFixed(2)} spent)
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCheckVapiCredits(prov.id, prov.apiKey)}
-                                      className="text-[10px] text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer"
-                                    >
-                                      Refresh Balance
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/40 border border-zinc-800/80 text-[11px] text-zinc-400">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>$10.00 Free Credits Included (~125 calling mins)</span>
-                                  </span>
-                                  <span className="text-[10px] text-zinc-500">Click &quot;Test Vapi Key&quot; to fetch live balance</span>
-                                </div>
-                              )}
+                                );
+                              })()}
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 <div>
@@ -1865,7 +1922,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                               <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
                                 <button
                                   type="button"
-                                  onClick={() => handleTestVapi(prov.id, prov.apiKey, prov.assistantId)}
+                                  onClick={() => handleTestVapi(prov.id, prov.apiKey, prov.assistantId, prov.startingCredit || ((prov.name || "").toLowerCase().includes("5") ? 5 : 10))}
                                   disabled={!prov.apiKey || result?.testing}
                                   className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold flex items-center gap-1.5 transition-all disabled:opacity-40"
                                 >
