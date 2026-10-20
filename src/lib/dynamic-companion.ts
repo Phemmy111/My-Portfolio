@@ -1074,6 +1074,38 @@ INSTRUCTIONS:
     const targetTitle = decision.action_params?.website_title;
     const targetArtifact = (targetTitle ? await findUserArtifact(userIdentifier, targetTitle) : null) || latestArtifact;
     const isEdit = decision.action === "modify_website_artifact" && Boolean(targetArtifact);
+
+    // ─── FAST-PATH: "Make it live / push it / deploy / it's ready" ──────────────
+    // When user says something like "Let us make it live", "Push it live", "Deploy now",
+    // "It's okay, make it go live" — they are NOT asking for code changes.
+    // Immediately return the already-saved artifact link + re-send the HTML file.
+    // Do NOT re-generate 8000 tokens of HTML which will timeout on Vercel.
+    const isGoLiveIntent =
+      /\b(make\s+it\s+live|push\s+it\s+live|go\s+live|push\s+(?:it|this|that)\s+live|let(?:'s|us| us)\s+(?:make\s+it\s+)?(?:go\s+)?live|deploy\s+(?:now|it|this)?|it(?:'s|\s+is)\s+(?:okay|ok|fine|ready|good)\s*[,;]?\s*(?:make\s+it\s+)?(?:live|go\s+live)?|launch\s+(?:it|now|this)?|make\s+(?:it\s+)?(?:go\s+)?live\s+(?:now|please)?)\b/i.test(userText) &&
+      !decision.action_params?.website_changes;
+
+    if (isGoLiveIntent && targetArtifact) {
+      const link = `https://obeyai.vercel.app/artifact/${targetArtifact.id}`;
+      // Re-send the HTML file so user has the latest copy
+      if (channel === "whatsapp") {
+        const docFileName = `${(targetArtifact.title || "website").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.html`;
+        try {
+          await sendWhatsAppDocument(targetArtifact.content, docFileName, userIdentifier, `📄 *${targetArtifact.title}* (HTML File)`);
+        } catch {}
+      }
+      return {
+        reply: cleanWhatsApp(
+          `🚀 *${targetArtifact.title}* is officially live!\n\n` +
+          `🌐 *Interactive Live Preview:*\n${link}\n\n` +
+          `📁 *HTML File:* Attached directly for instant download.\n\n` +
+          `Congratulations! Your site is ready to share. 🎉`
+        ),
+        artifactId: targetArtifact.id,
+        artifactTitle: targetArtifact.title,
+        artifactContent: targetArtifact.content,
+      };
+    }
+
     let artifactPrompt: string;
 
     if (isEdit && targetArtifact) {
@@ -1155,8 +1187,33 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
           artifactContent: art.content,
         };
       }
+
+      // Fallback: if artifact parsing failed but we have an existing artifact, return it
+      if (isEdit && targetArtifact) {
+        const link = `https://obeyai.vercel.app/artifact/${targetArtifact.id}`;
+        return {
+          reply: cleanWhatsApp(
+            `✅ *${targetArtifact.title}* is ready!\n\n🌐 *Interactive Live Preview:*\n${link}\n\n📁 *HTML File:* Attached directly for instant download.`
+          ),
+          artifactId: targetArtifact.id,
+          artifactTitle: targetArtifact.title,
+          artifactContent: targetArtifact.content,
+        };
+      }
     } catch (err) {
       console.error("[Companion] Artifact generation error:", err);
+      // Even on timeout/error, if we have a known artifact always return its link
+      if (targetArtifact) {
+        const link = `https://obeyai.vercel.app/artifact/${targetArtifact.id}`;
+        return {
+          reply: cleanWhatsApp(
+            `✅ *${targetArtifact.title}* is ready!\n\n🌐 *Interactive Live Preview:*\n${link}\n\n📁 *HTML File:* Attached directly for instant download.`
+          ),
+          artifactId: targetArtifact.id,
+          artifactTitle: targetArtifact.title,
+          artifactContent: targetArtifact.content,
+        };
+      }
     }
   }
 

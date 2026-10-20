@@ -136,21 +136,25 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 2. Dispatches to Caller: ONLY raw audio recording and conversation transcript (no internal metrics/reports)
+      // 2. Dispatches to Caller: transcript + VN via correct workspace instance
       if (callerPhone && callerPhone.length >= 10 && callerPhone !== FEMI_PERSONAL_NUMBER) {
         const callerTranscriptMsg =
-          `🎙️ *Your Call with Obey*\n\n` +
+          `🎙️ *Your Call with ${workspace?.name || "Obey"}*\n\n` +
           `Thank you for speaking with me today! Here is your conversation transcript:\n\n` +
           `📝 *Conversation Transcript:*\n${summaryText}`;
 
-        await sendWhatsAppMessage(callerTranscriptMsg, callerPhone);
+        // CRITICAL FIX: use the workspace's WhatsApp instance so transcript
+        // arrives from the correct bot number (e.g. AutoLearn Spot, not main Obey)
+        await sendWhatsAppMessage(callerTranscriptMsg, callerPhone, targetInstance);
 
-        if (rawRecordingPayload) {
+        // Only send a real VN if we have a proper Cloudinary URL (not raw base64 blob)
+        if (recordingUrl) {
           try {
             await sendWhatsAppAudio(
-              rawRecordingPayload,
+              recordingUrl,
               callerPhone,
-              `🎙️ Your Call Recording (${body.durationSeconds || 0}s)`
+              `🎙️ Your Call Recording (${body.durationSeconds || 0}s)`,
+              targetInstance
             );
           } catch (audioErr) {
             console.warn("[Calls Talk] Error sending audio recording to caller:", audioErr);

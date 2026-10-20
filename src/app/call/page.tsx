@@ -705,13 +705,23 @@ function CallInterface() {
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      // Create Web Audio destination for recording to leave physical hardware microphone free for SpeechRecognition
-      try {
-        const dest = audioCtx.createMediaStreamDestination();
-        source.connect(dest);
-        recordingStreamRef.current = dest.stream;
-      } catch {
-        recordingStreamRef.current = null;
+      // CRITICAL MOBILE FIX: On Android/iOS, connecting source to a MediaStreamDestination
+      // locks the AudioContext onto the mic track, causing SpeechRecognition to get
+      // "audio-capture" errors and hear nothing. Skip this on mobile devices.
+      const isMobileDevice =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isMobileDevice) {
+        try {
+          const dest = audioCtx.createMediaStreamDestination();
+          source.connect(dest);
+          recordingStreamRef.current = dest.stream;
+        } catch {
+          recordingStreamRef.current = null;
+        }
+      } else {
+        // On mobile, use the raw stream directly for snippet recording
+        recordingStreamRef.current = stream;
       }
 
       audioContextRef.current = audioCtx;
@@ -719,6 +729,9 @@ function CallInterface() {
 
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
+
+      // Mobile phone mics have lower raw gain than desktop — use a lower VAD threshold
+      const vadThreshold = isMobileDevice ? 0.07 : 0.16;
 
       const renderVolume = () => {
         if (!isCallActiveRef.current || !analyserRef.current) return;
@@ -740,7 +753,7 @@ function CallInterface() {
           !isThinkingRef.current &&
           !isMutedRef.current
         ) {
-          if (normalized > 0.16) {
+          if (normalized > vadThreshold) {
             // User is actively speaking
             if (vadSilenceTimerRef.current) {
               clearTimeout(vadSilenceTimerRef.current);
