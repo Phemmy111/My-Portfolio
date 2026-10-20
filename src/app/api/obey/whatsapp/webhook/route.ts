@@ -1523,6 +1523,33 @@ How can I help you today?`;
     }
   }
 
+  // 5.8 FOLLOW-UP VOICE NOTE RESEND / CONVERT HANDLER
+  // When user says "Send it as vn", "I said you should send it as voice notes", "convert to vn", "make it a voice note":
+  // Instantly take the previous assistant response, synthesize it, and dispatch as a native WhatsApp PTT voice note!
+  const isResendAsVN =
+    /\b(?:send\s+(?:it|that|this)|said\s+.*(?:send\s+it|voice\s*notes?|vn)|convert\s+(?:it|that|this)|speak\s+(?:it|that|this)|repeat\s+(?:it|that|this)|make\s+(?:it|that|this))\b[\s\S]{0,45}\b(?:voice\s*note|voice\s*notes|vn|vns|audio)\b/i.test(userText) ||
+    /^\s*(?:send\s+it\s+as\s+vn|send\s+as\s+vn|make\s+it\s+vn|in\s+vn|as\s+vn|voice\s*note|vn)\s*[.!?]?\s*$/i.test(userText);
+
+  if (isResendAsVN && pastMessages && pastMessages.length > 0) {
+    const lastAssistantMsg = pastMessages.find(
+      (m) => m.role === "assistant" && m.content && !m.content.startsWith("🎙️")
+    );
+    if (lastAssistantMsg && lastAssistantMsg.content.trim()) {
+      const cleanContent = stripAudioStageDirections(lastAssistantMsg.content);
+      const sentences = cleanContent.split(/(?<=[.!?])\s+/);
+      const spokenExcerpt =
+        sentences.length <= 2 || cleanContent.split(/\s+/).length <= 45
+          ? cleanContent
+          : sentences.slice(0, 2).join(" ");
+
+      const voiceSent = await replyVoiceNote(spokenExcerpt, cleanContent);
+      if (!voiceSent) {
+        await reply(cleanContent);
+      }
+      return;
+    }
+  }
+
   // 6. DYNAMIC COMPANION ENGINE (Zero-Regex Universal Task & Companion Processing)
   try {
     const companionRes = await processDynamicCompanionTurn({

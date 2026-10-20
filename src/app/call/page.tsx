@@ -327,6 +327,8 @@ function CallInterface() {
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
   const [textFallbackInput, setTextFallbackInput] = useState("");
   const [supportsSpeechRec, setSupportsSpeechRec] = useState(true);
+  const [isRecordingSnippet, setIsRecordingSnippet] = useState(false);
+  const [isTranscribingSnippet, setIsTranscribingSnippet] = useState(false);
 
   // Audio & Speech refs
   const isSpeakingRef = useRef<boolean>(false);
@@ -349,6 +351,8 @@ function CallInterface() {
   const currentBufferSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const snippetRecorderRef = useRef<MediaRecorder | null>(null);
+  const snippetChunksRef = useRef<Blob[]>([]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve) => {
@@ -359,6 +363,71 @@ function CallInterface() {
       reader.onerror = () => resolve("");
       reader.readAsDataURL(blob);
     });
+  };
+
+  const startSnippetRecording = () => {
+    if (!mediaStreamRef.current || !isCallActiveRef.current) return;
+    try {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch {}
+      }
+      snippetChunksRef.current = [];
+      const mimeType =
+        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "";
+      const recorder = new MediaRecorder(mediaStreamRef.current, mimeType ? { mimeType } : undefined);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) snippetChunksRef.current.push(e.data);
+      };
+      recorder.start(250);
+      snippetRecorderRef.current = recorder;
+      setIsRecordingSnippet(true);
+    } catch (e) {
+      console.warn("Failed to start snippet recording:", e);
+    }
+  };
+
+  const stopSnippetRecording = async () => {
+    if (!snippetRecorderRef.current) return;
+    setIsRecordingSnippet(false);
+    setIsTranscribingSnippet(true);
+    try {
+      await new Promise<void>((resolve) => {
+        if (!snippetRecorderRef.current) return resolve();
+        snippetRecorderRef.current.onstop = () => resolve();
+        try {
+          if (typeof snippetRecorderRef.current.requestData === "function") {
+            snippetRecorderRef.current.requestData();
+          }
+          snippetRecorderRef.current.stop();
+        } catch {
+          resolve();
+        }
+      });
+
+      if (snippetChunksRef.current.length > 0) {
+        const blob = new Blob(snippetChunksRef.current, { type: snippetRecorderRef.current?.mimeType || "audio/webm" });
+        const base64 = await blobToBase64(blob);
+        const res = await fetch("/api/obey/calls/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioBase64: base64, mimeType: blob.type }),
+        });
+        const data = await res.json();
+        if (data.success && data.text) {
+          processUserVoiceStatement(data.text);
+        }
+      }
+    } catch (e) {
+      console.warn("Snippet transcription error:", e);
+    } finally {
+      setIsTranscribingSnippet(false);
+      snippetRecorderRef.current = null;
+      if (isCallActiveRef.current && !isSpeakingRef.current && !isThinkingRef.current) {
+        startSpeechRecognitionLoop();
+      }
+    }
   };
 
   // Play voice preview sample
@@ -413,18 +482,11 @@ function CallInterface() {
     }
   }, []);
 
-  // Fetch workspace details if biz param provided
+  // Fetch workspace details (defaults strictly to Main Obey / Femi Adeleke unless explicitly specified in URL)
   useEffect(() => {
     let effectiveBiz = rawBiz;
-    if (!effectiveBiz && typeof window !== "undefined") {
-      try {
-        const savedBiz =
-          localStorage.getItem("obey_current_workspace") ||
-          localStorage.getItem("current_workspace_slug");
-        if (savedBiz && savedBiz !== "femi" && savedBiz !== "femi-adeleke") {
-          effectiveBiz = savedBiz;
-        }
-      } catch {}
+    if (!effectiveBiz || effectiveBiz === "obey" || effectiveBiz === "default" || effectiveBiz === "ws_femi_default") {
+      effectiveBiz = "femi-adeleke";
     }
 
     if (effectiveBiz) {
@@ -896,14 +958,20 @@ function CallInterface() {
         typeof navigator !== "undefined" &&
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+      const userLang =
+        (typeof navigator !== "undefined" && navigator.language) || "en-US";
+
       const selectedProfile =
         VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
 
       const recognition = new SpeechRecClass();
-      // Continuous speech recognition across all mobile and desktop devices for seamless turn-taking
-      recognition.continuous = true;
+      // On mobile devices (especially Android Chrome), continuous=false allows the OS speech engine to process each utterance cleanly without freezing
+      recognition.continuous = !isMobile;
       recognition.interimResults = true;
-      recognition.lang = selectedProfile.lang || "en-NG";
+      // On mobile, use device system language (defaulting to en-US) so Android offline speech model is guaranteed to respond
+      recognition.lang = isMobile
+        ? (userLang.startsWith("en") ? userLang : "en-US")
+        : (selectedProfile.lang || "en-NG");
 
       let accumulatedFinal = "";
       let currentCandidate = "";
@@ -971,8 +1039,15 @@ function CallInterface() {
 
       recognition.onerror = (event: any) => {
         console.warn("[Voice Engine] Speech recognition error:", event.error);
-        if (event.error === "no-speech" || event.error === "aborted" || event.error === "audio-capture") {
-          // Normal pause, audio refocus, or quiet moment on mobile; do not treat as fatal error
+        if (event.error === "no-speech" || event.error === "aborted") {
+          return;
+        }
+        if (event.error === "language-not-supported") {
+          recognition.lang = "en-US";
+          return;
+        }
+        if (event.error === "audio-capture") {
+          console.warn("[Voice Engine] Audio capture notice, speech engine will retry cleanly.");
           return;
         }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -1143,29 +1218,36 @@ function CallInterface() {
       // 2. Setup audio frequency visualizer for the glowing orb
       setupAudioVisualizer(stream);
 
-      // 2.5 Start MediaRecorder directly on the mic stream for guaranteed audio recording on mobile and desktop
-      try {
-        const recStream = stream;
-        const mimeType =
-          typeof MediaRecorder !== "undefined" &&
-          MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-            ? "audio/webm;codecs=opus"
-            : typeof MediaRecorder !== "undefined" &&
-              MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-            ? "audio/ogg;codecs=opus"
-            : "";
-        const options = mimeType ? { mimeType } : undefined;
-        const recorder = new MediaRecorder(recStream, options);
-        recordedChunksRef.current = [];
-        recorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            recordedChunksRef.current.push(event.data);
-          }
-        };
-        recorder.start(1000);
-        mediaRecorderRef.current = recorder;
-      } catch (recErr) {
-        console.warn("MediaRecorder start notice:", recErr);
+      const isMobile =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      // 2.5 Start MediaRecorder on desktop where concurrent audio capture is supported
+      // On mobile devices, avoid running continuous background recorder so SpeechRecognition has 100% exclusive access to the mic
+      if (!isMobile) {
+        try {
+          const recStream = stream;
+          const mimeType =
+            typeof MediaRecorder !== "undefined" &&
+            MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+              ? "audio/webm;codecs=opus"
+              : typeof MediaRecorder !== "undefined" &&
+                MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+              ? "audio/ogg;codecs=opus"
+              : "";
+          const options = mimeType ? { mimeType } : undefined;
+          const recorder = new MediaRecorder(recStream, options);
+          recordedChunksRef.current = [];
+          recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunksRef.current.push(event.data);
+            }
+          };
+          recorder.start(1000);
+          mediaRecorderRef.current = recorder;
+        } catch (recErr) {
+          console.warn("MediaRecorder start notice:", recErr);
+        }
       }
 
       // 3. Set call active
@@ -1369,6 +1451,13 @@ function CallInterface() {
         </div>
       </header>
 
+      {/* WhatsApp In-App Browser Guidance Banner */}
+      {typeof window !== "undefined" && /WhatsApp/i.test(navigator.userAgent) && (
+        <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 text-center text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+          💡 <strong>WhatsApp Browser Notice:</strong> For continuous hands-free voice calling, tap the <strong>⋮ (Menu)</strong> at top right and choose <strong>&quot;Open in Chrome&quot;</strong> or <strong>&quot;Open in Safari&quot;</strong>, or use the instant <strong>Tap to Speak</strong> button below!
+        </div>
+      )}
+
       {/* Main Center Area */}
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 max-w-xl mx-auto w-full text-center">
         {/* User Greeting & Status Indicator */}
@@ -1539,6 +1628,33 @@ function CallInterface() {
                 <span className="text-zinc-800 dark:text-zinc-200">{t.text}</span>
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Tap-to-Speak (Push-to-Talk) Button: Guarantees speech works on all mobile devices and inside WhatsApp webviews */}
+        {callStatus === "active" && (
+          <div className="w-full max-w-md mx-auto mb-3 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={isRecordingSnippet ? stopSnippetRecording : startSnippetRecording}
+              disabled={isSpeaking || isThinking || isTranscribingSnippet}
+              className={`w-full py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
+                isRecordingSnippet
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse ring-4 ring-red-500/30 scale-[1.02]"
+                  : isTranscribingSnippet
+                  ? "bg-purple-600 text-white animate-pulse cursor-wait"
+                  : "bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-[1.01]"
+              } disabled:opacity-40`}
+            >
+              <Mic size={16} />
+              <span>
+                {isRecordingSnippet
+                  ? "🔴 Speaking... Tap here to Send"
+                  : isTranscribingSnippet
+                  ? "⏳ Transcribing your speech..."
+                  : "🎙️ Tap to Speak (Instant Audio)"}
+              </span>
+            </button>
           </div>
         )}
 

@@ -1519,7 +1519,8 @@ If you encounter any error or want to adjust or diagnose any node, send me a scr
   // Tool: Direct Voice Call WebRTC link
   if (decision.action === "direct_voice_call") {
     const cleanUserPhone = userIdentifier.replace(/\D/g, "");
-    const callUrl = `https://obeyai.vercel.app/call?phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
+    const targetSlug = (workspaceId && workspaceId !== "ws_femi_default" && workspaceId !== "default") ? workspaceId : "femi-adeleke";
+    const callUrl = `https://obeyai.vercel.app/call?biz=${targetSlug}&phone=${cleanUserPhone}&name=${encodeURIComponent(senderName || "")}`;
     return {
       reply: cleanWhatsApp(
         `🎙️ *I'd love to speak with you live!* You have two ways to connect with me on voice right now:\n\n` +
