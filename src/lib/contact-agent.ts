@@ -130,16 +130,22 @@ export async function handleOwnerContactOrBucketTurn(params: {
   }
 
   // -------------------------------------------------------------
-  // 2.5 Contact Search Commands ("search contact Seyi", "find contact Ola", "who is Seyi")
+  // 2.5 Contact Search Commands ("search contact Seyi", "find contact Ola", "who is Seyi in my contacts")
   // -------------------------------------------------------------
-  const contactSearchMatch = lower.match(
-    /^(?:search|find|look\s+(?:up|for)|check|who\s+is)\s+(?:contact\s+|number\s+for\s+|for\s+)?([a-zA-Z0-9_\-\s]+?)(?:\s+in\s+(?:my\s+)?contacts?)?$/i
-  );
+  const isExplicitContactSearch =
+    /\b(contact|contacts|phonebook|address\s+book|phone\s+number|number\s+for)\b/i.test(lower) ||
+    /^(?:search|find|lookup|look\s+up)\s+(?:contact\s+|number\s+for\s+)/i.test(lower);
+
+  const contactSearchMatch = isExplicitContactSearch
+    ? lower.match(
+        /^(?:search|find|look\s+(?:up|for)|check|who\s+is)\s+(?:contact\s+|number\s+for\s+|for\s+)?([a-zA-Z0-9_\-\s]+?)(?:\s+in\s+(?:my\s+)?(?:contacts?|phonebook|address\s+book))?$/i
+      )
+    : null;
 
   if (contactSearchMatch) {
     let rawQuery = contactSearchMatch[1].trim();
     // Ignore generic pronouns or questions
-    if (!/^(status|broadcast|bucket|me|you|someone|person|people|number|lead|leads|group)$/i.test(rawQuery)) {
+    if (!/^(status|broadcast|bucket|me|you|someone|person|people|number|lead|leads|group|founder|president|ceo|the|who|what|why|how)$/i.test(rawQuery)) {
       const matches = await dbFindContactsByNameOrPhone({
         workspaceId,
         query: rawQuery,
@@ -147,10 +153,15 @@ export async function handleOwnerContactOrBucketTurn(params: {
       });
 
       if (matches.length === 0) {
-        return {
-          handled: true,
-          reply: `🔍 ${ownerName}, I found no contacts matching "*${rawQuery}*" in your saved WhatsApp contacts or CRM.\n\n💡 You can try searching by first name, last name, or digits from their phone number.`,
-        };
+        // Only return handled if the query was unquestionably an explicit contact command
+        if (/\b(contact|contacts|phonebook|address\s+book)\b/i.test(lower)) {
+          return {
+            handled: true,
+            reply: `🔍 ${ownerName}, I found no contacts matching "*${rawQuery}*" in your saved WhatsApp contacts or CRM.\n\n💡 You can try searching by first name, last name, or digits from their phone number.`,
+          };
+        }
+        // Otherwise, allow it to fall through to the AI brain
+        return { handled: false, reply: "" };
       }
 
       const formatted = matches
