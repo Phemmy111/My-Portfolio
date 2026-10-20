@@ -5904,13 +5904,12 @@ function ControlRoomContent() {
                     previewViewport === "mobile" ? "max-w-[375px]" : "max-w-full"
                   }`}
                 >
-                  {/* Website Iframe or Clean Mockup */}
+                  {/* Website Iframe via Sanitized Proxy or Clean Mockup */}
                   {websiteUrl ? (
                     <iframe
-                      src={websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`}
+                      src={`/api/obey/website-preview?url=${encodeURIComponent(websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`)}`}
                       title="Website Preview"
-                      className="w-full h-full border-0 pointer-events-auto"
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      className="w-full h-full border-0 pointer-events-auto bg-white"
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-slate-900 to-slate-950">

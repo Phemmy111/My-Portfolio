@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {

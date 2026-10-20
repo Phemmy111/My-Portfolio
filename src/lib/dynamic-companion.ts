@@ -465,7 +465,9 @@ REASONING GUIDELINES:
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, what you told someone, who it was sent to, or questions about a recent dispatch, ALWAYS choose "check_action_status".
 - If the user wants to text someone but hasn't provided the phone number yet and no number exists in recent history, choose "none" and ask warmly for their phone number in "conversational_response".
-- For website inquiries ("give me obey website", "what is your website", "website link", "send me obey website"): choose "none" and provide the direct official homepage link (https://obeyai.vercel.app) cleanly in "conversational_response" without linking to the control room!
+- For greetings ("hello", "good morning", "hi", "hey"): choose "none" and provide a warm, personalized greeting addressing the user in "conversational_response"! NEVER send a bare URL or website link in response to a greeting!
+- For n8n / NA10 ("how to download NA10", "download n8n", "where to get NA10"): choose "none" and explain in "conversational_response" that n8n is an automation platform (n8n.io) that runs online or locally, and that Obey builds ready-made workflows for them directly!
+- For website inquiries ("give me obey website", "what is your website", "website link", "send me obey website"): choose "none" and provide a friendly conversational sentence with the official homepage link ("Here is the official Obey website: https://obeyai.vercel.app") in "conversational_response" without linking to the control room! NEVER return a bare URL alone!
 - For portfolio inquiries ("my portfolio", "portfolio link", "femi portfolio"): choose "none" and provide https://obeyai.vercel.app/portfolio in "conversational_response".
 - For control room inquiries ("control room", "dashboard link"): choose "none" and provide https://obeyai.vercel.app/control-room in "conversational_response".
 - For general questions (like business advice, study questions, facts, prices, Obey packages), choose "none" and provide a sharp, concise answer directly in "conversational_response".
@@ -535,6 +537,32 @@ Respond ONLY with a valid JSON object matching this schema:
     decision.action = "none";
   }
 
+  // DETERMINISTIC SHORTCUT: Pure Greetings ("Hello", "Good morning", "Hi", "Hey", etc.)
+  const isPureGreeting =
+    /^\s*(?:hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings|yo|sup|howdy)(?:\s+(?:obey|boss|femi|there|all|bro|ai))?[\s\p{Emoji}\p{P}]*$/iu.test(userText.trim()) ||
+    /^\s*(?:good\s+morning|good\s+afternoon|good\s+evening|hello|hi|hey)\s*[.!?~]*$/i.test(userText.trim());
+
+  if (isPureGreeting) {
+    const greetingName = isFemi ? "Boss" : (senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "");
+    const hour = parseInt(watTime.split(":")[0], 10);
+    const timeOfDay = !isNaN(hour) && hour < 12 ? "Good morning" : !isNaN(hour) && hour < 17 ? "Good afternoon" : "Good evening";
+
+    if (isFemi) {
+      return {
+        reply: cleanWhatsApp(
+          `Hello, Boss! ⚡ All systems are running smoothly. What are we working on or deploying right now?`
+        ),
+      };
+    }
+
+    const nameSalutation = greetingName ? `, ${greetingName}` : "";
+    return {
+      reply: cleanWhatsApp(
+        `${timeOfDay}${nameSalutation}! 😊 Great to hear from you. How can I assist you today? Feel free to ask questions, share an idea, or send a voice note anytime!`
+      ),
+    };
+  }
+
   // DETERMINISTIC SHORTCUT: Direct Website / Portfolio / Control Room inquiries
   const asksForObeyWebsite =
     /\b(?:obey(?:\s*ai)?\s+website|website\s+(?:for|of)\s+obey|give\s+(?:me\s+)?(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|what\s+is\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|link\s+to\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|your\s+website|website\s+link|website\s+url|share\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|drop\s+(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website|send\s+(?:me\s+)?(?:the\s+)?(?:obey(?:\s*ai)?\s+)?website)\b/i.test(userText.trim()) ||
@@ -578,6 +606,23 @@ Respond ONLY with a valid JSON object matching this schema:
     return {
       reply: cleanWhatsApp(
         `Here is the official Obey User Manual${bossGreeting}:\nhttps://obeyai.vercel.app/manual`
+      ),
+    };
+  }
+
+  // DETERMINISTIC SHORTCUT: n8n / NA10 / Automation Platform inquiries
+  // Users often mishear "n8n" as "NA10", "NA10.ai", "NATEN", "n810", or ask how to download it.
+  const asksAboutN8nDownloadOrWhat =
+    /\b(?:download|get|install|where\s+to\s+get|link\s+to|what\s+is|how\s+to\s+use)\s+(?:na10(?:\.ai)?|naten|n810|n-?8-?n|n8n(?:\.io)?)\b/i.test(userText) ||
+    /\b(?:na10(?:\.ai)?|naten|n810)\b/i.test(userText) ||
+    /^\s*(?:how\s+can\s+i\s+download|where\s+can\s+i\s+download|how\s+to\s+download|can\s+i\s+download)\s+(?:na10(?:\.ai)?|n8n(?:\.io)?|the\s+automation\s+app)\s*[.?!]*$/i.test(userText.trim());
+
+  if (asksAboutN8nDownloadOrWhat) {
+    const greetingName = isFemi ? "Boss" : (senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "");
+    const salutation = greetingName ? ` ${greetingName}` : "";
+    return {
+      reply: cleanWhatsApp(
+        `Ah, great question${salutation}! ⚡ You're referring to *n8n* (pronounced *n-eight-n*, which sounds like NA10) that I mentioned in my intro!\n\nHere is how it works — you actually *don't* need to download a phone app:\n\n1. 🌐 *What is n8n?*\nIt is a world-class workflow automation platform (https://n8n.io) that connects apps, AI, WhatsApp, and databases together.\n\n2. ☁️ *Where do you use it?*\nYou can use it directly in your web browser at *https://n8n.io* (they have a free cloud tier) or run it on a laptop/server with Docker or Node.js (\`npx n8n\`).\n\n3. 🚀 *How I help you (The best part!):*\nYou don't even have to build workflows from scratch! Just tell me what you want to automate (e.g. *\"automate WhatsApp customer replies\"*, *\"save leads to Google Sheets\"*, or *\"send payment alerts\"*), and I will design the architecture and send you the ready-to-import JSON file right here!\n\nWhat kind of automation or project are you looking to build?`
       ),
     };
   }
@@ -1703,10 +1748,11 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - For school questions, multiple choice, or quick facts: state the direct answer immediately with 1 brief explanation. Never dump multi-paragraph lectures when a short answer suffices.
    - Match the user's brevity: if the user sends a short question, give a short, precise answer.
 
-2. NEVER REPEAT GREETINGS IN ONGOING CHAT:
+2. NATURAL GREETINGS & ONGOING CHAT:
+   - When the user sends a greeting (e.g. "Hello", "Good morning", "Hey"): ALWAYS reciprocate warmly and ask how you can help! NEVER reply with a bare URL or stale links!
    ${hasHistory
-     ? "- This is an ONGOING conversation. DO NOT GREET. NEVER start your message with 'Good morning/afternoon/evening', 'Hello', or 'Hi [Name]'. Jump straight into answering the user's question directly."
-     : "- This is the FIRST message of the day. A brief warm greeting is fine, but keep it minimal."}
+     ? "- For ongoing questions or follow-up tasks (where the user did not send a greeting): Jump straight into answering without robotic greeting filler."
+     : "- For the first message of the day: A brief warm greeting is great."}
 
 3. NEVER POLICE SLEEP OR NAG ABOUT TIME:
    - NEVER tell the user to 'go to sleep', 'close your books', 'turn off the lights', 'get some rest', or 'call it a night', regardless of what time it is. If the user is studying or chatting late at night, treat them with respect and answer their questions without acting like a nagging parent.
@@ -1854,13 +1900,22 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
       }
     }
 
+    let finalReplyClean = cleanWhatsApp(finalReply);
+    if (/^https?:\/\/[^\s]+$/i.test(finalReplyClean.trim())) {
+      finalReplyClean = `Here is the official link:\n${finalReplyClean.trim()}`;
+    }
+
     return {
-      reply: cleanWhatsApp(finalReply),
+      reply: finalReplyClean,
     };
   } catch (err: any) {
     console.error("[Companion] AI error:", err);
+    let fallback = decision.conversational_response || "Please, I am busy right now. Check back with me in a moment. Thanks!";
+    if (/^https?:\/\/[^\s]+$/i.test(fallback.trim())) {
+      fallback = `Here is the official link:\n${fallback.trim()}`;
+    }
     return {
-      reply: cleanWhatsApp(decision.conversational_response || "Please, I am busy right now. Check back with me in a moment. Thanks!"),
+      reply: cleanWhatsApp(fallback),
     };
   }
 }
