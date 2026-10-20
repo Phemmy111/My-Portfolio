@@ -900,8 +900,8 @@ function CallInterface() {
         VOICE_PROFILES[selectedVoice] || VOICE_PROFILES["nigerian_male"];
 
       const recognition = new SpeechRecClass();
-      // On mobile (Android/iOS), continuous=false allows the OS speech engine to cleanly complete each utterance without hanging
-      recognition.continuous = !isMobile;
+      // Continuous speech recognition across all mobile and desktop devices for seamless turn-taking
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = selectedProfile.lang || "en-NG";
 
@@ -943,8 +943,8 @@ function CallInterface() {
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // Responsive turn-taking: 700ms on mobile, 950ms on desktop
-        const pauseDelay = isMobile ? 700 : 950;
+        // Responsive turn-taking: 950ms natural pause detection across all devices
+        const pauseDelay = 950;
         if (currentCandidate.length >= 2) {
           silenceTimerRef.current = setTimeout(() => {
             if (
@@ -1017,7 +1017,7 @@ function CallInterface() {
             ) {
               startSpeechRecognitionLoop();
             }
-          }, isMobile ? 500 : 350);
+          }, 350);
         }
       };
 
@@ -1143,9 +1143,9 @@ function CallInterface() {
       // 2. Setup audio frequency visualizer for the glowing orb
       setupAudioVisualizer(stream);
 
-      // 2.5 Start MediaRecorder on the isolated Web Audio destination stream (leaves physical hardware mic free for SpeechRecognition!)
+      // 2.5 Start MediaRecorder directly on the mic stream for guaranteed audio recording on mobile and desktop
       try {
-        const recStream = recordingStreamRef.current || stream;
+        const recStream = stream;
         const mimeType =
           typeof MediaRecorder !== "undefined" &&
           MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -1244,6 +1244,13 @@ function CallInterface() {
             resolve();
           };
           try {
+            if (
+              mediaRecorderRef.current &&
+              mediaRecorderRef.current.state !== "inactive" &&
+              typeof mediaRecorderRef.current.requestData === "function"
+            ) {
+              mediaRecorderRef.current.requestData();
+            }
             mediaRecorderRef.current.stop();
           } catch {
             clearTimeout(safetyTimer);
@@ -1258,7 +1265,7 @@ function CallInterface() {
         const audioBlob = new Blob(recordedChunksRef.current, {
           type: mediaRecorderRef.current?.mimeType || "audio/webm",
         });
-        if (audioBlob.size > 500) {
+        if (audioBlob.size > 100) {
           audioDataUri = await blobToBase64(audioBlob);
         }
       } catch (blobErr) {

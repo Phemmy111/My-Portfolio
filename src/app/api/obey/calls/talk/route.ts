@@ -106,13 +106,16 @@ export async function POST(req: NextRequest) {
       // Notify Boss Femi with executive report & transcript
       await sendWhatsAppMessage(femiReportMsg, FEMI_PERSONAL_NUMBER);
 
+      const targetInstance = workspace?.whatsapp_instance_name || "obey";
+
       // Deliver voice briefing to Boss Femi
       if (spokenVoiceBase64) {
         try {
           await sendWhatsAppAudio(
             spokenVoiceBase64,
             FEMI_PERSONAL_NUMBER,
-            `🎙️ Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`
+            `🎙️ Voice Briefing: ${callerName} (${body.durationSeconds || 0}s)`,
+            targetInstance
           );
         } catch (audioErr) {
           console.warn("[Calls Talk] Error sending audio briefing to Femi:", audioErr);
@@ -125,7 +128,8 @@ export async function POST(req: NextRequest) {
           await sendWhatsAppAudio(
             rawRecordingPayload,
             FEMI_PERSONAL_NUMBER,
-            `🎙️ Exact Call Recording: ${callerName} (${body.durationSeconds || 0}s)`
+            `🎙️ Exact Call Recording: ${callerName} (${body.durationSeconds || 0}s)`,
+            targetInstance
           );
         } catch (recErr) {
           console.warn("[Calls Talk] Error sending recording audio to Femi:", recErr);

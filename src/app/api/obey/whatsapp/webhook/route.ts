@@ -195,6 +195,7 @@ async function handleObeyBusinessOwnerTurn(params: {
         sender_name: currentWs.name,
         role: "assistant",
         content: replyTxt,
+        workspace_id: currentWs.id,
       });
     } catch {}
     return;
@@ -219,6 +220,7 @@ async function handleObeyBusinessOwnerTurn(params: {
         sender_name: currentWs.name,
         role: "assistant",
         content: taskTurn.replyText,
+        workspace_id: currentWs.id,
       });
     } catch {}
     return;
@@ -410,6 +412,7 @@ ${getMainObeyFlagshipKnowledge()}`;
       sender_name: currentWs.name,
       role: "assistant",
       content: replyText,
+      workspace_id: currentWs.id,
     });
   } catch {}
 }
@@ -464,6 +467,7 @@ async function handleObeyBusinessCustomerTurn(params: {
         sender_name: currentWs.name,
         role: "assistant",
         content: replyTxt,
+        workspace_id: currentWs.id,
       });
     } catch {}
     return;
@@ -593,6 +597,7 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
           sender_name: currentWs.name,
           role: "assistant",
           content: instantMatch.response,
+          workspace_id: currentWs.id,
         });
       } catch {}
       return;
@@ -609,6 +614,7 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
           sender_name: currentWs.name,
           role: "assistant",
           content: cachedFAQ.response,
+          workspace_id: currentWs.id,
         });
       } catch {}
       return;
@@ -664,6 +670,7 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
       sender_name: currentWs.name,
       role: "assistant",
       content: replyText,
+      workspace_id: currentWs.id,
     });
   } catch {}
 
@@ -769,9 +776,14 @@ async function processMessage(params: ProcessMessageParams) {
       console.warn("[WA Webhook] Voice note generation notice:", ttsErr);
     }
 
-    // Deliver accompanying text record (never revealing bracketed audio markers)
-    if (cleanCompanion) {
-      await reply(cleanCompanion);
+    // Deliver accompanying text record if:
+    // 1. Voice synthesis/dispatch failed (so user gets their answer as text fallback)
+    // 2. OR companion text has substantial extra details beyond the spoken excerpt (e.g. detailed documents, lists, links)
+    const isLongCompanion = cleanCompanion && cleanCompanion.length > cleanSpoken.length + 40;
+    if (!voiceSent || isLongCompanion) {
+      if (cleanCompanion) {
+        await reply(cleanCompanion);
+      }
     }
     return voiceSent;
   }
@@ -883,6 +895,7 @@ async function processMessage(params: ProcessMessageParams) {
       sender_name: pushName || "User",
       role: "user",
       content: recordedUserText,
+      workspace_id: wsId,
     });
     if (isFemi) {
       await dbAddChatMessage({
@@ -936,8 +949,8 @@ async function processMessage(params: ProcessMessageParams) {
     }
   }
 
-  // 2. Load conversation history early (Fetch recent 40 messages, keep last 25 turns)
-  const pastMessages = await dbGetGuestMessages(replyTo, 40);
+  // 2. Load conversation history early (Fetch recent 40 messages, strictly isolated to current workspace)
+  const pastMessages = await dbGetGuestMessages(replyTo, 40, wsId);
   const historyText = pastMessages
     .slice(-25)
     .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
@@ -1014,6 +1027,7 @@ async function processMessage(params: ProcessMessageParams) {
         sender_name: currentWs?.name || "Obey",
         role: "assistant",
         content: optOutReply,
+        workspace_id: wsId,
       });
     } catch {}
     return;
@@ -1064,6 +1078,7 @@ async function processMessage(params: ProcessMessageParams) {
             sender_name: currentWs.name,
             role: "assistant",
             content: welcomeText,
+            workspace_id: currentWs.id,
           });
         } catch {}
         return;
@@ -1098,6 +1113,7 @@ async function processMessage(params: ProcessMessageParams) {
               sender_name: currentWs.name,
               role: "assistant",
               content: rule.response_text,
+              workspace_id: currentWs.id,
             });
 
             await dbUpsertWorkspaceLead({
@@ -1554,6 +1570,7 @@ How can I help you today?`;
       sender_name: currentWs?.name || "Obey",
       role: "assistant",
       content: finalReply,
+      workspace_id: wsId,
     });
 
     // Also dispatch to Google Sheets

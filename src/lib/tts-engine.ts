@@ -79,10 +79,19 @@ export async function generateSpeechAudio(
     const { audioStream } = tts.toStream(cleanedText);
 
     const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("MsEdgeTTS synthesis timed out after 9s"));
+      }, 9000);
       const chunks: Buffer[] = [];
       audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
-      audioStream.on("end", () => resolve(Buffer.concat(chunks)));
-      audioStream.on("error", (err: any) => reject(err));
+      audioStream.on("end", () => {
+        clearTimeout(timeout);
+        resolve(Buffer.concat(chunks));
+      });
+      audioStream.on("error", (err: any) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
     });
 
     if (buffer && buffer.length > 0) {

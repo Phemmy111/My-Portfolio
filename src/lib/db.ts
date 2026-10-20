@@ -353,15 +353,17 @@ export async function dbAddGuestMessage(params: {
   channel?: "whatsapp" | "telegram" | "web";
   role: "user" | "assistant";
   content: string;
+  workspace_id?: string | null;
 }) {
   const db = getSql();
   if (!db) return null;
   try {
     await createGuestChatTables();
     const channel = params.channel || "whatsapp";
+    const wsId = params.workspace_id || "ws_femi_default";
     const [row] = await db`
-      INSERT INTO guest_chat_messages (id, phone_number, sender_name, channel, role, content)
-      VALUES (${params.id}, ${params.phone_number}, ${params.sender_name || null}, ${channel}, ${params.role}, ${params.content})
+      INSERT INTO guest_chat_messages (id, phone_number, sender_name, channel, role, content, workspace_id)
+      VALUES (${params.id}, ${params.phone_number}, ${params.sender_name || null}, ${channel}, ${params.role}, ${params.content}, ${wsId})
       RETURNING *
     `;
     return row;
@@ -371,15 +373,17 @@ export async function dbAddGuestMessage(params: {
   }
 }
 
-export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50) {
+export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50, workspaceId?: string | null) {
   const db = getSql();
   if (!db) return [];
   try {
     await createGuestChatTables();
+    const targetWsId = workspaceId || "ws_femi_default";
     const rows = await db`
-      SELECT id, phone_number, sender_name, channel, role, content, created_at
+      SELECT id, phone_number, sender_name, channel, role, content, created_at, workspace_id
       FROM guest_chat_messages
       WHERE phone_number = ${phoneNumber}
+        AND (workspace_id = ${targetWsId} OR (workspace_id IS NULL AND ${targetWsId} = 'ws_femi_default'))
       ORDER BY created_at DESC
       LIMIT ${limit}
     `;

@@ -476,9 +476,9 @@ export async function handleScheduledTaskConversation(params: {
   const { userText, historyText = "", recipientPhone, workspaceId, instanceName, senderName } = params;
   const lower = userText.toLowerCase().trim();
 
-  // 1. Check if user is querying tasks/reminders list (e.g. "So, what are the tasks I've given to you", "what tasks do i have")
+  // 1. Check if user is querying tasks/reminders list (e.g. "Do we have any scheduled task?", "what tasks do i have", "show scheduled tasks")
   const isListQuery =
-    /\b(what(?:'s|\s+are)?\s+(?:all\s+|the\s+|my\s+)?(?:scheduled\s+|active\s+)?(?:tasks|reminders)|show\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|list\s+(?:my\s+)?(?:scheduled\s+)?(?:tasks|reminders)|do\s+i\s+have\s+any\s+(?:reminders|scheduled\s+tasks)|tasks?\s+(?:that\s+)?i(?:'ve|\s+have)\s+given\s+(?:to\s+)?you|what\s+tasks?\s+do\s+i\s+have)\b/i.test(lower);
+    /\b(?:what(?:'s|\s+are)?\s+(?:all\s+|the\s+|my\s+|our\s+)?(?:scheduled\s+|active\s+|pending\s+)?(?:tasks|reminders)|show\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|list\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|do\s+(?:we|i|you)\s+have\s+any\s+(?:reminders?|scheduled\s+tasks?|tasks?)|(?:are\s+there|is\s+there|any)\s+(?:scheduled\s+|pending\s+)?(?:tasks?|reminders?)|tasks?\s+(?:that\s+)?(?:i|we)(?:'ve|\s+have)\s+given\s+(?:to\s+)?you|what\s+tasks?\s+do\s+(?:i|we)\s+have|check\s+(?:my\s+|our\s+)?(?:scheduled\s+)?(?:tasks?|reminders?))\b/i.test(lower);
 
   // 2. Check if user wants to cancel a task
   const isCancelQuery =
