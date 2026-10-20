@@ -1154,8 +1154,9 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
         systemPrompt: "You are Obey, an autonomous AI executive engineer and full-stack software architect. Build modern, responsive frontends with Tailwind CSS, robust backend REST APIs (Next.js App Router / Node.js), and database schemas (Neon PostgreSQL). Every button, form, modal, and API endpoint must be fully wired and functional. Return complete runnable code inside <artifact> tags.",
         userPrompt: artifactPrompt,
         temperature: 0.3,
-        maxTokens: 8192,
+        maxTokens: 4096,
       });
+
 
       const artifacts = extractArtifactBlocks(aiRes.text);
       if (artifacts.length > 0) {

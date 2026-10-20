@@ -99,7 +99,8 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
         }
         userParts.push({ text: userPrompt });
 
-        const requestTimeout = mediaBase64 ? 14000 : 7000;
+        // Generous timeout for large code/artifact generation; responsive timeout for chat & media
+        const requestTimeout = maxTokens > 2000 ? 28000 : mediaBase64 ? 14000 : 9000;
 
         for (const m of uniqueModels) {
           try {
@@ -134,9 +135,14 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             }
           } catch (modelErr: any) {
             errors.push(`${p.name} (${m}) error: ${modelErr.message}`);
+            // If the request timed out on large generation, don't cascade 3 more identical timeouts on the same key!
+            if (modelErr.name === "TimeoutError" || modelErr.message?.includes("aborted") || modelErr.message?.includes("timeout")) {
+              break;
+            }
           }
         }
       }
+
 
       // 2. OpenRouter
       if (p.provider === "openrouter") {
