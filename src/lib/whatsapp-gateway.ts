@@ -146,39 +146,38 @@ export async function sendWhatsAppButtons(params: {
       buttons: formattedButtons,
     };
 
-    const res = await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: evoKey,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (res.ok) {
-      return { success: true };
-    }
-
-    // Graceful fallback: If buttons endpoint fails or WhatsApp rejects Baileys buttons,
-    // format into high-converting numbered menu so user is NEVER left without the options!
-    console.warn(`[WhatsApp Buttons] Gateway returned ${res.status}, using formatted interactive fallback`);
+    // Format high-converting numbered interactive menu
     const fallbackLines = [
-      text,
+      title ? `*${title}*\n` : "",
+      cleanWhatsAppFormatting(text),
       "",
-      ...buttons.map((b, idx) => `👉 *${idx + 1}.* ${b.text}`),
-      footer ? `\n_${footer}_` : "\n_Reply with a number or tap an option!_",
-    ];
+      ...buttons.map((b, idx) => `🔘 *${idx + 1}* - ${b.text}`),
+      footer ? `\n_${footer}_` : "\n_Reply with 1, 2, or 3 to select!_",
+    ].filter(Boolean);
+
+    // Send formatted interactive menu which renders 100% reliably on all iOS/Android/Web clients
     const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), cleaned, instanceName);
-    return { success: textRes.success, fallbackText: true };
+    
+    // Also attempt native buttons in background for Cloud API / supported clients
+    try {
+      fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evoKey },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(6000),
+      }).catch(() => {});
+    } catch {}
+
+    return { success: textRes.success };
   } catch (err: any) {
-    console.warn("[WhatsApp Buttons] Exception, falling back to text:", err.message);
+    console.warn("[WhatsApp Buttons] Exception:", err.message);
     const fallbackLines = [
+      title ? `*${title}*\n` : "",
       text,
       "",
-      ...buttons.map((b, idx) => `👉 *${idx + 1}.* ${b.text}`),
-      footer ? `\n_${footer}_` : "\n_Reply with a number or tap an option!_",
-    ];
+      ...buttons.map((b, idx) => `🔘 *${idx + 1}* - ${b.text}`),
+      footer ? `\n_${footer}_` : "\n_Reply with a number to choose!_",
+    ].filter(Boolean);
     const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), recipient, customInstance);
     return { success: textRes.success, fallbackText: true };
   }
