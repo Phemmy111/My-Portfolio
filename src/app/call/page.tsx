@@ -329,8 +329,10 @@ function CallInterface() {
   const [supportsSpeechRec, setSupportsSpeechRec] = useState(true);
   const [isRecordingSnippet, setIsRecordingSnippet] = useState(false);
   const [isTranscribingSnippet, setIsTranscribingSnippet] = useState(false);
+  const [vapiConfig, setVapiConfig] = useState<{ publicKey: string; assistantId: string } | null>(null);
 
   // Audio & Speech refs
+  const vapiRef = useRef<any>(null);
   const isSpeakingRef = useRef<boolean>(false);
   const isThinkingRef = useRef<boolean>(false);
   const isMutedRef = useRef<boolean>(false);
@@ -515,6 +517,18 @@ function CallInterface() {
     }
   }, []);
 
+  // Fetch Vapi WebRTC Configuration (Public Key & Assistant ID)
+  useEffect(() => {
+    fetch("/api/obey/calls/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.publicKey && data.assistantId) {
+          setVapiConfig({ publicKey: data.publicKey, assistantId: data.assistantId });
+        }
+      })
+      .catch((err) => console.warn("Failed to fetch Vapi config:", err));
+  }, []);
+
   // Fetch workspace details (defaults strictly to Main Obey / Femi Adeleke unless explicitly specified in URL)
   useEffect(() => {
     let effectiveBiz = rawBiz;
@@ -620,6 +634,14 @@ function CallInterface() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
+
+    // Stop Vapi WebRTC Session
+    if (vapiRef.current) {
+      try {
+        vapiRef.current.stop();
+      } catch {}
+      vapiRef.current = null;
+    }
 
     // Stop MediaRecorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -1261,6 +1283,91 @@ function CallInterface() {
     }
     setShowPhoneModal(false);
 
+    // 0. Primary WebRTC Engine: Connect directly via Vapi WebRTC for flawless mobile audio
+    if (vapiConfig?.publicKey && vapiConfig?.assistantId) {
+      try {
+        setCallStatus("connecting");
+        setErrorMessage(null);
+        isCallActiveRef.current = true;
+        setTranscripts([]);
+        setCallDuration(0);
+
+        const { default: Vapi } = await import("@vapi-ai/web");
+        const vapi = new Vapi(vapiConfig.publicKey);
+        vapiRef.current = vapi;
+
+        vapi.on("call-start", () => {
+          setCallStatus("active");
+          isCallActiveRef.current = true;
+          setIsListening(true);
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => {
+            setCallDuration((prev) => prev + 1);
+          }, 1000);
+        });
+
+        vapi.on("speech-start", () => {
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+          setIsListening(false);
+        });
+
+        vapi.on("speech-end", () => {
+          setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          setIsListening(true);
+        });
+
+        vapi.on("volume-level", (volume: number) => {
+          setVolumeLevel(volume);
+        });
+
+        vapi.on("message", (msg: any) => {
+          if (msg.type === "transcript" && msg.transcript) {
+            const role = msg.role === "assistant" ? "assistant" : "user";
+            if (msg.transcriptType === "final") {
+              setTranscripts((prev) => {
+                const next = [...prev, { role, text: msg.transcript, timestamp: Date.now() }];
+                transcriptsRef.current = next;
+                return next;
+              });
+            }
+          }
+        });
+
+        vapi.on("call-end", () => {
+          stopAllMedia();
+          setCallStatus("ended");
+        });
+
+        vapi.on("error", (error: any) => {
+          console.error("[Vapi WebRTC Error]", error);
+          setErrorMessage(error?.message || "Vapi call connection error");
+          stopAllMedia();
+          setCallStatus("error");
+        });
+
+        await vapi.start(vapiConfig.assistantId, {
+          variableValues: {
+            userName: effectiveName || "Friend",
+            userPhone: effectivePhone || "",
+            bizSlug: bizInfo?.slug || rawBiz || "obey",
+          },
+          metadata: {
+            userName: effectiveName || "Friend",
+            userPhone: effectivePhone || "",
+            bizSlug: bizInfo?.slug || rawBiz || "obey",
+            source: "browser-call",
+          },
+        });
+
+        return;
+      } catch (vapiErr: any) {
+        console.warn("[Vapi Start Notice - Falling back to browser audio]", vapiErr);
+        stopAllMedia();
+      }
+    }
+
     // Synchronously prime/unlock audio playback for mobile browsers (iOS & Android)
     if (typeof window !== "undefined") {
       try {
@@ -1472,6 +1579,12 @@ function CallInterface() {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     isMutedRef.current = nextMuted;
+
+    if (vapiRef.current && typeof vapiRef.current.setMuted === "function") {
+      try {
+        vapiRef.current.setMuted(nextMuted);
+      } catch {}
+    }
 
     if (nextMuted) {
       // Mute: stop recognition & speech
