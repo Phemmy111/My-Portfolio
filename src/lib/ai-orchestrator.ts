@@ -69,20 +69,19 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
       // 1. Google Gemini (Multimodal Native: Audio, Images, Documents, Text)
       if (p.provider === "gemini") {
         const isAudioMedia = Boolean(mediaBase64 && mimeType?.startsWith("audio/"));
-        const targetModel = p.model?.trim() || "gemini-3.8-flash";
+        const targetModel = p.model?.trim() || "gemini-flash-latest";
         const candidateModels = isAudioMedia
           ? [
-              "gemini-3.8-flash",
-              "gemini-3.5-transcribe",
-              "gemini-3.5-flash",
               "gemini-flash-latest",
+              "gemini-flash-lite-latest",
               targetModel,
+              "gemini-3.8-flash",
             ]
           : [
               targetModel,
-              "gemini-3.8-flash",
               "gemini-flash-latest",
-              "gemini-3.5-flash",
+              "gemini-flash-lite-latest",
+              "gemini-3.8-flash",
             ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
@@ -130,11 +129,8 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             } else {
               const errText = await res.text();
               errors.push(`${p.name} (${m}) HTTP ${res.status}: ${errText.slice(0, 100)}`);
-              // If rate limited (429) or quota exhausted, immediately break and try next provider!
-              if (res.status === 429) {
-                console.warn(`[AI Orchestrator] Provider ${p.name} rate-limited (HTTP 429). Fast-failing to next provider.`);
-                break;
-              }
+              // If model-specific quota was hit, continue trying next candidate model on same key before failing over!
+              continue;
             }
           } catch (modelErr: any) {
             errors.push(`${p.name} (${m}) error: ${modelErr.message}`);

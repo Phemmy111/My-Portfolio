@@ -730,8 +730,8 @@ function CallInterface() {
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
 
-      // Mobile phone mics have lower raw gain than desktop — use a lower VAD threshold
-      const vadThreshold = isMobileDevice ? 0.07 : 0.16;
+      // Mobile phone mics have lower raw gain than desktop — use sensitive VAD threshold (0.028)
+      const vadThreshold = isMobileDevice ? 0.028 : 0.12;
 
       const renderVolume = () => {
         if (!isCallActiveRef.current || !analyserRef.current) return;

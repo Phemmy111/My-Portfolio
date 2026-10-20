@@ -93,9 +93,12 @@ export async function POST(req: NextRequest) {
 
       const rawRecordingPayload = recordingUrl || body.audioBase64 || "";
 
-      // 1. Report and Transcript for Boss Femi
+      const targetInstance = workspace?.whatsapp_instance_name || "obey";
+      const bizName = workspace ? workspace.name : "Obey";
+
+      // 1. Report and Transcript for Boss Femi / Workspace Owner
       const femiReportMsg =
-        `🎙️ *Obey Voice Hotline Report*\n\n` +
+        `🎙️ *${bizName} Voice Call Report*\n\n` +
         `👤 *Caller:* ${callerName}\n` +
         `📞 *Phone:* ${callerPhone ? `+${callerPhone}` : "Web Voice User"}\n` +
         `🏢 *Workspace:* ${workspace ? workspace.name : "Femi Adeleke Portfolio"}\n` +
@@ -103,12 +106,10 @@ export async function POST(req: NextRequest) {
         (recordingUrl ? `🎵 *Audio Link:* ${recordingUrl}\n\n` : "\n") +
         `📝 *Conversation Transcript:*\n${summaryText}`;
 
-      // Notify Boss Femi with executive report & transcript
-      await sendWhatsAppMessage(femiReportMsg, FEMI_PERSONAL_NUMBER);
+      // Notify Boss Femi with executive report & transcript via the workspace bot
+      await sendWhatsAppMessage(femiReportMsg, FEMI_PERSONAL_NUMBER, targetInstance);
 
-      const targetInstance = workspace?.whatsapp_instance_name || "obey";
-
-      // Deliver voice briefing to Boss Femi
+      // Deliver voice briefing to Boss Femi via workspace bot
       if (spokenVoiceBase64) {
         try {
           await sendWhatsAppAudio(
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Deliver exact raw call recording to Boss Femi
+      // Deliver exact raw call recording to Boss Femi via workspace bot
       if (rawRecordingPayload) {
         try {
           await sendWhatsAppAudio(
