@@ -237,7 +237,7 @@ function ControlRoomContent() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "whatsapp" | "status" | "brain" | "rules" | "leads" | "hotline"
+    "overview" | "whatsapp" | "status" | "brain" | "rules" | "leads" | "hotline" | "intents"
   >("overview");
   const [copiedLink, setCopiedLink] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -532,6 +532,16 @@ function ControlRoomContent() {
     reference: string;
   } | null>(null);
 
+  // Missed Intents & Continuous Training state
+  const [missedIntents, setMissedIntents] = useState<any[]>([]);
+  const [loadingIntents, setLoadingIntents] = useState(false);
+  const [trainingModalIntent, setTrainingModalIntent] = useState<any | null>(null);
+  const [trainedAnswer, setTrainedAnswer] = useState("");
+  const [trainedKeywords, setTrainedKeywords] = useState("");
+  const [replyCustomerWhatsApp, setReplyCustomerWhatsApp] = useState(true);
+  const [trainingSubmitting, setTrainingSubmitting] = useState(false);
+
+
   // Session user state (for OTP auth)
   const [sessionUser, setSessionUser] = useState<{
     phone?: string;
@@ -657,6 +667,9 @@ function ControlRoomContent() {
         if (data.workspace.whatsapp_status) {
           setWaState(data.workspace.whatsapp_status);
         }
+        if (data.workspace.id) {
+          fetchMissedIntents(data.workspace.id);
+        }
       }
     } catch (err) {
       console.error("Failed to load workspace details:", err);
@@ -664,6 +677,68 @@ function ControlRoomContent() {
       setLoading(false);
     }
   }
+
+  const fetchMissedIntents = async (wsId?: string) => {
+    try {
+      setLoadingIntents(true);
+      const targetWs = wsId || currentWs?.id || "";
+      const res = await fetch(`/api/obey/intents?workspaceId=${encodeURIComponent(targetWs)}`);
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.intents)) {
+        setMissedIntents(data.intents);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch missed intents:", e);
+    } finally {
+      setLoadingIntents(false);
+    }
+  };
+
+  const handleTrainIntent = async () => {
+    if (!trainingModalIntent || !trainedAnswer.trim()) return;
+    setTrainingSubmitting(true);
+    try {
+      const kw = trainedKeywords.split(",").map((k) => k.trim()).filter(Boolean);
+      const res = await fetch("/api/obey/intents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "train",
+          id: trainingModalIntent.id,
+          workspaceId: currentWs?.id,
+          trainedAnswer: trainedAnswer.trim(),
+          keywords: kw,
+          replyCustomer: replyCustomerWhatsApp,
+          recipientPhone: trainingModalIntent.phone_number,
+          instanceName: currentWs?.whatsapp_instance_name,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTrainingModalIntent(null);
+        setTrainedAnswer("");
+        setTrainedKeywords("");
+        fetchMissedIntents(currentWs?.id);
+        if (currentWs?.slug) loadWorkspaceDetails(currentWs.slug);
+      }
+    } catch (e) {
+      console.error("handleTrainIntent error:", e);
+    } finally {
+      setTrainingSubmitting(false);
+    }
+  };
+
+  const handleDismissIntent = async (id: string) => {
+    try {
+      await fetch("/api/obey/intents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss", id }),
+      });
+      fetchMissedIntents(currentWs?.id);
+    } catch (e) {}
+  };
+
 
   const fetchContacts = async (slug?: string, filter: "all" | "unsaved" | "saved" | "buckets" = "all") => {
     const targetSlug = slug || currentWs?.slug;
@@ -2088,6 +2163,13 @@ function ControlRoomContent() {
       badgeColor: contactsStats.unsaved > 0 ? "text-amber-300 bg-amber-950/60 border-amber-800/50" : undefined,
     },
     { id: "hotline", label: "Voice Hotline & Embed", icon: PhoneCall },
+    {
+      id: "intents",
+      label: "Missed Intents & Training",
+      icon: HelpCircle,
+      badge: missedIntents.filter((i) => i.status === "unresolved").length > 0 ? `${missedIntents.filter((i) => i.status === "unresolved").length} New` : undefined,
+      badgeColor: "text-amber-300 bg-amber-950/60 border-amber-800/50",
+    },
   ];
 
   const filteredNavTabs = navTabs.filter((t) =>
@@ -5295,6 +5377,310 @@ function ControlRoomContent() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB: MISSED INTENTS & CONTINUOUS TRAINING INBOX */}
+        {/* ============================================================== */}
+        {activeTab === "intents" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                    <HelpCircle className="w-5 h-5 text-amber-400" />
+                    <span>Missed Intents &amp; Continuous Training</span>
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    Self-Learning Engine
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Queries your customers asked that Obey couldn&apos;t answer or hit a fallback for. Click <strong className="text-emerald-400">Train Obey</strong> to teach him the ideal answer so he responds automatically in the future!
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => fetchMissedIntents(currentWs?.id)}
+                  disabled={loadingIntents}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingIntents ? "animate-spin text-amber-400" : ""}`} />
+                  <span>Refresh Inbox</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
+                <div className="text-xs text-slate-400 font-medium">Unresolved Queries</div>
+                <div className="text-2xl font-bold mono text-amber-400 mt-1">
+                  {missedIntents.filter((i) => i.status === "unresolved").length}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">Awaiting your guidance or answers</div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
+                <div className="text-xs text-slate-400 font-medium">Trained Knowledge</div>
+                <div className="text-2xl font-bold mono text-emerald-400 mt-1">
+                  {missedIntents.filter((i) => i.status === "trained").length}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">Successfully learned by Obey</div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
+                <div className="text-xs text-slate-400 font-medium">Total Captured Inquiries</div>
+                <div className="text-2xl font-bold mono text-white mt-1">{missedIntents.length}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">Across this workspace</div>
+              </div>
+            </div>
+
+            {/* Inquiries Table / Cards */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Bot className="w-4 h-4 text-emerald-400" />
+                <span>Captured Unresolved Questions ({missedIntents.length})</span>
+              </h3>
+
+              {loadingIntents ? (
+                <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>Loading missed queries...</span>
+                </div>
+              ) : missedIntents.length === 0 ? (
+                <div className="p-10 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-xl space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto text-lg">
+                    ✓
+                  </div>
+                  <p className="font-semibold text-slate-300">Clean Inbox! No unresolved queries right now.</p>
+                  <p className="text-slate-500 text-[11px]">Whenever a customer asks something outside Obey&apos;s training, it will appear here instantly.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {missedIntents.map((item) => {
+                    const isUnresolved = item.status === "unresolved";
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-4 rounded-xl border transition-all ${
+                          isUnresolved
+                            ? "bg-slate-950/80 border-amber-500/30 hover:border-amber-500/50"
+                            : "bg-slate-950/40 border-slate-800/80 opacity-75"
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-white">
+                                {item.sender_name || "Customer"}
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-400">
+                                +{item.phone_number}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                  isUnresolved
+                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                    : item.status === "trained"
+                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                              <span className="text-[10px] text-slate-500 ml-auto">
+                                {new Date(item.created_at).toLocaleString([], {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+
+                            <div className="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800/80 text-xs">
+                              <span className="text-slate-400 font-semibold block text-[10px] uppercase">
+                                Customer Asked:
+                              </span>
+                              <p className="text-slate-100 font-medium mt-0.5">&ldquo;{item.user_query}&rdquo;</p>
+                            </div>
+
+                            {item.ai_response && (
+                              <div className="text-[11px] text-slate-400 bg-slate-900/40 p-2 rounded-lg border border-slate-800/40">
+                                <span className="text-slate-500 text-[10px] uppercase block">
+                                  Obey Fallback Response:
+                                </span>
+                                <p className="italic mt-0.5">&ldquo;{item.ai_response.slice(0, 160)}...&rdquo;</p>
+                              </div>
+                            )}
+
+                            {item.status === "trained" && item.resolution_notes && (
+                              <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-lg p-2.5 text-xs text-emerald-300">
+                                <span className="font-bold text-[10px] uppercase block text-emerald-400">
+                                  Trained Resolution:
+                                </span>
+                                <p className="mt-0.5">{item.resolution_notes}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex sm:flex-col items-center gap-2 shrink-0">
+                            {isUnresolved ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTrainingModalIntent(item);
+                                    setTrainedAnswer("");
+                                    // Pre-populate keywords by extracting nouns/words from query
+                                    const words = item.user_query
+                                      .toLowerCase()
+                                      .replace(/[^\w\s]/g, "")
+                                      .split(/\s+/)
+                                      .filter((w: string) => w.length >= 4)
+                                      .slice(0, 4);
+                                    setTrainedKeywords(words.join(", "));
+                                  }}
+                                  className="w-full px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-bold rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>Train Obey</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDismissIntent(item.id)}
+                                  className="w-full px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                                >
+                                  Dismiss
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTrainingModalIntent(item);
+                                  setTrainedAnswer(item.resolution_notes || "");
+                                }}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+                              >
+                                Edit Training
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Training Modal */}
+            {trainingModalIntent && (
+              <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-emerald-400" />
+                      <span>Train Obey AI on This Question</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setTrainingModalIntent(null)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-950 rounded-xl p-3 border border-slate-800 text-xs">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">
+                      Customer Query:
+                    </span>
+                    <p className="text-slate-200 font-semibold mt-1">
+                      &ldquo;{trainingModalIntent.user_query}&rdquo;
+                    </p>
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      From: +{trainingModalIntent.phone_number} ({trainingModalIntent.sender_name || "Customer"})
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      Ideal Answer to Teach Obey:
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={trainedAnswer}
+                      onChange={(e) => setTrainedAnswer(e.target.value)}
+                      placeholder="e.g. Our Web Development Course costs ₦50,000 for 8 weeks and includes 1-on-1 mentorship and certification..."
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl p-3 text-xs text-white outline-none resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      Trigger Keywords (Comma separated):
+                    </label>
+                    <input
+                      type="text"
+                      value={trainedKeywords}
+                      onChange={(e) => setTrainedKeywords(e.target.value)}
+                      placeholder="e.g. web development, course price, fee, how much"
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Whenever incoming customer messages mention any of these keywords, this answer will trigger automatically!
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="replyCust"
+                      checked={replyCustomerWhatsApp}
+                      onChange={(e) => setReplyCustomerWhatsApp(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                    />
+                    <label htmlFor="replyCust" className="text-xs text-slate-300 cursor-pointer">
+                      Send this newly trained answer directly to the customer on WhatsApp right now (+{trainingModalIntent.phone_number})
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setTrainingModalIntent(null)}
+                      className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTrainIntent}
+                      disabled={!trainedAnswer.trim() || trainingSubmitting}
+                      className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 disabled:opacity-50 transition shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      {trainingSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Training Obey...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Save &amp; Train Obey</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -34,11 +34,14 @@ import {
   dbGetWorkspaceBotBypass,
   dbEnqueueWorkspaceMessage,
   dbUpdateWorkspaceMessageQueueStatus,
+  dbRecordMissedIntent,
 } from "@/lib/db";
 import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   sendWhatsAppMessage,
+  sendWhatsAppButtons,
+  sendWhatsAppList,
   sendWhatsAppAudio,
   sendWhatsAppStatusPost,
   fetchEvolutionMediaBase64,
@@ -674,7 +677,26 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
       content: replyText,
       workspace_id: currentWs.id,
     });
+
+    // Detect unhandled queries or fallbacks and log to Missed Intents Inbox
+    const isFallbackReply =
+      replyText.includes("Please, I am busy right now") ||
+      replyText.includes("Check back with me later") ||
+      replyText.includes("I don't have that information") ||
+      replyText.includes("momentary glitch analyzing");
+
+    if (isFallbackReply && userText.length >= 4) {
+      dbRecordMissedIntent({
+        workspace_id: currentWs.id,
+        phone_number: replyTo,
+        sender_name: pushName || "Customer",
+        user_query: userText,
+        ai_response: replyText,
+        reason: "ai_fallback_or_uncertainty",
+      }).catch((e) => console.warn("[Missed Intent] Record error:", e));
+    }
   } catch {}
+
 
   // Auto-capture or update customer lead in workspace_leads
   try {
@@ -2089,13 +2111,25 @@ Output ONLY the comment text.`,
     }
   }
 
+  // Extract text, button clicks, and list selections
+  const buttonResponseText =
+    msgObj.message?.buttonsResponseMessage?.selectedDisplayText ||
+    msgObj.message?.buttonsResponseMessage?.selectedButtonId ||
+    msgObj.message?.templateButtonReplyMessage?.selectedDisplayText ||
+    msgObj.message?.templateButtonReplyMessage?.selectedId ||
+    msgObj.message?.listResponseMessage?.title ||
+    msgObj.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    msgObj.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+
   let userText = (
+    buttonResponseText ||
     msgObj.message?.conversation ||
     msgObj.message?.extendedTextMessage?.text ||
     msgObj.message?.imageMessage?.caption ||
     msgObj.message?.documentMessage?.caption ||
     ""
   ).trim();
+
 
   // Extract shared WhatsApp contact cards (e.g. vCard attachments)
   const contactCard = extractContactCardInfo(msgObj.message);

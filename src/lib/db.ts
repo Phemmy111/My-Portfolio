@@ -2686,3 +2686,149 @@ export async function dbGetAllWorkspaceInstancesHealth(): Promise<WorkspaceInsta
   }
 }
 
+// ==============================================================
+// MISSED INTENTS & AUTONOMOUS TRAINING INBOX (Wasbot / LetsBot Feature)
+// ==============================================================
+export interface MissedIntentRecord {
+  id: string;
+  workspace_id?: string | null;
+  phone_number: string;
+  sender_name?: string | null;
+  user_query: string;
+  ai_response?: string | null;
+  reason?: string | null;
+  status: "unresolved" | "trained" | "dismissed";
+  resolution_notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createMissedIntentsTable() {
+  const db = getSql();
+  if (!db) return;
+  try {
+    await db`
+      CREATE TABLE IF NOT EXISTS obey_missed_intents (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        phone_number TEXT NOT NULL,
+        sender_name TEXT,
+        user_query TEXT NOT NULL,
+        ai_response TEXT,
+        reason TEXT,
+        status TEXT DEFAULT 'unresolved',
+        resolution_notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    await db`CREATE INDEX IF NOT EXISTS idx_missed_intents_ws ON obey_missed_intents (workspace_id, status, created_at DESC);`;
+  } catch (err) {
+    console.warn("createMissedIntentsTable error:", err);
+  }
+}
+
+export async function dbRecordMissedIntent(params: {
+  workspace_id?: string | null;
+  phone_number: string;
+  sender_name?: string | null;
+  user_query: string;
+  ai_response?: string | null;
+  reason?: string | null;
+}): Promise<MissedIntentRecord | null> {
+  const db = getSql();
+  if (!db) return null;
+  try {
+    await createMissedIntentsTable();
+    const id = `intent-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const wsId = params.workspace_id || "ws_femi_default";
+    const [row] = await db`
+      INSERT INTO obey_missed_intents (
+        id, workspace_id, phone_number, sender_name, user_query, ai_response, reason, status, created_at, updated_at
+      )
+      VALUES (
+        ${id}, ${wsId}, ${params.phone_number}, ${params.sender_name || null}, ${params.user_query},
+        ${params.ai_response || null}, ${params.reason || "unhandled_intent"}, 'unresolved', NOW(), NOW()
+      )
+      RETURNING *;
+    `;
+    return row as MissedIntentRecord;
+  } catch (err) {
+    console.warn("dbRecordMissedIntent error:", err);
+    return null;
+  }
+}
+
+export async function dbGetMissedIntents(params?: {
+  workspace_id?: string | null;
+  status?: string;
+  limit?: number;
+}): Promise<MissedIntentRecord[]> {
+  const db = getSql();
+  if (!db) return [];
+  try {
+    await createMissedIntentsTable();
+    const limit = params?.limit || 50;
+    const wsId = params?.workspace_id;
+    const status = params?.status;
+
+    let rows: any[];
+    if (wsId && status) {
+      rows = await db`
+        SELECT * FROM obey_missed_intents
+        WHERE (workspace_id = ${wsId} OR workspace_id IS NULL) AND status = ${status}
+        ORDER BY created_at DESC
+        LIMIT ${limit};
+      `;
+    } else if (wsId) {
+      rows = await db`
+        SELECT * FROM obey_missed_intents
+        WHERE workspace_id = ${wsId} OR workspace_id IS NULL
+        ORDER BY created_at DESC
+        LIMIT ${limit};
+      `;
+    } else if (status) {
+      rows = await db`
+        SELECT * FROM obey_missed_intents
+        WHERE status = ${status}
+        ORDER BY created_at DESC
+        LIMIT ${limit};
+      `;
+    } else {
+      rows = await db`
+        SELECT * FROM obey_missed_intents
+        ORDER BY created_at DESC
+        LIMIT ${limit};
+      `;
+    }
+    return rows as MissedIntentRecord[];
+  } catch (err) {
+    console.warn("dbGetMissedIntents error:", err);
+    return [];
+  }
+}
+
+export async function dbResolveMissedIntent(params: {
+  id: string;
+  status: "trained" | "dismissed";
+  resolution_notes?: string;
+}): Promise<boolean> {
+  const db = getSql();
+  if (!db) return false;
+  try {
+    await createMissedIntentsTable();
+    await db`
+      UPDATE obey_missed_intents
+      SET status = ${params.status},
+          resolution_notes = ${params.resolution_notes || null},
+          updated_at = NOW()
+      WHERE id = ${params.id};
+    `;
+    return true;
+  } catch (err) {
+    console.warn("dbResolveMissedIntent error:", err);
+    return false;
+  }
+}
+
+

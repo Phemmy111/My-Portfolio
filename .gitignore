@@ -19,3 +19,4 @@ node_modules/
 data/admin-data.json
 .neon
 *.tsbuildinfo
+scratch/

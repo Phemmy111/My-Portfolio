@@ -95,6 +95,177 @@ export async function sendWhatsAppMessage(
   }
 }
 
+export interface WhatsAppButton {
+  id: string;
+  text: string;
+}
+
+export interface WhatsAppListSection {
+  title: string;
+  rows: Array<{
+    id: string;
+    title: string;
+    description?: string;
+  }>;
+}
+
+/**
+ * Sends native interactive quick-reply buttons via Evolution API.
+ * Gracefully falls back to a clean numbered text menu if the instance
+ * or device session doesn't support Baileys native interactive buttons.
+ */
+export async function sendWhatsAppButtons(params: {
+  recipient: string;
+  text: string;
+  buttons: WhatsAppButton[];
+  title?: string;
+  footer?: string;
+  instanceName?: string;
+}): Promise<{ success: boolean; fallbackText?: boolean; error?: string }> {
+  const { recipient, text, buttons, title, footer, instanceName: customInstance } = params;
+  try {
+    const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    if (!recipient) return { success: false, error: "Recipient phone is required" };
+    const cleaned = recipient.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+
+    // Evolution API button payload format
+    const formattedButtons = buttons.slice(0, 3).map((b) => ({
+      type: "reply",
+      displayText: b.text,
+      id: b.id,
+    }));
+
+    const payload = {
+      number: cleaned,
+      title: title || "",
+      description: cleanWhatsAppFormatting(text),
+      footer: footer || "Tap an option below:",
+      buttons: formattedButtons,
+    };
+
+    const res = await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
+    // Graceful fallback: If buttons endpoint fails or WhatsApp rejects Baileys buttons,
+    // format into high-converting numbered menu so user is NEVER left without the options!
+    console.warn(`[WhatsApp Buttons] Gateway returned ${res.status}, using formatted interactive fallback`);
+    const fallbackLines = [
+      text,
+      "",
+      ...buttons.map((b, idx) => `👉 *${idx + 1}.* ${b.text}`),
+      footer ? `\n_${footer}_` : "\n_Reply with a number or tap an option!_",
+    ];
+    const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), cleaned, instanceName);
+    return { success: textRes.success, fallbackText: true };
+  } catch (err: any) {
+    console.warn("[WhatsApp Buttons] Exception, falling back to text:", err.message);
+    const fallbackLines = [
+      text,
+      "",
+      ...buttons.map((b, idx) => `👉 *${idx + 1}.* ${b.text}`),
+      footer ? `\n_${footer}_` : "\n_Reply with a number or tap an option!_",
+    ];
+    const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), recipient, customInstance);
+    return { success: textRes.success, fallbackText: true };
+  }
+}
+
+/**
+ * Sends native interactive list picker via Evolution API.
+ * Useful for course catalogs, service menus, product selections.
+ */
+export async function sendWhatsAppList(params: {
+  recipient: string;
+  title: string;
+  description: string;
+  buttonText: string;
+  sections: WhatsAppListSection[];
+  footer?: string;
+  instanceName?: string;
+}): Promise<{ success: boolean; fallbackText?: boolean; error?: string }> {
+  const { recipient, title, description, buttonText, sections, footer, instanceName: customInstance } = params;
+  try {
+    const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+
+    if (!recipient) return { success: false, error: "Recipient phone is required" };
+    const cleaned = recipient.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+
+    const payload = {
+      number: cleaned,
+      title,
+      description: cleanWhatsAppFormatting(description),
+      buttonText: buttonText || "View Menu",
+      footerText: footer || "AutoLearn Spot • Select an option",
+      sections,
+    };
+
+    const res = await fetch(`${evoUrl}/message/sendList/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: evoKey,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    }
+
+    // Graceful fallback to rich structured text list
+    console.warn(`[WhatsApp List] Gateway returned ${res.status}, using formatted catalog fallback`);
+    const fallbackLines = [
+      `📋 *${title}*`,
+      description,
+      "",
+    ];
+    let counter = 1;
+    for (const sec of sections) {
+      fallbackLines.push(`*${sec.title.toUpperCase()}*`);
+      for (const r of sec.rows) {
+        fallbackLines.push(`• *${counter}.* ${r.title}${r.description ? ` - _${r.description}_` : ""}`);
+        counter++;
+      }
+      fallbackLines.push("");
+    }
+    fallbackLines.push(footer ? `_${footer}_` : "_Reply with the number or title you wish to select!_");
+    const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), cleaned, instanceName);
+    return { success: textRes.success, fallbackText: true };
+  } catch (err: any) {
+    console.warn("[WhatsApp List] Exception, falling back to text:", err.message);
+    const fallbackLines = [`📋 *${title}*`, description, ""];
+    let counter = 1;
+    for (const sec of sections) {
+      fallbackLines.push(`*${sec.title.toUpperCase()}*`);
+      for (const r of sec.rows) {
+        fallbackLines.push(`• *${counter}.* ${r.title}${r.description ? ` - _${r.description}_` : ""}`);
+        counter++;
+      }
+      fallbackLines.push("");
+    }
+    const textRes = await sendWhatsAppMessage(fallbackLines.join("\n"), recipient, customInstance);
+    return { success: textRes.success, fallbackText: true };
+  }
+}
+
+
 /**
  * Fetches base64 media for incoming WhatsApp messages (voice notes, images, documents)
  * Checks webhook payload base64 first, falls back to Evolution API endpoint:
