@@ -10,6 +10,7 @@ import {
   dbUpdateWorkspaceProfile,
   dbSetWorkspaceBotBypass,
 } from "@/lib/db";
+import { getVapiProvidersPool, VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
 export async function GET(
   req: NextRequest,
@@ -110,6 +111,32 @@ export async function PATCH(
       voice_id,
       voice_personality,
     });
+
+    if (voice_id) {
+      try {
+        const pool = await getVapiProvidersPool();
+        const primary = pool.find((p) => p.enabled && p.apiKey && p.assistantId);
+        if (primary && primary.apiKey && primary.assistantId) {
+          const selectedVoice = VAPI_VOICE_OPTIONS.find((v) => v.id === voice_id) || VAPI_VOICE_OPTIONS[0];
+          await fetch(`https://api.vapi.ai/assistant/${primary.assistantId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${primary.apiKey.trim()}`,
+            },
+            body: JSON.stringify({
+              voice: {
+                provider: selectedVoice.provider,
+                voiceId: selectedVoice.voiceId,
+                model: selectedVoice.model || "eleven_turbo_v2_5",
+              },
+            }),
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to sync voice to Vapi assistant:", err);
+      }
+    }
 
     return NextResponse.json({
       success: true,

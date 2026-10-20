@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import { VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
 export const VOICE_PROFILES: Record<
   string,
@@ -1347,7 +1348,14 @@ function CallInterface() {
           setCallStatus("error");
         });
 
+        const activeVoice = VAPI_VOICE_OPTIONS.find(v => v.id === (bizInfo?.voice_id || selectedVoice || "callum")) || VAPI_VOICE_OPTIONS[0];
+
         await vapi.start(vapiConfig.assistantId, {
+          voice: {
+            provider: activeVoice.provider as any,
+            voiceId: activeVoice.voiceId,
+            model: (activeVoice.model as any) || "eleven_turbo_v2_5",
+          },
           variableValues: {
             userName: effectiveName || "Friend",
             userPhone: effectivePhone || "",

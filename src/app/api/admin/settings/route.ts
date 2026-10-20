@@ -10,6 +10,7 @@ import {
   getVapiProvidersPool,
   setVapiProvidersPool,
   VapiProviderConfig,
+  VAPI_VOICE_OPTIONS,
 } from "@/lib/settings";
 import { sendTelegramMessage } from "@/lib/telegram-bot";
 import { dispatchMorningBriefing, dispatchEveningWrapup } from "@/lib/proactive-engine";
@@ -105,19 +106,13 @@ export async function POST(req: NextRequest) {
           ? assistants.find((a: any) => a.id === targetAssistantId || a.name?.toLowerCase().includes("obey"))
           : null;
 
-        // Determine voice config from requested voiceId
-        let voicePayload: any = { provider: "vapi", voiceId: "Elliot", version: "2" };
-        if (voiceId === "george") {
-          voicePayload = { provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english" };
-        } else if (voiceId === "sarah") {
-          voicePayload = { provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english" };
-        } else if (voiceId === "callum") {
-          voicePayload = { provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5" };
-        } else if (voiceId === "brian") {
-          voicePayload = { provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5" };
-        } else if (voiceId === "alloy") {
-          voicePayload = { provider: "openai", voiceId: "alloy" };
-        }
+        // Determine voice config from requested voiceId using VAPI_VOICE_OPTIONS
+        const selectedVoice = VAPI_VOICE_OPTIONS.find((v) => v.id === (voiceId || "callum")) || VAPI_VOICE_OPTIONS[0];
+        const voicePayload = {
+          provider: selectedVoice.provider,
+          voiceId: selectedVoice.voiceId,
+          model: selectedVoice.model || "eleven_turbo_v2_5",
+        };
 
         // Ultra-low latency conversational configuration (Deepgram Nova-2 + 250ms endpointing + instant turn-taking)
         const assistantConfig = {
@@ -378,19 +373,13 @@ export async function POST(req: NextRequest) {
             const pool = JSON.parse(poolJson);
             const primary = Array.isArray(pool) ? pool.find((p: any) => p.enabled && p.apiKey) : null;
             if (primary && primary.apiKey && primary.assistantId) {
-              const voiceId = updates.VOICE_ID || (await getSetting("VOICE_ID")) || "elliot";
-              let voicePayload: any = { provider: "vapi", voiceId: "Elliot", version: "2" };
-              if (voiceId === "george") {
-                voicePayload = { provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english" };
-              } else if (voiceId === "sarah") {
-                voicePayload = { provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english" };
-              } else if (voiceId === "callum") {
-                voicePayload = { provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5" };
-              } else if (voiceId === "brian") {
-                voicePayload = { provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5" };
-              } else if (voiceId === "alloy") {
-                voicePayload = { provider: "openai", voiceId: "alloy" };
-              }
+              const voiceId = updates.VOICE_ID || (await getSetting("VOICE_ID")) || "callum";
+              const selectedVoice = VAPI_VOICE_OPTIONS.find((v) => v.id === voiceId) || VAPI_VOICE_OPTIONS[0];
+              const voicePayload = {
+                provider: selectedVoice.provider,
+                voiceId: selectedVoice.voiceId,
+                model: selectedVoice.model || "eleven_turbo_v2_5",
+              };
               await fetch(`https://api.vapi.ai/assistant/${primary.assistantId}`, {
                 method: "PATCH",
                 headers: {

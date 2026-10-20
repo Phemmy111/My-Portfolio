@@ -243,93 +243,45 @@ function ControlRoomContent() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navFilter, setNavFilter] = useState("");
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
-  // Vapi Voice Previews with custom sample text & acoustic profiles
-  const VAPI_PREVIEW_MAP: Record<string, { sampleText: string; lang: string; pitch: number; rate: number; gender: "male" | "female"; preferredVoices: string[] }> = {
-    elliot: {
-      sampleText: "Hello! I am Obey, your Nigerian executive companion. Great to have you on the line! How can I assist your business today?",
-      lang: "en-NG",
-      pitch: 0.82,
-      rate: 0.98,
-      gender: "male",
-      preferredVoices: ["Nigerian Male", "Google UK English Male", "David", "Guy"],
-    },
-    george: {
-      sampleText: "Good day. I am Obey, your British executive companion with ultra-low latency audio. Articulate and ready to assist.",
-      lang: "en-GB",
-      pitch: 0.95,
-      rate: 1.0,
-      gender: "male",
-      preferredVoices: ["George", "Oliver", "UK English Male"],
-    },
-    sarah: {
-      sampleText: "Hello there! I am Obey, your warm and empathetic executive companion. Ready to support your clients.",
-      lang: "en-US",
-      pitch: 1.1,
-      rate: 1.0,
-      gender: "female",
-      preferredVoices: ["Samantha", "Aria", "Jenny", "Victoria"],
-    },
-    callum: {
-      sampleText: "How far my brother! I am Obey, your street-smart and charismatic voice companion. Sharp-sharp!",
-      lang: "en-NG",
-      pitch: 0.9,
-      rate: 1.05,
-      gender: "male",
-      preferredVoices: ["Nigerian Male", "Daniel", "Alex"],
-    },
-    brian: {
-      sampleText: "Good day. I am Obey, your executive voice companion. Deep, authoritative, and direct to the point.",
-      lang: "en-GB",
-      pitch: 0.75,
-      rate: 0.95,
-      gender: "male",
-      preferredVoices: ["Brian", "Richard", "George"],
-    },
-    alloy: {
-      sampleText: "Hey there! I am Obey, your modern conversational AI voice assistant. How can I help you today?",
-      lang: "en-US",
-      pitch: 1.0,
-      rate: 1.0,
-      gender: "male",
-      preferredVoices: ["Alex", "Google US English", "Fred"],
-    },
-  };
-
-  // Voice Preview player for Hotline configuration
-  const playVoicePreview = (voiceId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+  // Studio Voice Preview player (Plays exact ElevenLabs / Vapi dashboard audio)
+  const playVoicePreview = (voiceId: string, previewUrl?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (typeof window === "undefined") return;
 
     if (playingVoiceId === voiceId) {
-      window.speechSynthesis.cancel();
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+        audioPreviewRef.current.currentTime = 0;
+      }
       setPlayingVoiceId(null);
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const vapiProfile = VAPI_PREVIEW_MAP[voiceId];
-    const profile = vapiProfile || (VOICE_PROFILES as any)[voiceId] || VAPI_PREVIEW_MAP["elliot"];
-    const text = profile.sampleText || "Hello! I am Obey, your personal executive companion.";
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.pitch = profile.pitch;
-    utterance.rate = profile.rate;
-
-    const voices = window.speechSynthesis.getVoices();
-    const matchedVoice = pickBestVoice(voices, { ...profile, flag: "", name: voiceId });
-    if (matchedVoice) {
-      utterance.voice = matchedVoice;
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      audioPreviewRef.current.currentTime = 0;
     }
 
-    utterance.onend = () => {
+    const voice = VAPI_VOICE_OPTIONS.find((v) => v.id === voiceId);
+    const url = previewUrl || voice?.previewUrl;
+    if (!url) return;
+
+    const audio = new Audio(url);
+    audioPreviewRef.current = audio;
+    setPlayingVoiceId(voiceId);
+
+    audio.onended = () => {
       setPlayingVoiceId(null);
     };
-    utterance.onerror = () => {
+    audio.onerror = () => {
       setPlayingVoiceId(null);
     };
 
-    setPlayingVoiceId(voiceId);
-    window.speechSynthesis.speak(utterance);
+    audio.play().catch(() => {
+      setPlayingVoiceId(null);
+    });
   };
 
   // Status Automator states
@@ -5056,7 +5008,7 @@ function ControlRoomContent() {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {VAPI_VOICE_OPTIONS.map((v) => {
-                      const isSelected = (settings.voice_id || "elliot") === v.id;
+                      const isSelected = (settings.voice_id || "callum") === v.id;
                       const isPlaying = playingVoiceId === v.id;
                       return (
                         <div
@@ -5076,7 +5028,7 @@ function ControlRoomContent() {
                               </div>
                               <button
                                 type="button"
-                                onClick={(e) => playVoicePreview(v.id, e)}
+                                onClick={(e) => playVoicePreview(v.id, v.previewUrl, e)}
                                 className={`px-2 py-0.5 rounded-md border text-[9px] font-bold shrink-0 transition flex items-center gap-1 cursor-pointer ${
                                   isPlaying
                                     ? "bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse"

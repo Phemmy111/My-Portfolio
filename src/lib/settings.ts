@@ -37,21 +37,82 @@ export interface VapiProviderConfig {
 export interface VapiVoiceOption {
   id: string;
   name: string;
-  provider: "vapi" | "cartesia" | "11labs" | "openai";
+  provider: "11labs" | "vapi" | "cartesia" | "openai";
   voiceId: string;
   model?: string;
   flag: string;
   gender: "male" | "female";
   desc: string;
+  previewUrl: string;
 }
 
 export const VAPI_VOICE_OPTIONS: VapiVoiceOption[] = [
-  { id: "elliot", name: "Elliot (Default)", provider: "vapi", voiceId: "Elliot", flag: "🇳🇬", gender: "male", desc: "Warm Executive Brother (Vapi v2)" },
-  { id: "george", name: "George", provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english", flag: "🇬🇧", gender: "male", desc: "Ultra-Fast Sonic Executive (90ms TTFB)" },
-  { id: "sarah", name: "Sarah", provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english", flag: "🇺🇸", gender: "female", desc: "Empathetic, Polished Sister" },
-  { id: "callum", name: "Callum", provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5", flag: "🇳🇬", gender: "male", desc: "Charismatic & Street-Smart Brother" },
-  { id: "brian", name: "Brian", provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5", flag: "🇬🇧", gender: "male", desc: "Deep, Authoritative Executive" },
-  { id: "alloy", name: "Alloy", provider: "openai", voiceId: "alloy", flag: "🇺🇸", gender: "male", desc: "Balanced Conversational Tech" },
+  {
+    id: "callum",
+    name: "Callum (Default)",
+    provider: "11labs",
+    voiceId: "N2lVS1w4EtoT3dr4eOWO",
+    model: "eleven_turbo_v2_5",
+    flag: "🇳🇬",
+    gender: "male",
+    desc: "Charismatic, Street-Smart Brother (Naija / Global)",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/ac833bd8-ffda-4938-9ebc-b0f99ca25481.mp3",
+  },
+  {
+    id: "brian",
+    name: "Brian",
+    provider: "11labs",
+    voiceId: "nPczCjzI2devNBz1zQrb",
+    model: "eleven_turbo_v2_5",
+    flag: "🇬🇧",
+    gender: "male",
+    desc: "Deep, Authoritative Executive",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/2dd3e72c-4fd3-42f1-93ea-abc5d4e5aa1d.mp3",
+  },
+  {
+    id: "george",
+    name: "George",
+    provider: "11labs",
+    voiceId: "JBFqnCBsd6RMkjVDRZzb",
+    model: "eleven_turbo_v2_5",
+    flag: "🇬🇧",
+    gender: "male",
+    desc: "Warm, Articulate Executive Companion",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/JBFqnCBsd6RMkjVDRZzb/e6206d1a-0721-4787-aafb-06a6e705cac5.mp3",
+  },
+  {
+    id: "sarah",
+    name: "Sarah",
+    provider: "11labs",
+    voiceId: "EXAVITQu4vr4xnSDxMaL",
+    model: "eleven_turbo_v2_5",
+    flag: "🇺🇸",
+    gender: "female",
+    desc: "Empathetic, Polished Sister",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a3e33c-6e99-4ee7-8543-ff2216a32186.mp3",
+  },
+  {
+    id: "charlie",
+    name: "Charlie",
+    provider: "11labs",
+    voiceId: "IKne3meq5aSn9XLyUdCD",
+    model: "eleven_turbo_v2_5",
+    flag: "🇦🇺",
+    gender: "male",
+    desc: "Dynamic, Confident Tech Brother",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/IKne3meq5aSn9XLyUdCD/102de6f2-22ed-43e0-a1f1-111fa75c5481.mp3",
+  },
+  {
+    id: "eric",
+    name: "Eric",
+    provider: "11labs",
+    voiceId: "cjVigY5qzO86Huf0OWal",
+    model: "eleven_turbo_v2_5",
+    flag: "🇺🇸",
+    gender: "male",
+    desc: "Smooth, Trustworthy Executive",
+    previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/cjVigY5qzO86Huf0OWal/d098fda0-6456-4030-b3d8-63aa048c9070.mp3",
+  },
 ];
 
 
