@@ -376,10 +376,10 @@ AVAILABLE TOOLS & ACTIONS:
    - Parameters: "image_prompt" (rich descriptive prompt).
 4. "modify_existing_image": Use when the user wants to adjust, modify, recolor, or change elements of their PREVIOUS artwork in context (e.g. changing color, weather, lighting, day/night).
    - Parameters: "image_modification" (specific edits to apply).
-5. "create_website_artifact": Use when the user asks you to design, build, code, or create a new website, landing page, HTML UI, calculator, form, or dashboard.
-   - Parameters: "website_title" (clear title), "website_specs" (features, styling, layout).
-6. "modify_website_artifact": Use when the user asks to change, update, restyle, fix, or edit ANY previously created website/artifact in context or by name.
-   - Parameters: "website_title" (title of the artifact to modify, or null for latest), "website_changes" (what to fix or adjust in the code).
+5. "create_website_artifact": Use when the user asks you to design, build, code, or create a new website, landing page, HTML UI, calculator, form, dashboard, backend API route, database schema, server endpoint, or full-stack web integration.
+   - Parameters: "website_title" (clear title), "website_specs" (features, styling, layout, backend endpoints, database schema).
+6. "modify_website_artifact": Use when the user asks to change, update, restyle, fix, or edit ANY previously created website/artifact, backend route, or full-stack integration in context or by name.
+   - Parameters: "website_title" (title of the artifact to modify, or null for latest), "website_changes" (what to fix, adjust, or add in the code).
 7. "create_document_file": Use when the user asks to turn an idea, pitch, chat, summary, notes, plan, proposal, contract, guide, or story into a document, doc, Word doc, Google Doc, PDF, text file, or markdown file.
    - Look back across prior conversation turns to identify EXACTLY what topic, pitch, or concept they want turned into a document (e.g. Havilah Farms agricultural pitch, meeting notes, project proposal).
    - Parameters: "document_title" (clear, professional title), "document_topic" (the specific pitch, idea, or concept from context to expand into the document), "document_format" ("doc" | "pdf" | "txt" | "md").
@@ -1126,26 +1126,30 @@ CRITICAL REQUIREMENTS:
 ...complete updated runnable code with "${changes}" applied...
 </artifact>
 After closing </artifact>, provide a 1-sentence executive summary of the changes made (do NOT include "Brief confirmation message:" or similar label).`;
-    } else {
       const title = decision.action_params?.website_title || "Interactive Web Page";
       const specs = decision.action_params?.website_specs || userText;
-      artifactPrompt = `WEBSITE / ARTIFACT CREATION REQUEST:
+      const isBackendOrApi = /\b(backend|api|server|endpoint|database|postgres|neon|sql|node|express|next\.js route|webhook|fullstack|rest api|crud)\b/i.test((specs || "") + " " + userText);
+
+      artifactPrompt = `WEBSITE & FULL-STACK ARTIFACT CREATION REQUEST:
 Title: "${title}"
 Specifications: "${specs}"
 
 CRITICAL REQUIREMENTS:
-1. Create a complete, modern, high-converting, fully responsive HTML landing page/dashboard with Tailwind CSS (via CDN) and beautiful styling and interactions.
+1. Create a complete, modern, high-converting, fully responsive web application with Tailwind CSS (via CDN) and beautiful styling and interactions.
 2. Ensure 100% of interactive JavaScript functions work: all forms, modal popups, buttons, event listeners (e.g., 'Save', 'Submit', 'Delete', 'Toggle', 'Filter'), calculations, and localStorage data persistence MUST be fully wired up with working vanilla JavaScript! NO dummy unhooked buttons!
-3. Enclose the complete runnable code inside:
+${isBackendOrApi ? `3. BACKEND & API INTEGRATION (CRITICAL):
+- Provide an integrated "API & Database Console" or inspector tab in the interface where the user can trigger simulated REST API calls (GET, POST, PUT, DELETE), inspect JSON payloads & headers, and observe live state changes.
+- Provide a clean, copyable "Production Backend Code" section containing real, production-ready Next.js App Router route handlers (route.ts), Node.js / Express router code, and Neon PostgreSQL schema SQL with proper error handling and status codes.` : ''}
+4. Enclose the complete runnable code inside:
 <artifact identifier="web-${Date.now()}" type="html" title="${title}">
-...complete runnable HTML code...
+...complete runnable code...
 </artifact>
 After closing </artifact>, provide a 1-sentence executive summary of what was created (do NOT include "Brief confirmation message:" or similar label).`;
     }
 
     try {
       const aiRes = await executeAICompletion({
-        systemPrompt: "You are Obey, an autonomous AI executive engineer. Build modern, responsive, high-converting HTML landing pages using Tailwind CSS. Every button, form, modal, and data interaction must have working, fully wired JavaScript. Return complete runnable code inside <artifact> tags.",
+        systemPrompt: "You are Obey, an autonomous AI executive engineer and full-stack software architect. Build modern, responsive frontends with Tailwind CSS, robust backend REST APIs (Next.js App Router / Node.js), and database schemas (Neon PostgreSQL). Every button, form, modal, and API endpoint must be fully wired and functional. Return complete runnable code inside <artifact> tags.",
         userPrompt: artifactPrompt,
         temperature: 0.3,
         maxTokens: 8192,
