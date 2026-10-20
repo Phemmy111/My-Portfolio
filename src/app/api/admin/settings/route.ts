@@ -54,79 +54,191 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 1c. Test Vapi Connection & Auto-Provision Obey Assistant
+    // 1c. Test Vapi Connection, Live Credit Balance & Auto-Provision Low-Latency Obey Assistant
     if (body.action === "test_vapi") {
-      const { apiKey, assistantId, autoProvision } = body;
+      const { apiKey, assistantId, autoProvision, voiceId } = body;
       if (!apiKey?.trim()) {
         return NextResponse.json({ success: false, error: "Vapi Private API Key is required" });
       }
       try {
+        const cleanKey = apiKey.trim();
+
+        // 1. Calculate live usage & remaining credits
+        let totalCost = 0;
+        let callCount = 0;
+        try {
+          const callRes = await fetch("https://api.vapi.ai/call?limit=100", {
+            headers: { Authorization: `Bearer ${cleanKey}` },
+          });
+          if (callRes.ok) {
+            const calls = await callRes.json();
+            if (Array.isArray(calls)) {
+              callCount = calls.length;
+              totalCost = calls.reduce((acc: number, c: any) => acc + (Number(c.cost) || 0), 0);
+            }
+          }
+        } catch {}
+
+        const startingCredit = 10.0;
+        const creditsSpent = Number(totalCost.toFixed(2));
+        const creditsRemaining = Math.max(0, Number((startingCredit - totalCost).toFixed(2)));
+        const talkMinutes = Math.floor(creditsRemaining / 0.08);
+
+        // 2. Fetch existing assistants
         const res = await fetch("https://api.vapi.ai/assistant", {
-          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+          headers: { Authorization: `Bearer ${cleanKey}` },
         });
         if (!res.ok) {
           const err = await res.text();
-          return NextResponse.json({ success: false, error: `Vapi HTTP ${res.status}: ${err.slice(0, 100)}` });
+          return NextResponse.json({
+            success: false,
+            error: `Vapi HTTP ${res.status}: ${err.slice(0, 100)}`,
+            credits: { starting: startingCredit, spent: creditsSpent, remaining: creditsRemaining, calls: callCount, talkMinutes },
+          });
         }
 
         const assistants = await res.json();
         let targetAssistantId = assistantId?.trim() || "";
+        const existing = Array.isArray(assistants)
+          ? assistants.find((a: any) => a.id === targetAssistantId || a.name?.toLowerCase().includes("obey"))
+          : null;
 
-        // If no assistantId provided or autoProvision requested, find or create Obey assistant
-        if (!targetAssistantId || autoProvision) {
-          const existing = Array.isArray(assistants) ? assistants.find((a: any) => a.name?.toLowerCase().includes("obey")) : null;
-          if (existing) {
-            targetAssistantId = existing.id;
-          } else {
-            // Auto-create Obey assistant with optimal cost & webhook
-            const createRes = await fetch("https://api.vapi.ai/assistant", {
-              method: "POST",
+        // Determine voice config from requested voiceId
+        let voicePayload: any = { provider: "vapi", voiceId: "Elliot", version: "2" };
+        if (voiceId === "george") {
+          voicePayload = { provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english" };
+        } else if (voiceId === "sarah") {
+          voicePayload = { provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english" };
+        } else if (voiceId === "callum") {
+          voicePayload = { provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5" };
+        } else if (voiceId === "brian") {
+          voicePayload = { provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5" };
+        } else if (voiceId === "alloy") {
+          voicePayload = { provider: "openai", voiceId: "alloy" };
+        }
+
+        // Ultra-low latency conversational configuration (Deepgram Nova-2 + 250ms endpointing + instant turn-taking)
+        const assistantConfig = {
+          name: "Obey AI Voice Assistant",
+          firstMessage: "Hello! I am Obey, your AI executive companion. Great to have you on the line! How can I assist you today?",
+          model: {
+            provider: "openai",
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are Obey, an ultra-intelligent, magnetic, witty, sarcastic, and deeply empathetic AI voice companion.\nBe charismatic, warm, conversational, and helpful. Keep responses concise (1 to 2 spoken sentences) and natural.`
+              }
+            ],
+            temperature: 0.7
+          },
+          voice: voicePayload,
+          transcriber: {
+            provider: "deepgram",
+            model: "nova-2",
+            language: "en",
+            smartFormat: true,
+            endpointing: 250 // Detect end of sentence within 250ms!
+          },
+          startSpeakingPlan: {
+            waitSeconds: 0.35, // Instant turn-taking
+            smartEndpointingEnabled: true,
+            transcriptionEndpointingPlan: {
+              onPunctuationSeconds: 0.1,
+              onNoPunctuationSeconds: 0.5,
+              onNumberSeconds: 0.3
+            }
+          },
+          stopSpeakingPlan: {
+            numWords: 0 // Immediate interruption when user talks
+          },
+          responseDelaySeconds: 0.1,
+          llmRequestDelaySeconds: 0.1,
+          silenceTimeoutSeconds: 30,
+          serverUrl: "https://obeyai.vercel.app/api/obey/calls/webhook",
+          serverMessages: ["end-of-call-report", "status-update", "transcript"],
+          recordingEnabled: true
+        };
+
+        if (existing) {
+          targetAssistantId = existing.id;
+          try {
+            await fetch(`https://api.vapi.ai/assistant/${targetAssistantId}`, {
+              method: "PATCH",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey.trim()}`,
+                Authorization: `Bearer ${cleanKey}`,
               },
-              body: JSON.stringify({
-                name: "Obey Assistant · Femi Adeleke AI",
-                firstMessage: "Hello! I am Obey, your AI executive companion. Great to have you on the line! How can I assist you today?",
-                model: {
-                  provider: "openai",
-                  model: "gpt-4o-mini",
-                  messages: [
-                    {
-                      role: "system",
-                      content: `You are Obey, an ultra-intelligent, magnetic, witty, sarcastic, and deeply empathetic AI voice companion engineered by Femi Adeleke.\nBe charismatic, warm, conversational, and helpful. Keep responses concise (1 to 2 spoken sentences) and natural.`
-                    }
-                  ],
-                  temperature: 0.7
-                },
-                voice: {
-                  provider: "vapi",
-                  voiceId: "Elliot",
-                  version: "2"
-                },
-                transcriber: {
-                  provider: "soniox",
-                  model: "stt-rt-v5",
-                  language: "en"
-                },
-                serverUrl: "https://femiadelekeportfolio.vercel.app/api/obey/calls/webhook",
-                serverMessages: ["end-of-call-report", "status-update", "transcript"],
-                recordingEnabled: true
-              })
+              body: JSON.stringify(assistantConfig),
             });
-            if (createRes.ok) {
-              const newA = await createRes.json();
-              targetAssistantId = newA.id;
-            }
+          } catch {}
+        } else if (!targetAssistantId || autoProvision) {
+          const createRes = await fetch("https://api.vapi.ai/assistant", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${cleanKey}`,
+            },
+            body: JSON.stringify(assistantConfig),
+          });
+          if (createRes.ok) {
+            const newA = await createRes.json();
+            targetAssistantId = newA.id;
           }
         }
 
         return NextResponse.json({
           success: true,
           assistantId: targetAssistantId,
+          credits: {
+            starting: startingCredit,
+            spent: creditsSpent,
+            remaining: creditsRemaining,
+            calls: callCount,
+            talkMinutes,
+          },
           message: targetAssistantId
-            ? `Connected successfully! Obey assistant (${targetAssistantId.slice(0, 8)}...) ready.`
-            : "Connected to Vapi.ai successfully! Ready for voice calling.",
+            ? `Connected! Obey assistant (${targetAssistantId.slice(0, 8)}...) updated to ultra-low latency. Credits left: $${creditsRemaining.toFixed(2)} (~${talkMinutes} mins).`
+            : `Connected to Vapi.ai! Credits left: $${creditsRemaining.toFixed(2)} (~${talkMinutes} mins).`,
+        });
+      } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message });
+      }
+    }
+
+    // 1d. Quick Live Credit Check for Vapi Provider
+    if (body.action === "check_vapi_credits") {
+      const { apiKey } = body;
+      if (!apiKey?.trim()) {
+        return NextResponse.json({ success: false, error: "Vapi Private API Key is required" });
+      }
+      try {
+        let totalCost = 0;
+        let callCount = 0;
+        const callRes = await fetch("https://api.vapi.ai/call?limit=100", {
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+        });
+        if (callRes.ok) {
+          const calls = await callRes.json();
+          if (Array.isArray(calls)) {
+            callCount = calls.length;
+            totalCost = calls.reduce((acc: number, c: any) => acc + (Number(c.cost) || 0), 0);
+          }
+        }
+        const startingCredit = 10.0;
+        const creditsSpent = Number(totalCost.toFixed(2));
+        const creditsRemaining = Math.max(0, Number((startingCredit - totalCost).toFixed(2)));
+        const talkMinutes = Math.floor(creditsRemaining / 0.08);
+
+        return NextResponse.json({
+          success: true,
+          credits: {
+            starting: startingCredit,
+            spent: creditsSpent,
+            remaining: creditsRemaining,
+            calls: callCount,
+            talkMinutes,
+          },
         });
       } catch (e: any) {
         return NextResponse.json({ success: false, error: e.message });
@@ -252,6 +364,42 @@ export async function POST(req: NextRequest) {
       for (const [k, v] of Object.entries(updates)) {
         if (KNOWN_KEYS.includes(k as any) && typeof v === "string") {
           await setSetting(k, v);
+        }
+      }
+
+      // If voice or pool was updated, sync primary Vapi assistant voice in the background
+      if (updates.VOICE_ID || updates.VAPI_PROVIDERS_POOL) {
+        try {
+          const poolJson = updates.VAPI_PROVIDERS_POOL || (await getSetting("VAPI_PROVIDERS_POOL"));
+          if (poolJson) {
+            const pool = JSON.parse(poolJson);
+            const primary = Array.isArray(pool) ? pool.find((p: any) => p.enabled && p.apiKey) : null;
+            if (primary && primary.apiKey && primary.assistantId) {
+              const voiceId = updates.VOICE_ID || (await getSetting("VOICE_ID")) || "elliot";
+              let voicePayload: any = { provider: "vapi", voiceId: "Elliot", version: "2" };
+              if (voiceId === "george") {
+                voicePayload = { provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english" };
+              } else if (voiceId === "sarah") {
+                voicePayload = { provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english" };
+              } else if (voiceId === "callum") {
+                voicePayload = { provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5" };
+              } else if (voiceId === "brian") {
+                voicePayload = { provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5" };
+              } else if (voiceId === "alloy") {
+                voicePayload = { provider: "openai", voiceId: "alloy" };
+              }
+              await fetch(`https://api.vapi.ai/assistant/${primary.assistantId}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${primary.apiKey.trim()}`,
+                },
+                body: JSON.stringify({ voice: voicePayload }),
+              });
+            }
+          }
+        } catch (syncErr) {
+          console.warn("[Vapi Voice Sync Error]:", syncErr);
         }
       }
     }

@@ -24,7 +24,7 @@ import {
   MessageCircle,
   PhoneCall,
 } from "lucide-react";
-import { AIProviderConfig, VapiProviderConfig } from "@/lib/settings";
+import { AIProviderConfig, VapiProviderConfig, VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -139,11 +139,26 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test_vapi", apiKey, assistantId, autoProvision: true }),
+        body: JSON.stringify({
+          action: "test_vapi",
+          apiKey,
+          assistantId,
+          autoProvision: true,
+          voiceId: generalKeys.VOICE_ID || "elliot",
+        }),
       });
       const data = await res.json();
-      if (data.success && data.assistantId) {
-        updateVapiProvider(id, { assistantId: data.assistantId });
+      if (data.success) {
+        updateVapiProvider(id, {
+          ...(data.assistantId ? { assistantId: data.assistantId } : {}),
+          ...(data.credits ? {
+            creditsRemaining: data.credits.remaining,
+            creditsSpent: data.credits.spent,
+            totalCalls: data.credits.calls,
+            talkMinutes: data.credits.talkMinutes,
+            lastChecked: Date.now(),
+          } : {}),
+        });
       }
       setTestResults((prev) => ({
         ...prev,
@@ -159,6 +174,27 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         [id]: { testing: false, success: false, message: e.message },
       }));
     }
+  };
+
+  const handleCheckVapiCredits = async (id: string, apiKey: string) => {
+    if (!apiKey) return;
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check_vapi_credits", apiKey }),
+      });
+      const data = await res.json();
+      if (data.success && data.credits) {
+        updateVapiProvider(id, {
+          creditsRemaining: data.credits.remaining,
+          creditsSpent: data.credits.spent,
+          totalCalls: data.credits.calls,
+          talkMinutes: data.credits.talkMinutes,
+          lastChecked: Date.now(),
+        });
+      }
+    } catch {}
   };
 
   // Live WhatsApp QR Code State
@@ -1467,7 +1503,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
               {/* TAB: 📞 AI Voice Calling */}
               {activeTab === "voice" && (
                 <div className="space-y-6">
-                  {/* Native 100% Free WebRTC Voice Engine Card */}
+                  {/* Obey High-Speed AI Voice Hotline (Vapi Engine) */}
                   <div className="p-4 sm:p-5 rounded-2xl border border-emerald-500/30 bg-emerald-950/10 dark:bg-emerald-950/20 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
                       <div className="flex items-center gap-2.5">
@@ -1477,14 +1513,14 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="text-sm font-black text-zinc-950 dark:text-white">
-                              Obey 100% Free Voice Hotline Engine
+                              Obey AI Voice Hotline (Vapi Engine)
                             </h4>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              ₦0 / $0 Forever
+                              ⚡ Ultra-Low Latency • WebRTC
                             </span>
                           </div>
                           <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                            Zero third-party credits required. Native Web Speech API with Gemini/Groq intelligence & automatic WhatsApp executive summaries.
+                            Enterprise duplex WebRTC audio with Deepgram Nova-2 (250ms endpointing) & instant conversational streaming. Automatic WhatsApp voice notes & executive summaries.
                           </p>
                         </div>
                       </div>
@@ -1498,21 +1534,17 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       </a>
                     </div>
 
-                    {/* Main Obey Voice Accent & Gender */}
+                    {/* Main Obey Vapi Voice Selection */}
                     <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-                        🎙️ Main Obey Voice Accent & Gender
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          🎙️ Main Obey Voice (Vapi / Cartesia / ElevenLabs)
+                        </label>
+                        <span className="text-[10px] text-emerald-400 font-medium">Real-Time Sub-400ms Audio</span>
+                      </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {[
-                          { id: "nigerian_male", flag: "🇳🇬", label: "Nigerian Male (Default)", desc: "Warm Executive Brother" },
-                          { id: "nigerian_female", flag: "🇳🇬", label: "Nigerian Female", desc: "Warm Sister / Lady" },
-                          { id: "british_male", flag: "🇬🇧", label: "British Male", desc: "Crisp & Executive" },
-                          { id: "british_female", flag: "🇬🇧", label: "British Female", desc: "Polished & Refined" },
-                          { id: "american_male", flag: "🇺🇸", label: "American Male", desc: "Silicon Valley Tech" },
-                          { id: "american_female", flag: "🇺🇸", label: "American Female", desc: "Friendly & Dynamic" },
-                        ].map((v) => {
-                          const isSelected = (generalKeys.VOICE_ID || "nigerian_male") === v.id;
+                        {VAPI_VOICE_OPTIONS.map((v) => {
+                          const isSelected = (generalKeys.VOICE_ID || "elliot") === v.id;
                           return (
                             <button
                               key={v.id}
@@ -1526,7 +1558,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                             >
                               <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-950 dark:text-white">
                                 <span>{v.flag}</span>
-                                <span>{v.label}</span>
+                                <span>{v.name}</span>
                               </div>
                               <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{v.desc}</p>
                             </button>
@@ -1580,7 +1612,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         value={generalKeys.VOICE_HOTLINE_GREETING || ""}
                         onChange={(e) => setGeneralKeys((prev) => ({ ...prev, VOICE_HOTLINE_GREETING: e.target.value }))}
                         className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-900 dark:text-zinc-200 focus:border-zinc-400 outline-none leading-relaxed transition"
-                        placeholder="Hello Friend! Great to connect with you today! I am Obey, personal executive AI companion to Femi Adeleke. How can I assist you today?"
+                        placeholder="Hello Friend! Great to connect with you today! I am Obey, your personal executive AI companion. How can I assist you today?"
                       />
                     </div>
                   </div>
@@ -1738,6 +1770,43 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                                   </button>
                                 </div>
                               </div>
+
+                              {/* Live Account Credit Balance & Minutes Remaining */}
+                              {prov.creditsRemaining !== undefined ? (
+                                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${
+                                      (prov.creditsRemaining ?? 10) > 3 ? "bg-emerald-400" : (prov.creditsRemaining ?? 10) > 1 ? "bg-amber-400" : "bg-red-400"
+                                    } animate-pulse`} />
+                                    <span className="font-bold text-zinc-200">
+                                      💳 Credit Remaining: ${(prov.creditsRemaining ?? 10).toFixed(2)} / $10.00
+                                    </span>
+                                    <span className="text-[11px] text-zinc-400">
+                                      (~{prov.talkMinutes ?? Math.floor(((prov.creditsRemaining ?? 10) / 0.08))} mins talk time)
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-zinc-500">
+                                      {prov.totalCalls ?? 0} calls completed (${((prov.creditsSpent ?? 0)).toFixed(2)} spent)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCheckVapiCredits(prov.id, prov.apiKey)}
+                                      className="text-[10px] text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer"
+                                    >
+                                      Refresh Balance
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/40 border border-zinc-800/80 text-[11px] text-zinc-400">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>$10.00 Free Credits Included (~125 calling mins)</span>
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500">Click &quot;Test Vapi Key&quot; to fetch live balance</span>
+                                </div>
+                              )}
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 <div>

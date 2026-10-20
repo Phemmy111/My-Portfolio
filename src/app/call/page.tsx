@@ -1673,7 +1673,7 @@ function CallInterface() {
             <span>
               {bizInfo?.name
                 ? `${bizInfo.name} AI Hotline`
-                : "Femi Adeleke's AI Voice Assistant"}
+                : "Obey AI Voice Assistant"}
             </span>
           </div>
 
@@ -1687,9 +1687,9 @@ function CallInterface() {
 
           <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
             {callStatus === "idle" &&
-              "Tap the microphone below to begin your completely free live voice call."}
+              "Tap Start Voice Call below to begin your real-time conversation with Obey."}
             {callStatus === "connecting" &&
-              "Connecting to Obey Free Voice Engine..."}
+              "Connecting to Obey AI Voice..."}
             {callStatus === "active" &&
               (isSpeaking
                 ? "🎙️ Obey is speaking..."
@@ -1818,7 +1818,7 @@ function CallInterface() {
                 <MessageSquare size={12} />
                 <span>Live Spoken Transcript</span>
               </div>
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Free Voice</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">Live Audio</span>
             </div>
             {transcripts.slice(-3).map((t, idx) => (
               <p key={idx} className="text-xs leading-relaxed">
@@ -1832,33 +1832,6 @@ function CallInterface() {
                 <span className="text-zinc-800 dark:text-zinc-200">{t.text}</span>
               </p>
             ))}
-          </div>
-        )}
-
-        {/* Tap-to-Speak (Push-to-Talk) Button: Guarantees speech works on all mobile devices and inside WhatsApp webviews */}
-        {callStatus === "active" && (
-          <div className="w-full max-w-md mx-auto mb-3 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={isRecordingSnippet ? stopSnippetRecording : startSnippetRecording}
-              disabled={isSpeaking || isThinking || isTranscribingSnippet}
-              className={`w-full py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
-                isRecordingSnippet
-                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse ring-4 ring-red-500/30 scale-[1.02]"
-                  : isTranscribingSnippet
-                  ? "bg-purple-600 text-white animate-pulse cursor-wait"
-                  : "bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-[1.01]"
-              } disabled:opacity-40`}
-            >
-              <Mic size={16} />
-              <span>
-                {isRecordingSnippet
-                  ? "🔴 Speaking... Tap here to Send"
-                  : isTranscribingSnippet
-                  ? "⏳ Transcribing your speech..."
-                  : "🎙️ Tap to Speak (Instant Audio)"}
-              </span>
-            </button>
           </div>
         )}
 
@@ -2023,8 +1996,8 @@ function CallInterface() {
             </p>
             <p className="text-[11px] text-zinc-400">
               {inputPhone || rawPhone
-                ? `The summary transcript is being sent to your WhatsApp (+${inputPhone || rawPhone}) and Femi Adeleke.`
-                : `The call summary has been archived and dispatched to Femi Adeleke.`}
+                ? `The summary transcript is being sent to your WhatsApp (+${inputPhone || rawPhone}) and your executive dashboard.`
+                : `The call summary has been archived and dispatched to your executive dashboard.`}
             </p>
           </div>
         )}
@@ -2226,7 +2199,7 @@ function CallInterface() {
       {/* Footer Info */}
       <footer className="px-6 py-4 text-center border-t border-zinc-900 text-zinc-500 text-xs flex items-center justify-center gap-2">
         <Sparkles size={14} className="text-emerald-500" />
-        <span>Powered by Obey Native Voice Engine · 100% Free Forever</span>
+        <span>Powered by Obey AI Voice Engine · Ultra-Low Latency Conversational WebRTC</span>
       </footer>
     </div>
   );

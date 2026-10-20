@@ -26,7 +26,33 @@ export interface VapiProviderConfig {
   assistantId?: string;
   phoneNumberId?: string;
   enabled: boolean;
+  creditsRemaining?: number;
+  creditsSpent?: number;
+  totalCalls?: number;
+  talkMinutes?: number;
+  lastChecked?: number;
 }
+
+export interface VapiVoiceOption {
+  id: string;
+  name: string;
+  provider: "vapi" | "cartesia" | "11labs" | "openai";
+  voiceId: string;
+  model?: string;
+  flag: string;
+  gender: "male" | "female";
+  desc: string;
+}
+
+export const VAPI_VOICE_OPTIONS: VapiVoiceOption[] = [
+  { id: "elliot", name: "Elliot (Default)", provider: "vapi", voiceId: "Elliot", flag: "🇳🇬", gender: "male", desc: "Warm Executive Brother (Vapi v2)" },
+  { id: "george", name: "George", provider: "cartesia", voiceId: "bd4476bf-7e94-4d80-b286-63e8a4768228", model: "sonic-english", flag: "🇬🇧", gender: "male", desc: "Ultra-Fast Sonic Executive (90ms TTFB)" },
+  { id: "sarah", name: "Sarah", provider: "cartesia", voiceId: "694f9389-aac1-45b6-b726-9d9369183238", model: "sonic-english", flag: "🇺🇸", gender: "female", desc: "Empathetic, Polished Sister" },
+  { id: "callum", name: "Callum", provider: "11labs", voiceId: "N2lVS1w4EtoT3dr4eOWO", model: "eleven_turbo_v2_5", flag: "🇳🇬", gender: "male", desc: "Charismatic & Street-Smart Brother" },
+  { id: "brian", name: "Brian", provider: "11labs", voiceId: "nPczCjzI2devNBz1zQrb", model: "eleven_turbo_v2_5", flag: "🇬🇧", gender: "male", desc: "Deep, Authoritative Executive" },
+  { id: "alloy", name: "Alloy", provider: "openai", voiceId: "alloy", flag: "🇺🇸", gender: "male", desc: "Balanced Conversational Tech" },
+];
+
 
 export const KNOWN_KEYS = [
   "AI_PROVIDERS_POOL",
