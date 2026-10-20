@@ -251,6 +251,32 @@ export function extractArtifactBlocks(text: string): Array<{
     });
   }
 
+  // Fallback 1: Markdown code block containing HTML or complete document
+  if (artifacts.length === 0 && text) {
+    const codeMatch = text.match(/```(?:html|xml)?\s*([\s\S]*?)```/i);
+    if (codeMatch && (codeMatch[1].includes("<!DOCTYPE") || codeMatch[1].includes("<html") || codeMatch[1].includes("<body") || codeMatch[1].includes("<div"))) {
+      artifacts.push({
+        identifier: `art-${Date.now()}`,
+        type: "html",
+        title: "Interactive Web Application",
+        content: codeMatch[1].trim(),
+      });
+    }
+  }
+
+  // Fallback 2: Raw <!DOCTYPE html> ... </html>
+  if (artifacts.length === 0 && text) {
+    const docTypeMatch = text.match(/<!DOCTYPE\s+html[\s\S]*?(?:<\/html>|$)/i);
+    if (docTypeMatch) {
+      artifacts.push({
+        identifier: `art-${Date.now()}`,
+        type: "html",
+        title: "Interactive Web Application",
+        content: docTypeMatch[0].trim(),
+      });
+    }
+  }
+
   return artifacts;
 }
 
@@ -261,7 +287,9 @@ export function extractArtifactBlocks(text: string): Array<{
  */
 export function stripArtifactBlocks(text: string): string {
   if (!text) return "";
-  return text
-    .replace(/<artifact\b[^>]*>[\s\S]*?(?:<\/artifact>|$)/gi, "")
-    .trim();
+  let clean = text.replace(/<artifact\b[^>]*>[\s\S]*?(?:<\/artifact>|$)/gi, "").trim();
+  clean = clean.replace(/```(?:html|xml)?\s*<!DOCTYPE[\s\S]*?```/gi, "").trim();
+  clean = clean.replace(/<!DOCTYPE\s+html[\s\S]*?(?:<\/html>|$)/gi, "").trim();
+  return clean.trim();
 }
+
