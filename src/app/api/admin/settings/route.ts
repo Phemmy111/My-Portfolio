@@ -54,21 +54,80 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 1c. Test Vapi Connection
+    // 1c. Test Vapi Connection & Auto-Provision Obey Assistant
     if (body.action === "test_vapi") {
-      const { apiKey } = body;
+      const { apiKey, assistantId, autoProvision } = body;
       if (!apiKey?.trim()) {
-        return NextResponse.json({ success: false, error: "Vapi API Key is required" });
+        return NextResponse.json({ success: false, error: "Vapi Private API Key is required" });
       }
       try {
         const res = await fetch("https://api.vapi.ai/assistant", {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
         });
-        if (res.ok) {
-          return NextResponse.json({ success: true, message: "Connected to Vapi.ai successfully! Ready for voice calling." });
+        if (!res.ok) {
+          const err = await res.text();
+          return NextResponse.json({ success: false, error: `Vapi HTTP ${res.status}: ${err.slice(0, 100)}` });
         }
-        const err = await res.text();
-        return NextResponse.json({ success: false, error: `Vapi HTTP ${res.status}: ${err.slice(0, 100)}` });
+
+        const assistants = await res.json();
+        let targetAssistantId = assistantId?.trim() || "";
+
+        // If no assistantId provided or autoProvision requested, find or create Obey assistant
+        if (!targetAssistantId || autoProvision) {
+          const existing = Array.isArray(assistants) ? assistants.find((a: any) => a.name?.toLowerCase().includes("obey")) : null;
+          if (existing) {
+            targetAssistantId = existing.id;
+          } else {
+            // Auto-create Obey assistant with optimal cost & webhook
+            const createRes = await fetch("https://api.vapi.ai/assistant", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey.trim()}`,
+              },
+              body: JSON.stringify({
+                name: "Obey Assistant · Femi Adeleke AI",
+                firstMessage: "Hello! I am Obey, your AI executive companion. Great to have you on the line! How can I assist you today?",
+                model: {
+                  provider: "openai",
+                  model: "gpt-4o-mini",
+                  messages: [
+                    {
+                      role: "system",
+                      content: `You are Obey, an ultra-intelligent, magnetic, witty, sarcastic, and deeply empathetic AI voice companion engineered by Femi Adeleke.\nBe charismatic, warm, conversational, and helpful. Keep responses concise (1 to 2 spoken sentences) and natural.`
+                    }
+                  ],
+                  temperature: 0.7
+                },
+                voice: {
+                  provider: "vapi",
+                  voiceId: "Elliot",
+                  version: "2"
+                },
+                transcriber: {
+                  provider: "soniox",
+                  model: "stt-rt-v5",
+                  language: "en"
+                },
+                serverUrl: "https://femiadelekeportfolio.vercel.app/api/obey/calls/webhook",
+                serverMessages: ["end-of-call-report", "status-update", "transcript"],
+                recordingEnabled: true
+              })
+            });
+            if (createRes.ok) {
+              const newA = await createRes.json();
+              targetAssistantId = newA.id;
+            }
+          }
+        }
+
+        return NextResponse.json({
+          success: true,
+          assistantId: targetAssistantId,
+          message: targetAssistantId
+            ? `Connected successfully! Obey assistant (${targetAssistantId.slice(0, 8)}...) ready.`
+            : "Connected to Vapi.ai successfully! Ready for voice calling.",
+        });
       } catch (e: any) {
         return NextResponse.json({ success: false, error: e.message });
       }

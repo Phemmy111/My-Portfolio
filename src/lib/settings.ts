@@ -22,6 +22,7 @@ export interface VapiProviderConfig {
   id: string;
   name: string;
   apiKey: string;
+  publicKey?: string;
   assistantId?: string;
   phoneNumberId?: string;
   enabled: boolean;

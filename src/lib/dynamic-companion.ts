@@ -1126,6 +1126,7 @@ CRITICAL REQUIREMENTS:
 ...complete updated runnable code with "${changes}" applied...
 </artifact>
 After closing </artifact>, provide a 1-sentence executive summary of the changes made (do NOT include "Brief confirmation message:" or similar label).`;
+    } else {
       const title = decision.action_params?.website_title || "Interactive Web Page";
       const specs = decision.action_params?.website_specs || userText;
       const isBackendOrApi = /\b(backend|api|server|endpoint|database|postgres|neon|sql|node|express|next\.js route|webhook|fullstack|rest api|crud)\b/i.test((specs || "") + " " + userText);

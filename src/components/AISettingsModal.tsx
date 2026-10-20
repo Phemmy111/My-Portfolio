@@ -107,6 +107,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       id: `vapi-${Date.now()}`,
       name: `Vapi Account ${vapiPool.length + 1} ($10 Free)`,
       apiKey: "",
+      publicKey: "",
       assistantId: "",
       phoneNumberId: "",
       enabled: true,
@@ -132,15 +133,18 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     setVapiPool(next);
   };
 
-  const handleTestVapi = async (id: string, apiKey: string) => {
+  const handleTestVapi = async (id: string, apiKey: string, assistantId?: string) => {
     setTestResults((prev) => ({ ...prev, [id]: { testing: true } }));
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test_vapi", apiKey }),
+        body: JSON.stringify({ action: "test_vapi", apiKey, assistantId, autoProvision: true }),
       });
       const data = await res.json();
+      if (data.success && data.assistantId) {
+        updateVapiProvider(id, { assistantId: data.assistantId });
+      }
       setTestResults((prev) => ({
         ...prev,
         [id]: {
@@ -1735,10 +1739,10 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 <div>
                                   <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                                    Vapi API Key (Private Key) *
+                                    Private API Key *
                                   </label>
                                   <input
                                     type="password"
@@ -1751,13 +1755,26 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
                                 <div>
                                   <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                                    Assistant ID (Optional)
+                                    Public Key (WebRTC) *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={prov.publicKey || ""}
+                                    onChange={(e) => updateVapiProvider(prov.id, { publicKey: e.target.value })}
+                                    placeholder="From Vapi Dashboard"
+                                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    Assistant ID (Auto-fills on Test)
                                   </label>
                                   <input
                                     type="text"
                                     value={prov.assistantId || ""}
                                     onChange={(e) => updateVapiProvider(prov.id, { assistantId: e.target.value })}
-                                    placeholder="Leave blank for auto Obey companion"
+                                    placeholder="Auto-provisioned on Test"
                                     className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
                                   />
                                 </div>
@@ -1770,7 +1787,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                                     type="text"
                                     value={prov.phoneNumberId || ""}
                                     onChange={(e) => updateVapiProvider(prov.id, { phoneNumberId: e.target.value })}
-                                    placeholder="From Vapi phone numbers tab"
+                                    placeholder="For PSTN direct dial"
                                     className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-rose-500 focus:outline-none text-zinc-900 dark:text-white font-mono"
                                   />
                                 </div>
@@ -1779,7 +1796,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                               <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
                                 <button
                                   type="button"
-                                  onClick={() => handleTestVapi(prov.id, prov.apiKey)}
+                                  onClick={() => handleTestVapi(prov.id, prov.apiKey, prov.assistantId)}
                                   disabled={!prov.apiKey || result?.testing}
                                   className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold flex items-center gap-1.5 transition-all disabled:opacity-40"
                                 >

@@ -1324,10 +1324,10 @@ function CallInterface() {
 
         vapi.on("message", (msg: any) => {
           if (msg.type === "transcript" && msg.transcript) {
-            const role = msg.role === "assistant" ? "assistant" : "user";
+            const role: "user" | "assistant" = msg.role === "assistant" ? "assistant" : "user";
             if (msg.transcriptType === "final") {
               setTranscripts((prev) => {
-                const next = [...prev, { role, text: msg.transcript, timestamp: Date.now() }];
+                const next: TranscriptMessage[] = [...prev, { role, text: String(msg.transcript) }];
                 transcriptsRef.current = next;
                 return next;
               });
