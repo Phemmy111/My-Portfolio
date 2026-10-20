@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {
@@ -735,7 +734,7 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Resolve Workspace by Evolution instance name or connected bot phone
-  const isMainObeyInstance = !instanceName || instanceName === "obey" || instanceName === "default" || instanceName === "obey_default";
+  let isMainObeyInstance = !instanceName || instanceName === "obey" || instanceName === "default" || instanceName === "obey_default";
   let currentWs: any = null;
   if (!isMainObeyInstance) {
     currentWs = await dbGetWorkspaceByInstanceName(instanceName);
@@ -745,7 +744,37 @@ async function processMessage(params: ProcessMessageParams) {
     if (!currentWs) {
       currentWs = await dbGetWorkspaceBySlug(instanceName.replace(/^obey-/, ""));
     }
-  } else {
+  }
+
+  // Multi-tenant Isolation Guard:
+  // If the sender is NOT Femi himself, verify if this contact is bound to a specific business workspace
+  // (e.g. if an instance identifier was missing or misrouted).
+  // A contact chatting with a business bot (e.g. AutoLearn Spot) must NEVER bleed into Main Obey.
+  if (replyTo !== FEMI_PERSONAL_NUMBER && (!currentWs || isMainObeyInstance)) {
+    try {
+      if (sql) {
+        const affinity = await sql`
+          SELECT workspace_id FROM workspace_leads
+          WHERE (phone = ${replyTo} OR phone LIKE ${`%${replyTo.slice(-10)}`})
+            AND workspace_id IS NOT NULL
+            AND workspace_id != 'ws_femi_default'
+          ORDER BY updated_at DESC LIMIT 1
+        `;
+        if (affinity && affinity.length > 0 && affinity[0].workspace_id) {
+          const matchedWs = await dbGetWorkspaceById(affinity[0].workspace_id);
+          if (matchedWs) {
+            console.log(`[Tenant Isolation] Contact ${replyTo} belongs to ${matchedWs.name} (${matchedWs.id}). Enforcing workspace boundary.`);
+            currentWs = matchedWs;
+            isMainObeyInstance = false;
+          }
+        }
+      }
+    } catch (affinityErr) {
+      console.warn("[Tenant Isolation] Affinity check failed:", affinityErr);
+    }
+  }
+
+  if (isMainObeyInstance && !currentWs) {
     currentWs = (await dbGetWorkspaceById("ws_femi_default")) || (await dbGetWorkspaceBySlug("femi-adeleke"));
   }
 
@@ -1754,30 +1783,24 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
 
   // 6. Direct Database lookup by Evolution UUID
   const detectedInstanceId = body?.instanceId || body?.data?.instanceId || msgObj?.instanceId || "";
-  if (!instanceName || instanceName === "obey" || instanceName === "default") {
-    if (detectedInstanceId === "6acca55e-e17a-4116-af24-585cd0d5161b" || connectedOwner.endsWith("9074027451")) {
-      instanceName = "obey-autolearn-spot";
-    } else if (detectedInstanceId && sql) {
-      try {
-        const evoInst = await sql`
-          SELECT name FROM evolution."Instance" WHERE id = ${detectedInstanceId} LIMIT 1
-        `;
-        if (evoInst && evoInst.length > 0 && evoInst[0].name) {
-          instanceName = evoInst[0].name;
-        }
-      } catch {}
-    }
-  }
-
-  if (!instanceName) {
-    instanceName = "obey";
+  if (detectedInstanceId && sql) {
+    try {
+      const evoInst = await sql`
+        SELECT name FROM evolution."Instance" WHERE id = ${detectedInstanceId} LIMIT 1
+      `;
+      if (evoInst && evoInst.length > 0 && evoInst[0].name) {
+        instanceName = evoInst[0].name;
+      }
+    } catch {}
   }
 
   // Bulletproof mapping: If connected bot number is 09074027451 or instance hints match AutoLearn Spot
   if (
+    detectedInstanceId === "38da4e73-256d-4f8e-b7bd-de6db3b51e5e" ||
     detectedInstanceId === "6acca55e-e17a-4116-af24-585cd0d5161b" ||
     connectedOwner.endsWith("9074027451") ||
     instanceName.toLowerCase().includes("autolearn") ||
+    instanceName === "38da4e73-256d-4f8e-b7bd-de6db3b51e5e" ||
     instanceName === "6acca55e-e17a-4116-af24-585cd0d5161b"
   ) {
     instanceName = "obey-autolearn-spot";
@@ -1786,6 +1809,10 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
     connectedOwner.endsWith("9161488564") ||
     instanceName === "f3fd36fd-b59c-462d-863d-01eaf4c8c190"
   ) {
+    instanceName = "obey";
+  }
+
+  if (!instanceName) {
     instanceName = "obey";
   }
 
