@@ -353,6 +353,10 @@ function CallInterface() {
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const snippetRecorderRef = useRef<MediaRecorder | null>(null);
   const snippetChunksRef = useRef<Blob[]>([]);
+  const isRecordingSnippetRef = useRef<boolean>(false);
+  const isTranscribingSnippetRef = useRef<boolean>(false);
+  const vadSilenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const vadSpeechStartTimeRef = useRef<number>(0);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve) => {
@@ -366,7 +370,16 @@ function CallInterface() {
   };
 
   const startSnippetRecording = () => {
-    if (!mediaStreamRef.current || !isCallActiveRef.current) return;
+    if (
+      !mediaStreamRef.current ||
+      !isCallActiveRef.current ||
+      isRecordingSnippetRef.current ||
+      isTranscribingSnippetRef.current ||
+      isSpeakingRef.current ||
+      isThinkingRef.current
+    ) {
+      return;
+    }
     try {
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch {}
@@ -375,6 +388,8 @@ function CallInterface() {
       const mimeType =
         typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
+          : typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
           : "";
       const recorder = new MediaRecorder(mediaStreamRef.current, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = (e) => {
@@ -382,16 +397,31 @@ function CallInterface() {
       };
       recorder.start(250);
       snippetRecorderRef.current = recorder;
+      isRecordingSnippetRef.current = true;
       setIsRecordingSnippet(true);
+      vadSpeechStartTimeRef.current = Date.now();
     } catch (e) {
       console.warn("Failed to start snippet recording:", e);
     }
   };
 
   const stopSnippetRecording = async () => {
-    if (!snippetRecorderRef.current) return;
+    if (!snippetRecorderRef.current || isTranscribingSnippetRef.current) return;
+    const duration = Date.now() - (vadSpeechStartTimeRef.current || 0);
+    // Ignore micro-noises under 500ms
+    if (duration < 500 && snippetChunksRef.current.length === 0) {
+      try { snippetRecorderRef.current.stop(); } catch {}
+      snippetRecorderRef.current = null;
+      isRecordingSnippetRef.current = false;
+      setIsRecordingSnippet(false);
+      return;
+    }
+
+    isRecordingSnippetRef.current = false;
     setIsRecordingSnippet(false);
+    isTranscribingSnippetRef.current = true;
     setIsTranscribingSnippet(true);
+
     try {
       await new Promise<void>((resolve) => {
         if (!snippetRecorderRef.current) return resolve();
@@ -408,20 +438,23 @@ function CallInterface() {
 
       if (snippetChunksRef.current.length > 0) {
         const blob = new Blob(snippetChunksRef.current, { type: snippetRecorderRef.current?.mimeType || "audio/webm" });
-        const base64 = await blobToBase64(blob);
-        const res = await fetch("/api/obey/calls/transcribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ audioBase64: base64, mimeType: blob.type }),
-        });
-        const data = await res.json();
-        if (data.success && data.text) {
-          processUserVoiceStatement(data.text);
+        if (blob.size > 300) {
+          const base64 = await blobToBase64(blob);
+          const res = await fetch("/api/obey/calls/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audioBase64: base64, mimeType: blob.type }),
+          });
+          const data = await res.json();
+          if (data.success && data.text && data.text.trim()) {
+            processUserVoiceStatement(data.text.trim());
+          }
         }
       }
     } catch (e) {
       console.warn("Snippet transcription error:", e);
     } finally {
+      isTranscribingSnippetRef.current = false;
       setIsTranscribingSnippet(false);
       snippetRecorderRef.current = null;
       if (isCallActiveRef.current && !isSpeakingRef.current && !isThinkingRef.current) {
@@ -698,6 +731,51 @@ function CallInterface() {
         const avg = sum / bufferLength;
         const normalized = Math.min(1, avg / 90);
         setVolumeLevel(normalized);
+
+        // Hands-Free Mobile Voice Activity Detection (VAD)
+        // Seamlessly captures user voice on mobile devices without requiring manual record button taps
+        if (
+          isCallActiveRef.current &&
+          !isSpeakingRef.current &&
+          !isThinkingRef.current &&
+          !isMutedRef.current
+        ) {
+          if (normalized > 0.16) {
+            // User is actively speaking
+            if (vadSilenceTimerRef.current) {
+              clearTimeout(vadSilenceTimerRef.current);
+              vadSilenceTimerRef.current = null;
+            }
+            if (!isRecordingSnippetRef.current && !isTranscribingSnippetRef.current) {
+              startSnippetRecording();
+            }
+          } else if (isRecordingSnippetRef.current) {
+            // User paused speaking; debounce silence before concluding utterance
+            if (!vadSilenceTimerRef.current) {
+              vadSilenceTimerRef.current = setTimeout(() => {
+                vadSilenceTimerRef.current = null;
+                if (
+                  isCallActiveRef.current &&
+                  isRecordingSnippetRef.current &&
+                  !isSpeakingRef.current &&
+                  !isThinkingRef.current
+                ) {
+                  stopSnippetRecording();
+                }
+              }, 1100);
+            }
+          }
+        } else if (isRecordingSnippetRef.current && (isSpeakingRef.current || isThinkingRef.current)) {
+          if (vadSilenceTimerRef.current) {
+            clearTimeout(vadSilenceTimerRef.current);
+            vadSilenceTimerRef.current = null;
+          }
+          try {
+            snippetRecorderRef.current?.stop();
+          } catch {}
+          isRecordingSnippetRef.current = false;
+          setIsRecordingSnippet(false);
+        }
 
         animFrameRef.current = requestAnimationFrame(renderVolume);
       };

@@ -68,12 +68,22 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     try {
       // 1. Google Gemini (Multimodal Native: Audio, Images, Documents, Text)
       if (p.provider === "gemini") {
+        const isAudioMedia = Boolean(mediaBase64 && mimeType?.startsWith("audio/"));
         const targetModel = p.model?.trim() || "gemini-3.8-flash";
-        const candidateModels = [
-          targetModel,
-          "gemini-3.8-flash",
-          "gemini-flash-latest",
-        ];
+        const candidateModels = isAudioMedia
+          ? [
+              "gemini-3.8-flash",
+              "gemini-3.5-transcribe",
+              "gemini-3.5-flash",
+              "gemini-flash-latest",
+              targetModel,
+            ]
+          : [
+              targetModel,
+              "gemini-3.8-flash",
+              "gemini-flash-latest",
+              "gemini-3.5-flash",
+            ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
         // Build user parts (with media if present)
@@ -90,12 +100,14 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
         }
         userParts.push({ text: userPrompt });
 
+        const requestTimeout = mediaBase64 ? 14000 : 7000;
+
         for (const m of uniqueModels) {
           try {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${p.apiKey.trim()}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              signal: AbortSignal.timeout(7000),
+              signal: AbortSignal.timeout(requestTimeout),
               body: JSON.stringify({
                 contents: [{ role: "user", parts: userParts }],
                 systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -345,8 +357,15 @@ export async function transcribeAudio(
     });
 
     const transcript = res.text.trim().replace(/^["']|["']$/g, "");
-    if (!transcript || transcript.toLowerCase().includes("[unclear audio]")) {
-      return { text: "", success: false, error: "Audio was unclear or silent" };
+    // Guard: deterministic fallback or busy messages must NEVER masquerade as user voice transcript
+    if (
+      res.provider?.includes("Deterministic") ||
+      transcript.includes("Please, I am busy right now") ||
+      transcript.includes("Check back with me later") ||
+      !transcript ||
+      transcript.toLowerCase().includes("[unclear audio]")
+    ) {
+      return { text: "", success: false, error: "Audio was unclear, silent, or transcription engine unavailable" };
     }
 
     return { text: transcript, success: true };

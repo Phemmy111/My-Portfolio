@@ -105,9 +105,11 @@ function stripAudioStageDirections(text: string): string {
   if (!text) return "";
   return text
     // Strip meta audio disclaimers and stage directions in brackets/parentheses
-    .replace(/\s*\*?\s*\([^)]*(?:audio|voice|vn|dispatched|generating|record|speaking)[^)]*\)\s*\*?/gi, "")
-    .replace(/\s*\*?\s*\[[^\]]*(?:audio|voice|vn|dispatched|generating|record|speaking)[^\]]*\]\s*\*?/gi, "")
-    .replace(/\s*\*(?:Audio note dispatched[^*]*|Audio generating[^*]*)\*\s*/gi, "")
+    .replace(/\s*\*?\s*\([^)]*(?:audio|voice|vn|dispatched|generating|record|speaking|note|sent|attach|deliver)[^)]*\)\s*\*?/gi, "")
+    .replace(/\s*\*?\s*\[[^\]]*(?:audio|voice|vn|dispatched|generating|record|speaking|note|sent|attach|deliver)[^\]]*\]\s*\*?/gi, "")
+    .replace(/\s*\*(?:Audio|Voice|VN)[^*]*(?:generating|dispatched|sent|recording)[^*]*\*\s*/gi, "")
+    .replace(/^\s*\*?\([^)]+\)\*?\s*/g, "")
+    .replace(/\s*\*?\([^)]+\)\*?\s*$/g, "")
     .trim();
 }
 
@@ -751,7 +753,7 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Helper: synthesize & send native WhatsApp Voice Note (PTT) + companion text
-  async function replyVoiceNote(spokenText: string, companionText?: string) {
+  async function replyVoiceNote(spokenText: string, companionText?: string, suppressCompanionText: boolean = false) {
     const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
     let voiceSent = false;
     const cleanSpoken = stripAudioStageDirections(spokenText);
@@ -778,8 +780,8 @@ async function processMessage(params: ProcessMessageParams) {
 
     // Deliver accompanying text record if:
     // 1. Voice synthesis/dispatch failed (so user gets their answer as text fallback)
-    // 2. OR companion text has substantial extra details beyond the spoken excerpt (e.g. detailed documents, lists, links)
-    const isLongCompanion = cleanCompanion && cleanCompanion.length > cleanSpoken.length + 40;
+    // 2. OR companion text has substantial extra details beyond the spoken excerpt AND companion text is not explicitly suppressed
+    const isLongCompanion = !suppressCompanionText && cleanCompanion && cleanCompanion.length > cleanSpoken.length + 40;
     if (!voiceSent || isLongCompanion) {
       if (cleanCompanion) {
         await reply(cleanCompanion);
@@ -1531,7 +1533,8 @@ How can I help you today?`;
     /^\s*(?:send\s+it\s+as\s+vn|send\s+as\s+vn|make\s+it\s+vn|in\s+vn|as\s+vn|voice\s*note|vn)\s*[.!?]?\s*$/i.test(userText);
 
   if (isResendAsVN && pastMessages && pastMessages.length > 0) {
-    const lastAssistantMsg = pastMessages.find(
+    // Find the latest assistant message by searching backwards from the end of history
+    const lastAssistantMsg = [...pastMessages].reverse().find(
       (m) => m.role === "assistant" && m.content && !m.content.startsWith("🎙️")
     );
     if (lastAssistantMsg && lastAssistantMsg.content.trim()) {
@@ -1542,10 +1545,7 @@ How can I help you today?`;
           ? cleanContent
           : sentences.slice(0, 2).join(" ");
 
-      const voiceSent = await replyVoiceNote(spokenExcerpt, cleanContent);
-      if (!voiceSent) {
-        await reply(cleanContent);
-      }
+      await replyVoiceNote(spokenExcerpt, cleanContent, true);
       return;
     }
   }
