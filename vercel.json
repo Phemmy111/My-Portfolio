@@ -8,10 +8,6 @@
     {
       "path": "/api/obey/cron?type=evening",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/obey/cron?type=pulse",
-      "schedule": "*/15 * * * *"
     }
   ]
 }
