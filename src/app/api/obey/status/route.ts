@@ -16,6 +16,9 @@ import {
 } from "@/lib/whatsapp-gateway";
 import { getSetting, setSetting } from "@/lib/settings";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

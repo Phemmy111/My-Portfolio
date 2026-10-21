@@ -28,6 +28,7 @@ export async function dispatchDueScheduledStatuses(): Promise<{
           mediaType: item.media_type === "video" ? "video" : item.media_type === "image" ? "image" : undefined,
           instanceName,
           backgroundColor: item.background_color || "#075E54",
+          textColor: item.text_color || "#FFFFFF",
           font: item.font || 1,
         });
 

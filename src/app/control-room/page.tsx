@@ -1257,7 +1257,13 @@ function ControlRoomContent() {
         }),
       });
 
-      const data = await res.json();
+      let data: any;
+      try {
+        const rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        data = { error: res.ok ? "Unexpected response from server" : `Server returned HTTP ${res.status}. The status may have been posted — please check your WhatsApp Status and refresh.` };
+      }
       if (!res.ok || !data.success) {
         let rawErr = data.message || data.error || "Failed to process status";
         if (rawErr.includes("502") || rawErr.includes("Bad Gateway") || rawErr.includes("<!DOCTYPE")) {
@@ -3997,9 +4003,10 @@ function ControlRoomContent() {
                             )
                           ) : (
                             <p
-                              className={`text-white text-xs sm:text-sm leading-relaxed whitespace-pre-line ${
+                              className={`text-xs sm:text-sm leading-relaxed whitespace-pre-line ${
                                 WHATSAPP_STATUS_FONTS.find((f) => f.id === selectedStatusFont)?.fontClass || "font-sans"
                               }`}
+                              style={{ color: selectedStatusTextColor || "#FFFFFF" }}
                             >
                               {statusContent || "Type your status above or click AI Generate to preview your story here..."}
                             </p>

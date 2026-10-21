@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse, after } from "next/server";
-
-export const dynamic = "force-dynamic";
-
 import { executeAICompletion, transcribeAudio, executeAICompletionWithMedia } from "@/lib/ai-orchestrator";
 import {
   sql,
@@ -80,6 +77,7 @@ import {
 
 // Tell Next.js to use the Edge-compatible streaming runtime so we can
 // respond instantly and keep processing in the background.
+export const dynamic = "force-dynamic";
 export const maxDuration = 60; // seconds — Vercel Hobby allows up to 60s on API routes
 
 // Femi's personal WhatsApp number (the one he messages FROM)
@@ -565,12 +563,11 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
    - When a customer asks to talk on the phone, hop on a call, or asks for your voice call link, ALWAYS invite them warmly and share the link: "You can speak with me directly on a live voice call right now! Tap here to start: ${voiceCallLink}"
    - NEVER say you are only text-based or don't have a phone/calling feature!
 
-6. BRAND REPRESENTATION & CREATOR INQUIRIES:
-   - You represent "${currentWs.name}" to customers and sell their products/services.
-   - However, if a customer specifically asks about the bot ("Who made you?", "Who built this bot?", "Can I get an AI bot like this for my business?"):
-     * Proudly explain that you are powered by Obey Business AI, engineered by Femi Adeleke (Founder of Obey).
-     * Share the official website homepage link (https://obeyai.vercel.app) and Femi's direct WhatsApp chat link (https://wa.me/2348120934828) for getting their own custom business bot!
-     * Direct Main Obey WhatsApp Number & Link: https://wa.me/2349161488564 (+2349161488564) — share this if anyone wants to chat with or try the flagship personal Main Obey AI assistant directly!
+6. BRAND REPRESENTATION & ISOLATION (STRICT):
+   - You represent "${currentWs.name}" exclusively.
+   - NEVER transfer, redirect, or send customer leads to other bots or external WhatsApp numbers.
+   - If a customer asks about getting an AI assistant or technical setup, keep them within "${currentWs.name}": inform them that ${currentWs.owner_name || "the management"} can assist them with business inquiries.
+   - NEVER share Femi's personal number or redirect customers away from this business.
 
 7. PRIVACY, SECURITY & CHAT CONFIDENTIALITY (STRICT):
    - If a customer asks how you got their number or how this chat appeared on their phone:
@@ -743,34 +740,6 @@ async function processMessage(params: ProcessMessageParams) {
     }
     if (!currentWs) {
       currentWs = await dbGetWorkspaceBySlug(instanceName.replace(/^obey-/, ""));
-    }
-  }
-
-  // Multi-tenant Isolation Guard:
-  // If the sender is NOT Femi himself, verify if this contact is bound to a specific business workspace
-  // (e.g. if an instance identifier was missing or misrouted).
-  // A contact chatting with a business bot (e.g. AutoLearn Spot) must NEVER bleed into Main Obey.
-  if (replyTo !== FEMI_PERSONAL_NUMBER && (!currentWs || isMainObeyInstance)) {
-    try {
-      if (sql) {
-        const affinity = await sql`
-          SELECT workspace_id FROM workspace_leads
-          WHERE (phone = ${replyTo} OR phone LIKE ${`%${replyTo.slice(-10)}`})
-            AND workspace_id IS NOT NULL
-            AND workspace_id != 'ws_femi_default'
-          ORDER BY updated_at DESC LIMIT 1
-        `;
-        if (affinity && affinity.length > 0 && affinity[0].workspace_id) {
-          const matchedWs = await dbGetWorkspaceById(affinity[0].workspace_id);
-          if (matchedWs) {
-            console.log(`[Tenant Isolation] Contact ${replyTo} belongs to ${matchedWs.name} (${matchedWs.id}). Enforcing workspace boundary.`);
-            currentWs = matchedWs;
-            isMainObeyInstance = false;
-          }
-        }
-      }
-    } catch (affinityErr) {
-      console.warn("[Tenant Isolation] Affinity check failed:", affinityErr);
     }
   }
 
