@@ -453,7 +453,7 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
           SELECT 
             phone_number AS contact_id,
             COALESCE(workspace_id, 'ws_femi_default') AS workspace_id,
-            MAX(sender_name) AS sender_name,
+            MAX(CASE WHEN role = 'user' AND sender_name NOT ILIKE '%obey%' THEN sender_name ELSE NULL END) AS sender_name,
             COALESCE(MAX(channel), 'whatsapp') AS channel,
             COUNT(*)::int AS total_messages,
             MAX(created_at) AS last_message_at
@@ -464,7 +464,7 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
         SELECT 
           tg.contact_id,
           tg.workspace_id,
-          COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE tg.workspace_id END) AS workspace_name,
+          COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Obey' ELSE tg.workspace_id END) AS workspace_name,
           tg.sender_name,
           tg.channel,
           tg.total_messages,
@@ -498,7 +498,7 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
         SELECT 
           phone_number AS contact_id,
           COALESCE(workspace_id, 'ws_femi_default') AS workspace_id,
-          MAX(sender_name) AS sender_name,
+          MAX(CASE WHEN role = 'user' AND sender_name NOT ILIKE '%obey%' THEN sender_name ELSE NULL END) AS sender_name,
           COALESCE(MAX(channel), 'whatsapp') AS channel,
           COUNT(*)::int AS total_messages,
           MAX(created_at) AS last_message_at
@@ -508,7 +508,7 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
       SELECT 
         tg.contact_id,
         tg.workspace_id,
-        COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE tg.workspace_id END) AS workspace_name,
+        COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Obey' ELSE tg.workspace_id END) AS workspace_name,
         tg.sender_name,
         tg.channel,
         tg.total_messages,

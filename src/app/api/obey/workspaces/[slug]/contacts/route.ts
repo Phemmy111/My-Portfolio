@@ -269,12 +269,60 @@ export async function POST(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // Determine Evolution API instance name & recipient number
+    let instanceName = ws.whatsapp_instance_name;
+    if (!instanceName || instanceName === "default") {
+      instanceName = slug === "femi-adeleke" ? "obey" : `obey-${slug}`;
+    }
+    const ownerNumber = (ws as any).owner_whatsapp_number || process.env.BOSS_WHATSAPP_NUMBER || "2348120934828";
+    const evoApiUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+
+    // Helper to push contact cards to owner WhatsApp
+    const pushContactCards = async (contactItems: Array<{ phone: string; name?: string | null }>) => {
+      if (!ownerNumber || !contactItems || contactItems.length === 0) return;
+      const cleanOwner = sanitizePhone(ownerNumber);
+      const cards = contactItems.map((c) => {
+        const clean = sanitizePhone(c.phone);
+        return {
+          fullName: c.name || `Contact ${clean.slice(-4)}`,
+          wuid: `${clean}@s.whatsapp.net`,
+          phoneNumber: clean,
+        };
+      });
+
+      for (let i = 0; i < cards.length; i += 5) {
+        const chunk = cards.slice(i, i + 5);
+        try {
+          await fetch(`${evoApiUrl}/message/sendContact/${encodeURIComponent(instanceName)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: evoApiKey,
+            },
+            body: JSON.stringify({
+              number: cleanOwner,
+              contact: chunk,
+            }),
+          });
+        } catch (e) {
+          console.warn("[Contacts API] WhatsApp contact dispatch warning:", e);
+        }
+      }
+    };
+
     // 1. Save all unsaved contacts in 1-click
     if (action === "save_all_unsaved") {
+      const dbLeads = await dbGetWorkspaceLeads(ws.id);
+      const unsavedLeads = dbLeads.filter((l) => !l.is_saved);
       const updated = await dbMarkAllUnsavedLeads(ws.id, true);
+
+      // Asynchronously push all contact cards to owner WhatsApp
+      pushContactCards(unsavedLeads.map((l) => ({ phone: l.phone, name: l.name }))).catch(() => {});
+
       return NextResponse.json({
         success: true,
-        message: `Successfully marked ${updated} unsaved contacts as saved!`,
+        message: `Successfully marked ${updated} unsaved contacts as saved and synced to WhatsApp!`,
         updatedCount: updated,
       });
     }
@@ -286,9 +334,20 @@ export async function POST(
       }
       const shouldSave = is_saved !== undefined ? Boolean(is_saved) : true;
       const updated = await dbMarkLeadsSaved(ws.id, phones, shouldSave);
+
+      if (shouldSave) {
+        const dbLeads = await dbGetWorkspaceLeads(ws.id);
+        const selectedList = dbLeads.filter((l) => phones.includes(l.phone) || phones.includes(sanitizePhone(l.phone)));
+        const fallbackList: Array<{ phone: string; name?: string | null }> = phones.map((p: string) => {
+          const found = selectedList.find((l) => sanitizePhone(l.phone) === sanitizePhone(p));
+          return { phone: p, name: found?.name };
+        });
+        pushContactCards(fallbackList).catch(() => {});
+      }
+
       return NextResponse.json({
         success: true,
-        message: `Updated ${updated} contacts status!`,
+        message: `Updated ${updated} contacts status and synced to WhatsApp!`,
         updatedCount: updated,
       });
     }

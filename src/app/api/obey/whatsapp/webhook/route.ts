@@ -934,16 +934,44 @@ async function processMessage(params: ProcessMessageParams) {
   // Auto-capture non-owner incoming contact into workspace_leads (for auto-saving & status view boost)
   if (!isOwner && currentWs) {
     try {
+      const isAutoSave = currentWs.auto_save_contacts !== false;
+      const contactName = pushName || `WhatsApp User ${replyTo.slice(-4)}`;
       await dbUpsertWorkspaceLead({
         workspace_id: currentWs.id,
         phone: replyTo,
-        name: pushName || `WhatsApp User ${replyTo.slice(-4)}`,
+        name: contactName,
         source: "whatsapp",
-        status: "lead",
+        status: isAutoSave ? "saved" : "lead",
         intent_summary: userText.slice(0, 150),
         last_message: userText,
-        auto_save: currentWs.auto_save_contacts !== false,
+        auto_save: isAutoSave,
+        is_saved: isAutoSave,
       });
+
+      // When auto-save contact is on, automatically send contact card to owner's WhatsApp so their name shows on WhatsApp
+      if (isAutoSave) {
+        const ownerPhone = currentWs.owner_whatsapp_number || process.env.BOSS_WHATSAPP_NUMBER || "2348120934828";
+        const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+        const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+        const inst = currentWs.whatsapp_instance_name || (currentWs.slug === "femi-adeleke" ? "obey" : `obey-${currentWs.slug}`);
+        const cleanRecipient = ownerPhone.replace(/[^0-9]/g, "");
+        const cleanContact = replyTo.replace(/[^0-9]/g, "");
+
+        if (cleanRecipient && cleanContact && cleanRecipient !== cleanContact) {
+          fetch(`${evoUrl}/message/sendContact/${encodeURIComponent(inst)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: evoKey },
+            body: JSON.stringify({
+              number: cleanRecipient,
+              contact: [{
+                fullName: contactName,
+                wuid: `${cleanContact}@s.whatsapp.net`,
+                phoneNumber: cleanContact,
+              }],
+            }),
+          }).catch((e) => console.warn("[WA Auto-Save Contact Push] Warning:", e));
+        }
+      }
     } catch (leadErr) {
       console.warn("[WA] Auto-save contact lead capture error:", leadErr);
     }

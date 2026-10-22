@@ -176,7 +176,7 @@ export default function AdminOmnichannelInbox() {
   });
 
   const getWorkspaceBadge = (wsId?: string, wsName?: string) => {
-    const name = wsName || (wsId === "ws_1792134967173_6ii61" || wsId?.includes("autolearn") ? "AutoLearn Spot" : "Main Obey");
+    const name = wsName || (wsId === "ws_1792134967173_6ii61" || wsId?.includes("autolearn") ? "AutoLearn Spot" : "Obey");
     if (wsId === "ws_1792134967173_6ii61" || wsId?.includes("autolearn") || name.toLowerCase().includes("autolearn")) {
       return (
         <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
@@ -291,7 +291,7 @@ export default function AdminOmnichannelInbox() {
           <div className="flex items-center gap-1 pt-1">
             {[
               { id: "all", label: "All Bots" },
-              { id: "main", label: "⚡ Main Obey" },
+              { id: "main", label: "⚡ Obey" },
               { id: "autolearn", label: "🎓 AutoLearn Spot" },
             ].map((b) => (
               <button
@@ -299,7 +299,7 @@ export default function AdminOmnichannelInbox() {
                 onClick={() => setBotFilter(b.id as any)}
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all ${
                   botFilter === b.id
-                    ? "bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs"
+                    ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-white shadow-xs"
                     : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
                 }`}
               >
@@ -338,7 +338,7 @@ export default function AdminOmnichannelInbox() {
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-bold text-xs text-zinc-950 dark:text-white truncate max-w-[130px]">
-                        {t.sender_name || (t.contact_id.startsWith("web-") ? "Web Visitor" : `+${t.contact_id}`)}
+                        {t.sender_name && !t.sender_name.toLowerCase().includes("obey") ? t.sender_name : (t.contact_id.startsWith("web-") ? "Web Visitor" : `+${t.contact_id}`)}
                       </span>
                       <span className="text-[10px] text-zinc-400">·</span>
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded truncate max-w-[110px] ${
@@ -348,7 +348,7 @@ export default function AdminOmnichannelInbox() {
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25"
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25"
                       }`}>
-                        {t.workspace_name || (t.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Main Obey")}
+                        {t.workspace_name || (t.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Obey")}
                       </span>
                     </div>
                     <span className="text-[10px] text-zinc-400 shrink-0">{formattedTime}</span>
@@ -399,13 +399,13 @@ export default function AdminOmnichannelInbox() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white truncate max-w-[140px] sm:max-w-none">
-                      {selectedThread.sender_name || `+${selectedThread.contact_id}`}
+                      {selectedThread.sender_name && !selectedThread.sender_name.toLowerCase().includes("obey") ? selectedThread.sender_name : `+${selectedThread.contact_id}`}
                     </h4>
                     {getChannelBadge(selectedThread.channel)}
                     {getWorkspaceBadge(selectedThread.workspace_id, selectedThread.workspace_name)}
                   </div>
                   <p className="text-[10px] sm:text-[11px] font-mono text-zinc-500 truncate">
-                    Bot: <strong className="text-zinc-800 dark:text-zinc-200">{selectedThread.workspace_name || (selectedThread.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Main Obey")}</strong> · Contact: +{selectedThread.contact_id}
+                    Bot: <strong className="text-zinc-800 dark:text-zinc-200">{selectedThread.workspace_name || (selectedThread.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Obey")}</strong> · Contact: +{selectedThread.contact_id}
                   </p>
                 </div>
               </div>
@@ -459,7 +459,13 @@ export default function AdminOmnichannelInbox() {
                       >
                         <div className="flex items-center justify-between gap-3 mb-1">
                           <span className={`text-[10px] font-bold ${isUser ? "text-zinc-500" : "text-emerald-200"}`}>
-                            {isUser ? (m.sender_name || "Contact") : "Obey / Femi"}
+                            {isUser
+                              ? (m.sender_name && !m.sender_name.toLowerCase().includes("obey")
+                                  ? m.sender_name
+                                  : (selectedThread?.sender_name && !selectedThread.sender_name.toLowerCase().includes("obey")
+                                      ? selectedThread.sender_name
+                                      : "Contact"))
+                              : (selectedThread?.workspace_name || "Obey")}
                           </span>
                           <span className={`text-[9px] ${isUser ? "text-zinc-400" : "text-emerald-200 opacity-80"}`}>
                             {time}

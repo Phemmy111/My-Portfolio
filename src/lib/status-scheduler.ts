@@ -29,7 +29,7 @@ export async function dispatchDueScheduledStatuses(): Promise<{
           instanceName,
           backgroundColor: item.background_color || "#075E54",
           textColor: item.text_color || "#FFFFFF",
-          font: item.font || 1,
+          font: typeof item.font === "number" ? item.font : 0,
         });
 
         if (res.success) {
