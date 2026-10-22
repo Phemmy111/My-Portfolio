@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<"master" | "inbox" | "leads" | "proposals" | "inquiries" | "obey">("master");
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsModalTab, setSettingsModalTab] = useState<"brain" | "ai" | "phone" | "integrations">("brain");
+  const [settingsModalTab, setSettingsModalTab] = useState<"brain" | "ai" | "image" | "phone" | "integrations">("brain");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navFilter, setNavFilter] = useState("");
 
@@ -474,6 +474,23 @@ export default function AdminDashboardPage() {
               </span>
             </button>
 
+            {/* 3. AI Image Generator Keys */}
+            <button
+              onClick={() => {
+                setSettingsModalTab("image");
+                setShowSettingsModal(true);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100 bg-white dark:bg-[#121212] border border-zinc-300 dark:border-zinc-800 hover:border-pink-500 hover:text-pink-600 dark:hover:text-pink-400 transition group cursor-pointer text-left shadow-2xs"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-pink-600 dark:text-pink-400 shrink-0" />
+                <span>🎨 AI Image Generator</span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40">
+                FLUX/Keys
+              </span>
+            </button>
+
             {/* 3. Client Control Room */}
             <Link
               href="/control-room"
@@ -564,6 +581,15 @@ export default function AdminDashboardPage() {
           >
             <Zap size={12} className="text-emerald-500 inline mr-0.5" />
             AI Keys
+          </button>
+          <button
+            onClick={() => {
+              setSettingsModalTab("image");
+              setShowSettingsModal(true);
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-pink-500/10 text-pink-600 border border-pink-500/30 font-bold"
+          >
+            🎨 Images
           </button>
         </div>
       </header>

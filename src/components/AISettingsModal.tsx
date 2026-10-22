@@ -23,6 +23,7 @@ import {
   Brain,
   MessageCircle,
   PhoneCall,
+  Palette,
 } from "lucide-react";
 import { AIProviderConfig, VapiProviderConfig, VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
@@ -30,7 +31,7 @@ interface AISettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
-  initialTab?: "brain" | "ai" | "phone" | "voice" | "integrations";
+  initialTab?: "brain" | "ai" | "image" | "phone" | "voice" | "integrations";
 }
 
 const PROVIDER_OPTIONS: Array<{
@@ -72,7 +73,7 @@ const PROVIDER_OPTIONS: Array<{
 ];
 
 export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab = "brain" }: AISettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"brain" | "ai" | "phone" | "voice" | "integrations">(initialTab as any);
+  const [activeTab, setActiveTab] = useState<"brain" | "ai" | "image" | "phone" | "voice" | "integrations">(initialTab as any);
   const [providersPool, setProvidersPool] = useState<AIProviderConfig[]>([]);
   const [vapiPool, setVapiPool] = useState<VapiProviderConfig[]>([]);
   const [generalKeys, setGeneralKeys] = useState<Record<string, string>>({
@@ -92,6 +93,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     VOICE_ID: "nigerian_male",
     VOICE_PERSONALITY: "friendly",
     VOICE_HOTLINE_GREETING: "",
+    GEMINI_API_KEYS: "",
+    HUGGINGFACE_API_KEYS: "",
+    CLOUDFLARE_API_TOKENS: "",
+    CLOUDFLARE_ACCOUNT_ID: "",
+    OPENAI_API_KEYS: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -100,6 +106,35 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // AI Image Generator Keys Verification State
+  const [verifyingImageKeys, setVerifyingImageKeys] = useState(false);
+  const [imageKeyVerificationResults, setImageKeyVerificationResults] = useState<any[] | null>(null);
+
+  const handleVerifyImageKeys = async () => {
+    setVerifyingImageKeys(true);
+    try {
+      const res = await fetch("/api/obey/verify-image-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          geminiKeys: generalKeys.GEMINI_API_KEYS,
+          hfKeys: generalKeys.HUGGINGFACE_API_KEYS,
+          cfTokens: generalKeys.CLOUDFLARE_API_TOKENS,
+          cfAccountId: generalKeys.CLOUDFLARE_ACCOUNT_ID,
+          openaiKeys: generalKeys.OPENAI_API_KEYS,
+        }),
+      });
+      const data = await res.json();
+      if (data.results) {
+        setImageKeyVerificationResults(data.results);
+      }
+    } catch (err: any) {
+      console.error("Verification error:", err);
+    } finally {
+      setVerifyingImageKeys(false);
+    }
+  };
 
   // Vapi Voice Calling Pool Handlers
   const addVapiProvider = () => {
@@ -263,6 +298,19 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
 
       if (data.settings) {
+        const poolGemini = Array.isArray(data.pool)
+          ? data.pool
+              .filter((p: any) => p.provider === "gemini" && p.apiKey?.trim())
+              .map((p: any) => p.apiKey.trim())
+              .join(", ")
+          : "";
+        const poolOpenAI = Array.isArray(data.pool)
+          ? data.pool
+              .filter((p: any) => p.provider === "openai" && p.apiKey?.trim())
+              .map((p: any) => p.apiKey.trim())
+              .join(", ")
+          : "";
+
         setGeneralKeys({
           OBEY_BRAIN_KNOWLEDGE: data.settings.OBEY_BRAIN_KNOWLEDGE?.value || "",
           OBEY_CUSTOM_INSTRUCTIONS: data.settings.OBEY_CUSTOM_INSTRUCTIONS?.value || "",
@@ -277,6 +325,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           PROACTIVE_MORNING_BRIEF_ENABLED: data.settings.PROACTIVE_MORNING_BRIEF_ENABLED?.value || "true",
           PROACTIVE_EVENING_CHECKIN_ENABLED: data.settings.PROACTIVE_EVENING_CHECKIN_ENABLED?.value || "true",
           PROACTIVE_INSTANT_ALERTS_ENABLED: data.settings.PROACTIVE_INSTANT_ALERTS_ENABLED?.value || "true",
+          GEMINI_API_KEYS: data.settings.GEMINI_API_KEYS?.value || poolGemini || "",
+          HUGGINGFACE_API_KEYS: data.settings.HUGGINGFACE_API_KEYS?.value || "",
+          CLOUDFLARE_API_TOKENS: data.settings.CLOUDFLARE_API_TOKENS?.value || "",
+          CLOUDFLARE_ACCOUNT_ID: data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
+          OPENAI_API_KEYS: data.settings.OPENAI_API_KEYS?.value || poolOpenAI || "",
         });
       }
     } catch (err) {
@@ -563,6 +616,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                 ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
                 : activeTab === "ai"
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : activeTab === "image"
+                ? "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20"
                 : activeTab === "phone"
                 ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
                 : activeTab === "voice"
@@ -573,6 +628,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                 <Brain size={20} />
               ) : activeTab === "ai" ? (
                 <Zap size={20} />
+              ) : activeTab === "image" ? (
+                <Palette size={20} />
               ) : activeTab === "phone" ? (
                 <MessageCircle size={20} />
               ) : activeTab === "voice" ? (
@@ -588,6 +645,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     ? "Obey Brain · Permanent Memory & Behavior"
                     : activeTab === "ai"
                     ? "AI Waterfall Pool · Multi-Key Fallback Chain"
+                    : activeTab === "image"
+                    ? "AI Image & Graphic Design Keys · 5-Tier Fallback Waterfall"
                     : activeTab === "phone"
                     ? "Phone & Messaging Gateway · WhatsApp & Telegram"
                     : activeTab === "voice"
@@ -599,6 +658,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     ? "bg-purple-500 text-white"
                     : activeTab === "ai"
                     ? "bg-emerald-500 text-black"
+                    : activeTab === "image"
+                    ? "bg-pink-500 text-white"
                     : activeTab === "phone"
                     ? "bg-blue-500 text-white"
                     : activeTab === "voice"
@@ -613,6 +674,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   ? "Permanent business facts, verified portfolio links, and behavioral instructions Obey never forgets."
                   : activeTab === "ai"
                   ? "Configure multiple keys for Gemini, Grok, etc. Auto-fails over with zero downtime."
+                  : activeTab === "image"
+                  ? "Configure multiple free keys for Google Gemini Imagen, Hugging Face FLUX.1, Cloudflare Workers AI & Pollinations for zero-cost graphics generation."
                   : activeTab === "phone"
                   ? "Live WhatsApp QR code pairing, keepalive status, and Telegram bot phone gateway."
                   : activeTab === "voice"
@@ -656,6 +719,19 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           >
             <Zap size={14} className={activeTab === "ai" ? "text-white" : "text-emerald-500"} />
             <span>⚡ AI Models & Fallbacks</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("image")}
+            className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all whitespace-nowrap ${
+              activeTab === "image"
+                ? "bg-pink-600 text-white shadow-md shadow-pink-500/25 ring-2 ring-pink-500/30"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <Palette size={14} className={activeTab === "image" ? "text-white" : "text-pink-500"} />
+            <span>🎨 Image Generator Keys</span>
           </button>
 
           <button
@@ -1088,6 +1164,297 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       );
                     })
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: 🎨 AI Image Generator Keys (5-Tier Waterfall) */}
+            {activeTab === "image" && (
+              <div className="space-y-5">
+                {/* Top Banner & Quick Verification Trigger */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-pink-500/30 bg-pink-950/10 dark:bg-pink-950/20 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-pink-500/20 text-pink-500 flex items-center justify-center font-bold border border-pink-500/30">
+                        <Palette size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-black text-zinc-950 dark:text-white">
+                            Autonomous AI Image & Graphic Flyer Engine
+                          </h4>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-pink-500 text-white">
+                            5-Tier Fallback
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          Obey automatically cascades top-to-bottom across providers with zero downtime. Multi-key comma-separated pools rotate automatically on rate limits.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleVerifyImageKeys}
+                      disabled={verifyingImageKeys}
+                      className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-md shadow-pink-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshCw size={13} className={verifyingImageKeys ? "animate-spin" : ""} />
+                      {verifyingImageKeys ? "Testing All Keys..." : "⚡ Test All Keys Live"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Verification Results Panel */}
+                {imageKeyVerificationResults && (
+                  <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                      <span className="text-xs font-black text-zinc-900 dark:text-white flex items-center gap-1.5">
+                        <CheckCircle2 size={14} className="text-emerald-500" /> Live Key Verification Diagnostics
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setImageKeyVerificationResults(null)}
+                        className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {imageKeyVerificationResults.map((r: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className={`p-3 rounded-xl border text-xs space-y-1 ${
+                            r.status === "active"
+                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                              : r.status === "rate_limited"
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300"
+                              : r.status === "not_configured"
+                              ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-500"
+                              : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold">
+                            <span>{r.provider}</span>
+                            <span className="text-[10px] font-black uppercase px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10">
+                              {r.status}
+                            </span>
+                          </div>
+                          <p className="text-[11px] leading-snug line-clamp-2">{r.message}</p>
+                          {r.keyMask && (
+                            <span className="text-[10px] font-mono opacity-70 block">{r.keyMask}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 1. Google Gemini / Imagen */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        1. Google Gemini / Imagen Keys (Primary Provider)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        Free 500 req/day per key
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const geminiKeysFromPool = providersPool
+                            .filter((p) => p.provider === "gemini" && p.apiKey?.trim())
+                            .map((p) => p.apiKey.trim());
+                          if (geminiKeysFromPool.length > 0) {
+                            const existing = (generalKeys.GEMINI_API_KEYS || "").split(/[\s,]+/).filter(Boolean);
+                            const merged = Array.from(new Set([...existing, ...geminiKeysFromPool])).join(", ");
+                            setGeneralKeys((prev) => ({ ...prev, GEMINI_API_KEYS: merged }));
+                          } else {
+                            alert("No Gemini keys found in your AI Models pool yet.");
+                          }
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-600 dark:text-blue-300 border border-blue-500/30 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        title="Copy all Gemini keys currently configured in your AI Models Waterfall"
+                      >
+                        📋 Auto-Copy from AI Models
+                      </button>
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-blue-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        AI Studio <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Paste Google AI Studio keys (format starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">AIzaSy...</code>). Separate multiple keys with commas for automatic round-robin rotation.
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={generalKeys.GEMINI_API_KEYS || ""}
+                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, GEMINI_API_KEYS: e.target.value }))}
+                    placeholder="AIzaSy..., AIzaSy... (comma-separated for multi-key pool)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                </div>
+
+                {/* 2. Hugging Face FLUX.1 */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        2. Hugging Face FLUX.1 Schnell Keys (Ultra-Photorealistic)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        100% Free Read Token
+                      </span>
+                    </div>
+                    <a
+                      href="https://huggingface.co/settings/tokens"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-amber-500 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      Get HF Token (Hugging Face) <ExternalLink size={11} />
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Create a free Read Token at Hugging Face (starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">hf_...</code>). Ultra-fast commercial flyers and advertising visuals.
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={generalKeys.HUGGINGFACE_API_KEYS || ""}
+                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, HUGGINGFACE_API_KEYS: e.target.value }))}
+                    placeholder="hf_..., hf_... (comma-separated for multi-key pool)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                  />
+                </div>
+
+                {/* 3. Cloudflare Workers AI */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        3. Cloudflare Workers AI FLUX (Serverless Edge)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                        10,000 neurons/day free
+                      </span>
+                    </div>
+                    <a
+                      href="https://dash.cloudflare.com/profile/api-tokens"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-orange-500 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      Cloudflare API Tokens <ExternalLink size={11} />
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    High-speed global edge inference with Cloudflare Workers AI FLUX.1-schnell model.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                        Cloudflare API Tokens
+                      </label>
+                      <input
+                        type="password"
+                        value={generalKeys.CLOUDFLARE_API_TOKENS || ""}
+                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, CLOUDFLARE_API_TOKENS: e.target.value }))}
+                        placeholder="Cloudflare API Token..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                        Cloudflare Account ID
+                      </label>
+                      <input
+                        type="text"
+                        value={generalKeys.CLOUDFLARE_ACCOUNT_ID || ""}
+                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, CLOUDFLARE_ACCOUNT_ID: e.target.value }))}
+                        placeholder="Found in your Cloudflare dashboard URL"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. OpenAI DALL-E 3 */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        4. OpenAI DALL-E 3 (Optional HD Fallback)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        HD 1024x1792 Quality
+                      </span>
+                    </div>
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-emerald-500 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      OpenAI Platform <ExternalLink size={11} />
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    If configured, Obey can fall back to OpenAI DALL-E 3. Leave blank to rely entirely on free Google Gemini, Hugging Face, and Pollinations.
+                  </p>
+                  <input
+                    type="password"
+                    value={generalKeys.OPENAI_API_KEYS || ""}
+                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OPENAI_API_KEYS: e.target.value }))}
+                    placeholder="sk-..., sk-... (comma-separated)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  />
+                </div>
+
+                {/* 5. Pollinations.ai (Permanent Free Safety Net) */}
+                <div className="p-4 rounded-2xl border border-purple-500/20 bg-purple-500/5 dark:bg-purple-950/20 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        5. Pollinations.ai (Always Active Free Safety Net)
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      🟢 100% Free · No Key Needed
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                    Zero setup required. If every other key is exhausted or rate-limited, Obey instantly uses Pollinations FLUX engine with Cloudinary auto-framing so image generation never fails.
+                  </p>
+                </div>
+
+                {/* Save Button for Image Tab */}
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-[11px] text-zinc-500">
+                    Keys are encrypted and stored in your Neon cloud database cluster.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-pink-500/25 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    <Palette size={14} />
+                    {saving ? "Saving to Cloud DB..." : "Save Image Generator Keys"}
+                  </button>
                 </div>
               </div>
             )}

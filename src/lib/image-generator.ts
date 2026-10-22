@@ -256,13 +256,70 @@ export function getKeyPool(envVarNames: string[]): string[] {
   return keys;
 }
 
-// Database-aware key pool: checks both environment variables AND PostgreSQL workspace_settings
+// Database-aware key pool: checks environment variables, agent_settings, and PostgreSQL workspace_settings
 export async function getKeyPoolAsync(
   envVarNames: string[],
   dbColumn?: "gemini_api_keys" | "huggingface_api_keys" | "cloudflare_api_tokens" | "cloudflare_account_id" | "openai_api_keys",
   workspaceId?: string
 ): Promise<string[]> {
   const keys: string[] = getKeyPool(envVarNames);
+
+  // Check agent_settings table (used by Admin settings page)
+  try {
+    const sql = getSql();
+    for (const varName of envVarNames) {
+      try {
+        const rows = await sql`SELECT value FROM agent_settings WHERE key = ${varName} LIMIT 1`;
+        if (rows && rows.length > 0 && rows[0].value) {
+          String(rows[0].value).split(/[\s,]+/).forEach((k) => {
+            const trimmed = k.trim();
+            if (trimmed && !keys.includes(trimmed)) {
+              keys.push(trimmed);
+            }
+          });
+        }
+      } catch {}
+    }
+
+    // Automatically inherit keys from AI_PROVIDERS_POOL if matching provider
+    if (dbColumn === "gemini_api_keys" || envVarNames.some((v) => v.includes("GEMINI"))) {
+      try {
+        const poolRows = await sql`SELECT value FROM agent_settings WHERE key = 'AI_PROVIDERS_POOL' LIMIT 1`;
+        if (poolRows && poolRows.length > 0 && poolRows[0].value) {
+          const parsedPool = JSON.parse(poolRows[0].value);
+          if (Array.isArray(parsedPool)) {
+            for (const item of parsedPool) {
+              if (item.provider === "gemini" && item.apiKey) {
+                const k = String(item.apiKey).trim();
+                if (k && !keys.includes(k)) {
+                  keys.push(k);
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (dbColumn === "openai_api_keys" || envVarNames.some((v) => v.includes("OPENAI"))) {
+      try {
+        const poolRows = await sql`SELECT value FROM agent_settings WHERE key = 'AI_PROVIDERS_POOL' LIMIT 1`;
+        if (poolRows && poolRows.length > 0 && poolRows[0].value) {
+          const parsedPool = JSON.parse(poolRows[0].value);
+          if (Array.isArray(parsedPool)) {
+            for (const item of parsedPool) {
+              if (item.provider === "openai" && item.apiKey) {
+                const k = String(item.apiKey).trim();
+                if (k && !keys.includes(k)) {
+                  keys.push(k);
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
 
   if (dbColumn) {
     try {

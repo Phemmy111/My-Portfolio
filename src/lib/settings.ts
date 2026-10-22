@@ -152,6 +152,11 @@ export const KNOWN_KEYS = [
   "PAYSTACK_SECRET_KEY",
   "PAYSTACK_PUBLIC_KEY",
   "ADMIN_PASSCODE",
+  "GEMINI_API_KEYS",
+  "HUGGINGFACE_API_KEYS",
+  "CLOUDFLARE_API_TOKENS",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "OPENAI_API_KEYS",
 ] as const;
 
 export type KnownKey = typeof KNOWN_KEYS[number];
@@ -380,6 +385,35 @@ export async function getAllSettingsMasked(): Promise<Record<string, { value: st
       masked,
     };
   }
+
+  // Fallback to workspace_settings for any unset image keys
+  try {
+    const wsRows = await sql`
+      SELECT gemini_api_keys, huggingface_api_keys, cloudflare_api_tokens, cloudflare_account_id, openai_api_keys
+      FROM workspace_settings
+      ORDER BY updated_at DESC
+      LIMIT 1
+    ` as any[];
+    if (wsRows && wsRows.length > 0) {
+      const ws = wsRows[0];
+      const wsKeyMap: Record<string, string> = {
+        GEMINI_API_KEYS: ws.gemini_api_keys || "",
+        HUGGINGFACE_API_KEYS: ws.huggingface_api_keys || "",
+        CLOUDFLARE_API_TOKENS: ws.cloudflare_api_tokens || "",
+        CLOUDFLARE_ACCOUNT_ID: ws.cloudflare_account_id || "",
+        OPENAI_API_KEYS: ws.openai_api_keys || "",
+      };
+      for (const [k, v] of Object.entries(wsKeyMap)) {
+        if (!result[k]?.value && v) {
+          result[k] = {
+            value: v,
+            isSet: true,
+            masked: v.length <= 8 ? "••••••••" : `${v.slice(0, 4)}••••••••${v.slice(-4)}`,
+          };
+        }
+      }
+    }
+  } catch {}
 
   return result;
 }

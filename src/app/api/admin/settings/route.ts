@@ -365,6 +365,32 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Sync image keys to workspace_settings table for cross-platform compatibility
+      if (
+        updates.GEMINI_API_KEYS !== undefined ||
+        updates.HUGGINGFACE_API_KEYS !== undefined ||
+        updates.CLOUDFLARE_API_TOKENS !== undefined ||
+        updates.CLOUDFLARE_ACCOUNT_ID !== undefined ||
+        updates.OPENAI_API_KEYS !== undefined
+      ) {
+        try {
+          const { getSql } = await import("@/lib/image-generator");
+          const sql = getSql();
+          await sql`
+            UPDATE workspace_settings SET
+              gemini_api_keys = COALESCE(${updates.GEMINI_API_KEYS !== undefined ? String(updates.GEMINI_API_KEYS).trim() : null}, gemini_api_keys),
+              huggingface_api_keys = COALESCE(${updates.HUGGINGFACE_API_KEYS !== undefined ? String(updates.HUGGINGFACE_API_KEYS).trim() : null}, huggingface_api_keys),
+              cloudflare_api_tokens = COALESCE(${updates.CLOUDFLARE_API_TOKENS !== undefined ? String(updates.CLOUDFLARE_API_TOKENS).trim() : null}, cloudflare_api_tokens),
+              cloudflare_account_id = COALESCE(${updates.CLOUDFLARE_ACCOUNT_ID !== undefined ? String(updates.CLOUDFLARE_ACCOUNT_ID).trim() : null}, cloudflare_account_id),
+              openai_api_keys = COALESCE(${updates.OPENAI_API_KEYS !== undefined ? String(updates.OPENAI_API_KEYS).trim() : null}, openai_api_keys),
+              updated_at = NOW()
+            WHERE id IN (SELECT id FROM workspace_settings ORDER BY updated_at DESC LIMIT 1);
+          `;
+        } catch (syncErr) {
+          console.warn("[Admin Settings] Could not sync image keys to workspace_settings:", syncErr);
+        }
+      }
+
       // If voice or pool was updated, sync primary Vapi assistant voice in the background
       if (updates.VOICE_ID || updates.VAPI_PROVIDERS_POOL) {
         try {
