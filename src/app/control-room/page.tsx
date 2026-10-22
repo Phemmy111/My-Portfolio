@@ -252,6 +252,8 @@ function ControlRoomContent() {
   const [navFilter, setNavFilter] = useState("");
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const [verifyingKeys, setVerifyingKeys] = useState(false);
+  const [keyVerificationResults, setKeyVerificationResults] = useState<any[] | null>(null);
 
   // Website Live Chat Widget State
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -1843,6 +1845,33 @@ function ControlRoomContent() {
       console.error("Failed to update settings:", err);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleVerifyImageKeys = async () => {
+    if (!settings) return;
+    setVerifyingKeys(true);
+    setKeyVerificationResults(null);
+    try {
+      const res = await fetch("/api/obey/verify-image-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gemini_api_keys: settings.gemini_api_keys,
+          huggingface_api_keys: settings.huggingface_api_keys,
+          cloudflare_api_tokens: settings.cloudflare_api_tokens,
+          openai_api_keys: settings.openai_api_keys,
+          workspace_id: currentWs?.id,
+        }),
+      });
+      const data = await res.json();
+      if (data.results) {
+        setKeyVerificationResults(data.results);
+      }
+    } catch (err) {
+      console.error("Failed to verify image keys:", err);
+    } finally {
+      setVerifyingKeys(false);
     }
   };
 
@@ -5431,6 +5460,83 @@ function ControlRoomContent() {
                       placeholder="sk-proj-..."
                       className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
                     />
+                  </div>
+
+                  {/* Live Test Keys Action Button & Results Panel */}
+                  <div className="pt-3 border-t border-zinc-850 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-[11px] text-zinc-400">
+                        Test and verify which keys are active and responding live before saving.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleVerifyImageKeys}
+                        disabled={verifyingKeys}
+                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 cursor-pointer shadow-sm shadow-purple-600/30"
+                      >
+                        {verifyingKeys ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Testing Keys Live...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Test All Keys Live</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Results Table */}
+                    {keyVerificationResults && (
+                      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs font-bold text-white border-b border-zinc-800 pb-2">
+                          <span>Live Key Test Results</span>
+                          <span className="text-[11px] text-zinc-400">
+                            {keyVerificationResults.filter((r) => r.status === "active").length} of {keyVerificationResults.length} active
+                          </span>
+                        </div>
+                        {keyVerificationResults.length === 0 ? (
+                          <p className="text-xs text-zinc-500 py-2">No keys have been entered yet. Paste at least one key above and click Test.</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                            {keyVerificationResults.map((r, idx) => (
+                              <div
+                                key={idx}
+                                className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] p-2.5 rounded-lg bg-zinc-950/70 border border-zinc-850 gap-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {r.status === "active" ? (
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                                  ) : r.status === "rate_limited" ? (
+                                    <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                                  ) : (
+                                    <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                                  )}
+                                  <span className="font-bold text-zinc-200 capitalize">{r.provider}</span>
+                                  <span className="font-mono text-zinc-500 text-[10px]">({r.keyMasked})</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  <span
+                                    className={`font-medium ${
+                                      r.status === "active"
+                                        ? "text-emerald-400"
+                                        : r.status === "rate_limited"
+                                        ? "text-amber-400"
+                                        : "text-rose-400"
+                                    }`}
+                                  >
+                                    {r.message}
+                                  </span>
+                                  <span className="text-zinc-600">{r.latencyMs}ms</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
