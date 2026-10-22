@@ -357,6 +357,17 @@ export async function processDynamicCompanionTurn(params: {
     console.warn("[Dynamic Companion] scheduled task turn fallback:", err);
   }
 
+  // ── MCQ HALLUCINATION BREAK GUARD ────────────────────────────────────────────
+  // When a user sends a conceptual open-ended question (e.g. "explain type 1 and type 2 errors",
+  // "what is X?", "how does Y work?") AFTER a run of multiple-choice quiz questions (A/B/C/D pattern),
+  // the AI can get "locked in" to answering the next message as if it's another MCQ option.
+  // This guard detects that shift and injects a context-break directive into the decision prompt.
+  const lastFewHistoryLines = (historyText || "").split("\n").slice(-16).join("\n");
+  const historyHadMCQ = /\b(option [A-D]|a\.|b\.|c\.|d\.|choice [A-D]|correct answer is|the answer is \*[A-D])\b/i.test(lastFewHistoryLines);
+  const userAsksConceptualQuestion = /\b(explain|what is|what are|describe|define|how does|how do|tell me about|talk about|discuss|elaborate|difference between|type [12]|meaning of|concept of)\b/i.test(userText);
+  const isVeryShort = userText.trim().length <= 3; // "?" also breaks the MCQ loop
+  const mcqHallucinationBreakNeeded = historyHadMCQ && (userAsksConceptualQuestion || isVeryShort);
+
   // 3. OBEY AUTONOMOUS AI REASONING & DECISION ENGINE
   // Analyzes semantics, multi-turn dialogue, and context to select the exact right tool with ZERO hardcoded keywords.
   const decisionSystemPrompt = `You are Obey, an autonomous AI executive companion and business assistant.
@@ -868,6 +879,90 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
     !lastLineSpecificallyOfferedArtifactUpdate
   ) {
     decision.action = "none";
+  }
+
+  // DETERMINISTIC DIGITAL BOOKLET / PUBLICATION DETECTION:
+  // When a user says "create the booklet", "create my booklet", "build the booklet",
+  // "generate the booklet", OR pastes a full booklet/publication design guide (detectable by
+  // keywords like "colour palette", "font size", "page design", "digital booklet"), 
+  // IMMEDIATELY classify as create_website_artifact with the full spec embedded.
+  const isBookletDesignSpec =
+    /\b(colour palette|color palette|font size|typography|page[-\s]by[-\s]page|page design|cover page|back cover|digital booklet|booklet design guide|booklet design)\b/i.test(userText) &&
+    userText.length > 500; // Long spec pasted
+
+  const isBookletCreationRequest =
+    /\b(create (?:the|my|a|this) booklet|build (?:the|my|a|this) booklet|make (?:the|my|a|this) booklet|generate (?:the|my|a|this) booklet|design (?:the|my|a|this) booklet|can you (?:create|build|make|design) (?:the|my|a|this) booklet|booklet is ready|proceed (?:with|to build) the booklet|yes.{0,30}booklet|produce (?:the|my|a) booklet)\b/i.test(userText) ||
+    (/\b(booklet)\b/i.test(userText) && /\b(create|build|make|design|generate|produce|start|begin|go ahead)\b/i.test(userText));
+
+  const isBookletAffirmativeFollowup =
+    isAffirmativeShort &&
+    /\b(booklet|publication|digital booklet|mind matters)\b/i.test(lastObeyLine);
+
+  if (
+    (isBookletDesignSpec || isBookletCreationRequest || isBookletAffirmativeFollowup) &&
+    decision.action !== "draft_whatsapp_message" &&
+    decision.action !== "generate_new_image"
+  ) {
+    // Recover the last booklet design spec from conversation history if not in current message
+    let bookletSpec = userText;
+    if (!isBookletDesignSpec && historyText) {
+      const histLines = historyText.split("\n");
+      // Find a prior user line that was a long booklet spec
+      for (let i = histLines.length - 1; i >= 0; i--) {
+        const line = histLines[i];
+        if (
+          line.length > 400 &&
+          /\b(colour palette|color palette|font size|typography|digital booklet|page design|cover page)\b/i.test(line)
+        ) {
+          bookletSpec = line;
+          break;
+        }
+      }
+    }
+    decision.action = "create_website_artifact";
+    decision.action_params = {
+      website_title: "Mind Matters: You Don't Have to Suffer Alone",
+      website_specs: `Create a complete, beautiful, mobile-optimized 12-page digital booklet publication as a single HTML file. 
+DESIGN SPECIFICATIONS:
+Color Palette:
+- Deep Teal #174F50 (headings, prominent elements, backgrounds)
+- Soft Cream #FAF6EF (main page background)
+- Muted Lavender #DCD6F7 (highlight boxes, secondary elements)
+- Warm Coral #E99480 (small highlights, accents, CTAs)
+- Dark Charcoal #292929 (body text)
+
+Typography:
+- Headings: Poppins Bold/ExtraBold (via Google Fonts CDN)
+- Body: Lato Regular (via Google Fonts CDN)
+- Cover title: 32-40pt | Page headings: 22-28pt | Body: 12-14pt
+
+Page Structure (12 pages, A4 portrait, mobile-first):
+1. Cover Page: "MIND MATTERS / You Don't Have to Suffer Alone" — Deep Teal dominant, connection illustration, bold typography.
+2. Imagine This… — A relatable student story (Tunde) who opened up and was dismissed; takeaway: "Not every struggle is visible."
+3. What Does Mental Health Really Mean? — 3-card layout: continuum spectrum, campus pressures, struggle ≠ defect.
+4. Everybody Has Problems. So What? — Challenge comparison culture; takeaway box: "Pain is not a competition."
+5. "Are They Just Looking for Attention?" — Myth vs reality. Connection-seeking reframed compassionately.
+6. You Don't Have to Look Broken to Struggle — The Strong Friend Mask, High-Functioning Anxiety, Quiet Withdrawal.
+7. What Should You Say? — Do/Don't phrase matrix with color-coded examples.
+8. How to Support a Friend: 4-Step Guide — Notice → Listen → Validate → Connect. Visual step cards.
+9. It's Okay to Ask for Help — Counseling demystified; takeaway: "Asking for help is refusing to give up alone."
+10. When Someone Needs More Help — Crisis warning signs, emergency action steps.
+11. Helpful Resources & Support Directory — MANI, She Writes Woman, SURPIN, campus counseling.
+12. Back Cover / Final Word — "Be the reason someone feels safe today." Deep Teal background, closing quote.
+
+Additional Requirements:
+- Full page-turn navigation (Prev/Next buttons + dot indicators + swipe gesture on mobile)
+- Table of Contents modal with jump-to-page
+- Keyboard arrow navigation
+- "Save as PDF" / Print button
+- Animated page transitions (fade-in)
+- Page numbers and section labels in footers
+- Touch-friendly for mobile (A4-proportioned pages, readable font sizes)
+- Professional minimalist editorial design, NOT clinical or crowded
+
+FULL BOOKLET DESIGN SPEC:
+${bookletSpec.slice(0, 3000)}`,
+    };
   }
 
   // DETERMINISTIC DOCUMENT GENERATION RECOVERY:
@@ -2136,9 +2231,22 @@ CRITICAL DISTINCTION & PRICING RULES:
 
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
+  // Build MCQ context-break prefix to prevent hallucination lock-in
+  const mcqBreakPrefix = mcqHallucinationBreakNeeded
+    ? `⚠️ CRITICAL CONTEXT RESET REQUIRED ⚠️
+The previous messages in this conversation contained multiple-choice examination questions and answers about biology/physics topics. 
+The user's LATEST message ("${userText}") is a COMPLETELY DIFFERENT and FRESH question — it is NOT another multiple-choice question. 
+DO NOT answer as if it is an MCQ option. DO NOT mention "Red blood cells", "D", or any previous biology/physics topic.
+Answer ONLY what the user JUST asked in their latest message, completely ignoring the MCQ subject matter from prior turns.
+If they asked "?" or sent a very short message, acknowledge the shift and ask what they'd like to know.
+FRESH QUESTION FROM USER:
+
+`
+    : "";
+
   const companionUserPrompt = historyText
-    ? `Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
-    : `User: "${userText}"\n\nObey (concise, direct answer):`;
+    ? `${mcqBreakPrefix}Prior dialogue between you and the user:\n${historyText}\n\nUser: "${userText}"\n\nObey (concise, direct answer):`
+    : `${mcqBreakPrefix}User: "${userText}"\n\nObey (concise, direct answer):`;
 
   try {
     const aiRes = await executeAICompletion({
