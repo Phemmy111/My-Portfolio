@@ -449,18 +449,30 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
     await createGuestChatTables();
     if (workspaceId && workspaceId !== "all") {
       const rows = await db`
+        WITH thread_groups AS (
+          SELECT 
+            phone_number AS contact_id,
+            COALESCE(workspace_id, 'ws_femi_default') AS workspace_id,
+            MAX(sender_name) AS sender_name,
+            COALESCE(MAX(channel), 'whatsapp') AS channel,
+            COUNT(*)::int AS total_messages,
+            MAX(created_at) AS last_message_at
+          FROM guest_chat_messages
+          WHERE (workspace_id = ${workspaceId} OR (workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
+          GROUP BY phone_number, COALESCE(workspace_id, 'ws_femi_default')
+        )
         SELECT 
-          m.phone_number AS contact_id,
-          COALESCE(m.workspace_id, 'ws_femi_default') AS workspace_id,
-          COALESCE(w.name, CASE WHEN m.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN m.workspace_id IS NULL OR m.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE m.workspace_id END) AS workspace_name,
-          MAX(m.sender_name) AS sender_name,
-          COALESCE(MAX(m.channel), 'whatsapp') AS channel,
-          COUNT(*)::int AS total_messages,
-          MAX(m.created_at) AS last_message_at,
+          tg.contact_id,
+          tg.workspace_id,
+          COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE tg.workspace_id END) AS workspace_name,
+          tg.sender_name,
+          tg.channel,
+          tg.total_messages,
+          tg.last_message_at,
           (
             SELECT content 
             FROM guest_chat_messages sub 
-            WHERE sub.phone_number = m.phone_number 
+            WHERE sub.phone_number = tg.contact_id 
               AND (sub.workspace_id = ${workspaceId} OR (sub.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
             ORDER BY sub.created_at DESC 
             LIMIT 1
@@ -468,50 +480,58 @@ export async function dbGetInboxThreads(workspaceId?: string | null) {
           (
             SELECT role 
             FROM guest_chat_messages sub 
-            WHERE sub.phone_number = m.phone_number 
+            WHERE sub.phone_number = tg.contact_id 
               AND (sub.workspace_id = ${workspaceId} OR (sub.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
             ORDER BY sub.created_at DESC 
             LIMIT 1
           ) AS last_role
-        FROM guest_chat_messages m
-        LEFT JOIN workspaces w ON w.id = m.workspace_id
-        WHERE (m.workspace_id = ${workspaceId} OR (m.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
-        GROUP BY m.phone_number, COALESCE(m.workspace_id, 'ws_femi_default'), w.name
-        ORDER BY MAX(m.created_at) DESC
+        FROM thread_groups tg
+        LEFT JOIN workspaces w ON w.id = tg.workspace_id
+        ORDER BY tg.last_message_at DESC
       `;
       return rows;
     }
 
     // Global multi-tenant threads (Separates each bot conversation for the same person)
     const rows = await db`
+      WITH thread_groups AS (
+        SELECT 
+          phone_number AS contact_id,
+          COALESCE(workspace_id, 'ws_femi_default') AS workspace_id,
+          MAX(sender_name) AS sender_name,
+          COALESCE(MAX(channel), 'whatsapp') AS channel,
+          COUNT(*)::int AS total_messages,
+          MAX(created_at) AS last_message_at
+        FROM guest_chat_messages
+        GROUP BY phone_number, COALESCE(workspace_id, 'ws_femi_default')
+      )
       SELECT 
-        m.phone_number AS contact_id,
-        COALESCE(m.workspace_id, 'ws_femi_default') AS workspace_id,
-        COALESCE(w.name, CASE WHEN m.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN m.workspace_id IS NULL OR m.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE m.workspace_id END) AS workspace_name,
-        MAX(m.sender_name) AS sender_name,
-        COALESCE(MAX(m.channel), 'whatsapp') AS channel,
-        COUNT(*)::int AS total_messages,
-        MAX(m.created_at) AS last_message_at,
+        tg.contact_id,
+        tg.workspace_id,
+        COALESCE(w.name, CASE WHEN tg.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN tg.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE tg.workspace_id END) AS workspace_name,
+        tg.sender_name,
+        tg.channel,
+        tg.total_messages,
+        tg.last_message_at,
         (
           SELECT content 
           FROM guest_chat_messages sub 
-          WHERE sub.phone_number = m.phone_number 
-            AND COALESCE(sub.workspace_id, 'ws_femi_default') = COALESCE(m.workspace_id, 'ws_femi_default')
+          WHERE sub.phone_number = tg.contact_id 
+            AND COALESCE(sub.workspace_id, 'ws_femi_default') = tg.workspace_id
           ORDER BY sub.created_at DESC 
           LIMIT 1
         ) AS last_message,
         (
           SELECT role 
           FROM guest_chat_messages sub 
-          WHERE sub.phone_number = m.phone_number 
-            AND COALESCE(sub.workspace_id, 'ws_femi_default') = COALESCE(m.workspace_id, 'ws_femi_default')
+          WHERE sub.phone_number = tg.contact_id 
+            AND COALESCE(sub.workspace_id, 'ws_femi_default') = tg.workspace_id
           ORDER BY sub.created_at DESC 
           LIMIT 1
         ) AS last_role
-      FROM guest_chat_messages m
-      LEFT JOIN workspaces w ON w.id = m.workspace_id
-      GROUP BY m.phone_number, COALESCE(m.workspace_id, 'ws_femi_default'), w.name
-      ORDER BY MAX(m.created_at) DESC
+      FROM thread_groups tg
+      LEFT JOIN workspaces w ON w.id = tg.workspace_id
+      ORDER BY tg.last_message_at DESC
     `;
     return rows;
   } catch (e) {
