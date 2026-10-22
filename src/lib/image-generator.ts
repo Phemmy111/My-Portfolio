@@ -18,8 +18,8 @@ export interface GeneratedImageResult {
   error?: string;
 }
 
-function getSql() {
-  const url = process.env.DATABASE_URL;
+export function getSql() {
+  const url = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
   if (!url) throw new Error("DATABASE_URL is not configured");
   return neon(url);
 }
