@@ -147,6 +147,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     }
   };
 
+  const getImageProviderResults = (prov: string) =>
+    (imageKeyVerificationResults || []).filter((r: any) => r.provider === prov);
+
   // Vapi Voice Calling Pool Handlers
   const addVapiProvider = () => {
     const newP: VapiProviderConfig = {
@@ -1206,7 +1209,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
                     <button
                       type="button"
-                      onClick={handleVerifyImageKeys}
+                      onClick={() => handleVerifyImageKeys()}
                       disabled={verifyingImageKeys}
                       className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-md shadow-pink-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                     >
@@ -1326,11 +1329,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   />
 
                   {/* Live Per-Key Results for Google */}
-                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "google").length > 0 && (
+                  {getImageProviderResults("google").length > 0 && (
                     <div className="space-y-1.5 pt-1">
-                      {imageKeyVerificationResults
-                        .filter((r: any) => r.provider === "google")
-                        .map((r: any, idx: number) => (
+                      {getImageProviderResults("google").map((r: any, idx: number) => (
                           <div
                             key={idx}
                             className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
@@ -1420,11 +1421,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   />
 
                   {/* Live Per-Key Results for Hugging Face */}
-                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "huggingface").length > 0 && (
+                  {getImageProviderResults("huggingface").length > 0 && (
                     <div className="space-y-1.5 pt-1">
-                      {imageKeyVerificationResults
-                        .filter((r: any) => r.provider === "huggingface")
-                        .map((r: any, idx: number) => (
+                      {getImageProviderResults("huggingface").map((r: any, idx: number) => (
                           <div
                             key={idx}
                             className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
@@ -1521,11 +1520,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   </div>
 
                   {/* Live Results for Cloudflare */}
-                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "cloudflare").length > 0 && (
+                  {getImageProviderResults("cloudflare").length > 0 && (
                     <div className="space-y-1.5 pt-1">
-                      {imageKeyVerificationResults
-                        .filter((r: any) => r.provider === "cloudflare")
-                        .map((r: any, idx: number) => (
+                      {getImageProviderResults("cloudflare").map((r: any, idx: number) => (
                           <div
                             key={idx}
                             className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
@@ -1603,11 +1600,9 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   />
 
                   {/* Live Results for OpenAI */}
-                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "openai").length > 0 && (
+                  {getImageProviderResults("openai").length > 0 && (
                     <div className="space-y-1.5 pt-1">
-                      {imageKeyVerificationResults
-                        .filter((r: any) => r.provider === "openai")
-                        .map((r: any, idx: number) => (
+                      {getImageProviderResults("openai").map((r: any, idx: number) => (
                           <div
                             key={idx}
                             className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
