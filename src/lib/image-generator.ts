@@ -269,11 +269,21 @@ export async function getKeyPoolAsync(
       const sql = getSql();
       let rows: any[] = [];
       if (workspaceId) {
-        rows = await sql`SELECT ${sql(dbColumn)} FROM workspace_settings WHERE workspace_id = ${workspaceId} LIMIT 1`;
+        rows = await sql`
+          SELECT gemini_api_keys, huggingface_api_keys, cloudflare_api_tokens, cloudflare_account_id, openai_api_keys
+          FROM workspace_settings
+          WHERE workspace_id = ${workspaceId}
+          LIMIT 1
+        `;
       }
       if (!rows.length || !rows[0]?.[dbColumn]) {
         // Fallback to latest configured workspace_settings
-        rows = await sql`SELECT ${sql(dbColumn)} FROM workspace_settings WHERE ${sql(dbColumn)} IS NOT NULL AND ${sql(dbColumn)} != '' ORDER BY updated_at DESC LIMIT 1`;
+        rows = await sql`
+          SELECT gemini_api_keys, huggingface_api_keys, cloudflare_api_tokens, cloudflare_account_id, openai_api_keys
+          FROM workspace_settings
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `;
       }
       if (rows.length && rows[0]?.[dbColumn]) {
         const val = String(rows[0][dbColumn]);
