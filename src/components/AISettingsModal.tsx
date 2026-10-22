@@ -112,6 +112,16 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const [verifyingImageSection, setVerifyingImageSection] = useState<string | null>(null);
   const [imageKeyVerificationResults, setImageKeyVerificationResults] = useState<any[] | null>(null);
 
+  // Card-based key pool state for each image provider
+  const [geminiKeyPool, setGeminiKeyPool] = useState<string[]>([""]);
+  const [hfKeyPool, setHfKeyPool] = useState<string[]>([""]);
+  const [cfKeyPool, setCfKeyPool] = useState<string[]>([""]);
+  const [openaiKeyPool, setOpenaiKeyPool] = useState<string[]>([""]);
+
+  // Per-key test results: keyed by "google-0", "hf-1", "cf-0", "openai-2" etc.
+  const [keyTestResults, setKeyTestResults] = useState<Record<string, any>>({});
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+
   const handleVerifyImageKeys = async (provider?: string) => {
     if (provider) {
       setVerifyingImageSection(provider);
@@ -150,7 +160,65 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const getImageProviderResults = (prov: string) =>
     (imageKeyVerificationResults || []).filter((r: any) => r.provider === prov);
 
-  // Vapi Voice Calling Pool Handlers
+  // Image key pool helpers
+  type PoolKey = "gemini" | "hf" | "cf" | "openai";
+  const poolSetters: Record<PoolKey, React.Dispatch<React.SetStateAction<string[]>>> = {
+    gemini: setGeminiKeyPool,
+    hf: setHfKeyPool,
+    cf: setCfKeyPool,
+    openai: setOpenaiKeyPool,
+  };
+
+  const addKeyToPool = (pool: PoolKey) =>
+    poolSetters[pool]((prev) => [...prev, ""]);
+
+  const removeKeyFromPool = (pool: PoolKey, idx: number) =>
+    poolSetters[pool]((prev) => prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx));
+
+  const updateKeyInPool = (pool: PoolKey, idx: number, value: string) =>
+    poolSetters[pool]((prev) => prev.map((k, i) => (i === idx ? value : k)));
+
+  // Sync pool arrays → generalKeys string whenever pool changes
+  const poolToString = (pool: string[]) => pool.filter(Boolean).join(",");
+
+  // Test a single image key
+  const handleTestSingleKey = async (
+    provider: "google" | "huggingface" | "cloudflare" | "openai",
+    keyValue: string,
+    keyIndex: number,
+    cfAccountId?: string
+  ) => {
+    const resultKey = `${provider}-${keyIndex}`;
+    if (!keyValue.trim()) return;
+    setTestingKey(resultKey);
+    try {
+      const body: Record<string, string> = { provider };
+      if (provider === "google") body.geminiKeys = keyValue.trim();
+      else if (provider === "huggingface") body.hfKeys = keyValue.trim();
+      else if (provider === "cloudflare") {
+        body.cfTokens = keyValue.trim();
+        body.cfAccountId = cfAccountId || generalKeys.CLOUDFLARE_ACCOUNT_ID || "";
+      } else if (provider === "openai") body.openaiKeys = keyValue.trim();
+
+      const res = await fetch("/api/obey/verify-image-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      const result = data.results?.[0] || { status: "invalid", message: "No response" };
+      setKeyTestResults((prev) => ({ ...prev, [resultKey]: result }));
+    } catch (err: any) {
+      setKeyTestResults((prev) => ({
+        ...prev,
+        [resultKey]: { status: "invalid", message: err.message },
+      }));
+    } finally {
+      setTestingKey(null);
+    }
+  };
+
+
   const addVapiProvider = () => {
     const newP: VapiProviderConfig = {
       id: `vapi-${Date.now()}`,
@@ -325,6 +393,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
               .join(", ")
           : "";
 
+        const loadedGemini = data.settings.GEMINI_API_KEYS?.value || poolGemini || "";
+        const loadedHF = data.settings.HUGGINGFACE_API_KEYS?.value || "";
+        const loadedCF = data.settings.CLOUDFLARE_API_TOKENS?.value || "";
+        const loadedOAI = data.settings.OPENAI_API_KEYS?.value || poolOpenAI || "";
+
         setGeneralKeys({
           OBEY_BRAIN_KNOWLEDGE: data.settings.OBEY_BRAIN_KNOWLEDGE?.value || "",
           OBEY_CUSTOM_INSTRUCTIONS: data.settings.OBEY_CUSTOM_INSTRUCTIONS?.value || "",
@@ -339,13 +412,21 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           PROACTIVE_MORNING_BRIEF_ENABLED: data.settings.PROACTIVE_MORNING_BRIEF_ENABLED?.value || "true",
           PROACTIVE_EVENING_CHECKIN_ENABLED: data.settings.PROACTIVE_EVENING_CHECKIN_ENABLED?.value || "true",
           PROACTIVE_INSTANT_ALERTS_ENABLED: data.settings.PROACTIVE_INSTANT_ALERTS_ENABLED?.value || "true",
-          GEMINI_API_KEYS: data.settings.GEMINI_API_KEYS?.value || poolGemini || "",
-          HUGGINGFACE_API_KEYS: data.settings.HUGGINGFACE_API_KEYS?.value || "",
-          CLOUDFLARE_API_TOKENS: data.settings.CLOUDFLARE_API_TOKENS?.value || "",
+          GEMINI_API_KEYS: loadedGemini,
+          HUGGINGFACE_API_KEYS: loadedHF,
+          CLOUDFLARE_API_TOKENS: loadedCF,
           CLOUDFLARE_ACCOUNT_ID: data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
-          OPENAI_API_KEYS: data.settings.OPENAI_API_KEYS?.value || poolOpenAI || "",
+          OPENAI_API_KEYS: loadedOAI,
         });
+
+        // Populate card pool arrays
+        const splitKeys = (s: string) => s.split(/[\s,]+/).filter(Boolean);
+        setGeminiKeyPool(splitKeys(loadedGemini).length > 0 ? splitKeys(loadedGemini) : [""]);
+        setHfKeyPool(splitKeys(loadedHF).length > 0 ? splitKeys(loadedHF) : [""]);
+        setCfKeyPool(splitKeys(loadedCF).length > 0 ? splitKeys(loadedCF) : [""]);
+        setOpenaiKeyPool(splitKeys(loadedOAI).length > 0 ? splitKeys(loadedOAI) : [""]);
       }
+
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -578,6 +659,15 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     setSaving(true);
     setStatusMessage(null);
 
+    // Sync card pool arrays → generalKeys strings before saving
+    const syncedKeys = {
+      ...generalKeys,
+      GEMINI_API_KEYS: poolToString(geminiKeyPool),
+      HUGGINGFACE_API_KEYS: poolToString(hfKeyPool),
+      CLOUDFLARE_API_TOKENS: poolToString(cfKeyPool),
+      OPENAI_API_KEYS: poolToString(openaiKeyPool),
+    };
+
     try {
       // 1. Save Pool
       const poolRes = await fetch("/api/admin/settings", {
@@ -597,7 +687,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       const genRes = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates: generalKeys }),
+        body: JSON.stringify({ updates: syncedKeys }),
       });
 
       const poolData = await poolRes.json();
@@ -616,6 +706,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       setSaving(false);
     }
   };
+
+
 
   if (!isOpen) return null;
 
@@ -1317,64 +1409,84 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       </a>
                     </div>
                   </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Paste Google AI Studio keys (format starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">AIzaSy...</code>). Separate multiple keys with commas for automatic round-robin rotation.
+                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Paste Google AI Studio keys (format starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">AIzaSy...</code>). Add multiple keys for automatic round-robin rotation.
                   </p>
-                  <textarea
-                    rows={2}
-                    value={generalKeys.GEMINI_API_KEYS || ""}
-                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, GEMINI_API_KEYS: e.target.value }))}
-                    placeholder="AIzaSy..., AIzaSy... (comma-separated for multi-key pool)"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  />
 
-                  {/* Live Per-Key Results for Google */}
-                  {getImageProviderResults("google").length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {getImageProviderResults("google").map((r: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                              r.status === "active"
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                                : r.status === "image_quota_zero"
-                                ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
-                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
-                            }`}
-                          >
-                            <div className="flex items-start sm:items-center gap-2">
-                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
-                                {r.keyMasked || r.keyMask}
-                              </span>
-                              <span className="text-[11px] leading-snug">{r.message}</span>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              {r.latencyMs !== undefined && (
-                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
-                              )}
-                              <span
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                  r.status === "active"
-                                    ? "bg-emerald-500 text-white"
-                                    : r.status === "image_quota_zero"
-                                    ? "bg-amber-500 text-black font-black"
-                                    : "bg-red-500 text-white"
-                                }`}
-                              >
-                                {r.status === "active"
-                                  ? "Active ✅"
-                                  : r.status === "image_quota_zero"
-                                  ? "Quota 0 ⚠️"
-                                  : r.status === "invalid_format"
-                                  ? "Wrong Format ❌"
-                                  : "Invalid ❌"}
-                              </span>
-                            </div>
+                  {/* Card-based key rows */}
+                  <div className="space-y-2">
+                    {geminiKeyPool.map((key, idx) => {
+                      const rk = `google-${idx}`;
+                      const result = keyTestResults[rk];
+                      const isTesting = testingKey === rk;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 w-5 shrink-0">#{idx + 1}</span>
+                            <input
+                              type="password"
+                              value={key}
+                              onChange={(e) => updateKeyInPool("gemini", idx, e.target.value)}
+                              placeholder="AIzaSy..."
+                              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleTestSingleKey("google", key, idx)}
+                              disabled={isTesting || !key.trim()}
+                              className="px-2.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                            >
+                              <RefreshCw size={10} className={isTesting ? "animate-spin" : ""} />
+                              {isTesting ? "…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeKeyFromPool("gemini", idx)}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition shrink-0"
+                              title="Remove key"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
-                        ))}
-                    </div>
-                  )}
+                          {result && (
+                            <div className={`ml-7 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                              result.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : result.status === "image_quota_zero"
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{result.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {result.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{result.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  result.status === "active"
+                                    ? "bg-emerald-500 text-white"
+                                    : result.status === "image_quota_zero"
+                                    ? "bg-amber-500 text-black"
+                                    : "bg-red-500 text-white"
+                                }`}>
+                                  {result.status === "active" ? "Active ✅" : result.status === "image_quota_zero" ? "Quota 0 ⚠️" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addKeyToPool("gemini")}
+                    className="w-full py-2 rounded-xl border border-dashed border-blue-500/40 text-blue-500 hover:bg-blue-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add Google Key
+                  </button>
                 </div>
+
+
 
                 {/* 2. Hugging Face FLUX.1 */}
                 <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
@@ -1412,49 +1524,75 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     Create a free Read Token at Hugging Face (starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">hf_...</code>). Ultra-fast commercial flyers and advertising visuals.
                   </p>
-                  <textarea
-                    rows={2}
-                    value={generalKeys.HUGGINGFACE_API_KEYS || ""}
-                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, HUGGINGFACE_API_KEYS: e.target.value }))}
-                    placeholder="hf_..., hf_... (comma-separated for multi-key pool)"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50"
-                  />
 
-                  {/* Live Per-Key Results for Hugging Face */}
-                  {getImageProviderResults("huggingface").length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {getImageProviderResults("huggingface").map((r: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                              r.status === "active"
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
-                            }`}
-                          >
-                            <div className="flex items-start sm:items-center gap-2">
-                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
-                                {r.keyMasked || r.keyMask}
-                              </span>
-                              <span className="text-[11px] leading-snug">{r.message}</span>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              {r.latencyMs !== undefined && (
-                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
-                              )}
-                              <span
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                                }`}
-                              >
-                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
-                              </span>
-                            </div>
+                  {/* Card-based key rows */}
+                  <div className="space-y-2">
+                    {hfKeyPool.map((key, idx) => {
+                      const rk = `huggingface-${idx}`;
+                      const result = keyTestResults[rk];
+                      const isTesting = testingKey === rk;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 w-5 shrink-0">#{idx + 1}</span>
+                            <input
+                              type="password"
+                              value={key}
+                              onChange={(e) => updateKeyInPool("hf", idx, e.target.value)}
+                              placeholder="hf_..."
+                              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleTestSingleKey("huggingface", key, idx)}
+                              disabled={isTesting || !key.trim()}
+                              className="px-2.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                            >
+                              <RefreshCw size={10} className={isTesting ? "animate-spin" : ""} />
+                              {isTesting ? "…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeKeyFromPool("hf", idx)}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition shrink-0"
+                              title="Remove key"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
-                        ))}
-                    </div>
-                  )}
+                          {result && (
+                            <div className={`ml-7 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                              result.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{result.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {result.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{result.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  result.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}>
+                                  {result.status === "active" ? "Active ✅" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addKeyToPool("hf")}
+                    className="w-full py-2 rounded-xl border border-dashed border-amber-500/40 text-amber-500 hover:bg-amber-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add HF Token
+                  </button>
                 </div>
+
+
 
                 {/* 3. Cloudflare Workers AI */}
                 <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
@@ -1495,15 +1633,45 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                        Cloudflare API Tokens
+                        Cloudflare API Token
                       </label>
-                      <input
-                        type="password"
-                        value={generalKeys.CLOUDFLARE_API_TOKENS || ""}
-                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, CLOUDFLARE_API_TOKENS: e.target.value }))}
-                        placeholder="Cloudflare API Token..."
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={cfKeyPool[0] || ""}
+                          onChange={(e) => updateKeyInPool("cf", 0, e.target.value)}
+                          placeholder="cfut_..."
+                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleTestSingleKey("cloudflare", cfKeyPool[0] || "", 0, generalKeys.CLOUDFLARE_ACCOUNT_ID)}
+                          disabled={testingKey === "cloudflare-0" || !(cfKeyPool[0] || "").trim()}
+                          className="px-2.5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                        >
+                          <RefreshCw size={10} className={testingKey === "cloudflare-0" ? "animate-spin" : ""} />
+                          {testingKey === "cloudflare-0" ? "…" : "Test"}
+                        </button>
+                      </div>
+                      {keyTestResults["cloudflare-0"] && (
+                        <div className={`mt-1.5 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                          keyTestResults["cloudflare-0"].status === "active"
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                            : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                        }`}>
+                          <span className="leading-snug">{keyTestResults["cloudflare-0"].message}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {keyTestResults["cloudflare-0"].latencyMs !== undefined && (
+                              <span className="text-[10px] font-mono opacity-60">{keyTestResults["cloudflare-0"].latencyMs}ms</span>
+                            )}
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              keyTestResults["cloudflare-0"].status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                            }`}>
+                              {keyTestResults["cloudflare-0"].status === "active" ? "Active ✅" : "Invalid ❌"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
@@ -1518,41 +1686,6 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       />
                     </div>
                   </div>
-
-                  {/* Live Results for Cloudflare */}
-                  {getImageProviderResults("cloudflare").length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {getImageProviderResults("cloudflare").map((r: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                              r.status === "active"
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
-                            }`}
-                          >
-                            <div className="flex items-start sm:items-center gap-2">
-                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
-                                {r.keyMasked || r.keyMask}
-                              </span>
-                              <span className="text-[11px] leading-snug">{r.message}</span>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              {r.latencyMs !== undefined && (
-                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
-                              )}
-                              <span
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                                }`}
-                              >
-                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
                 </div>
 
                 {/* 4. OpenAI DALL-E 3 */}
@@ -1568,16 +1701,6 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyImageKeys("openai")}
-                        disabled={verifyingImageSection === "openai" || verifyingImageKeys}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
-                        title="Test OpenAI keys live"
-                      >
-                        <RefreshCw size={11} className={verifyingImageSection === "openai" ? "animate-spin" : ""} />
-                        {verifyingImageSection === "openai" ? "Testing..." : "🧪 Test OpenAI Keys"}
-                      </button>
                       <a
                         href="https://platform.openai.com/api-keys"
                         target="_blank"
@@ -1591,49 +1714,75 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     If configured, Obey can fall back to OpenAI DALL-E 3 HD. Leave blank to rely entirely on free Google Gemini and Hugging Face FLUX.
                   </p>
-                  <input
-                    type="password"
-                    value={generalKeys.OPENAI_API_KEYS || ""}
-                    onChange={(e) => setGeneralKeys((prev) => ({ ...prev, OPENAI_API_KEYS: e.target.value }))}
-                    placeholder="sk-..., sk-... (comma-separated)"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  />
 
-                  {/* Live Results for OpenAI */}
-                  {getImageProviderResults("openai").length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {getImageProviderResults("openai").map((r: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                              r.status === "active"
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
-                            }`}
-                          >
-                            <div className="flex items-start sm:items-center gap-2">
-                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
-                                {r.keyMasked || r.keyMask}
-                              </span>
-                              <span className="text-[11px] leading-snug">{r.message}</span>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              {r.latencyMs !== undefined && (
-                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
-                              )}
-                              <span
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                                }`}
-                              >
-                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
-                              </span>
-                            </div>
+                  {/* Card-based key rows */}
+                  <div className="space-y-2">
+                    {openaiKeyPool.map((key, idx) => {
+                      const rk = `openai-${idx}`;
+                      const result = keyTestResults[rk];
+                      const isTesting = testingKey === rk;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 w-5 shrink-0">#{idx + 1}</span>
+                            <input
+                              type="password"
+                              value={key}
+                              onChange={(e) => updateKeyInPool("openai", idx, e.target.value)}
+                              placeholder="sk-..."
+                              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleTestSingleKey("openai", key, idx)}
+                              disabled={isTesting || !key.trim()}
+                              className="px-2.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                            >
+                              <RefreshCw size={10} className={isTesting ? "animate-spin" : ""} />
+                              {isTesting ? "…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeKeyFromPool("openai", idx)}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition shrink-0"
+                              title="Remove key"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
-                        ))}
-                    </div>
-                  )}
+                          {result && (
+                            <div className={`ml-7 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                              result.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{result.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {result.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{result.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  result.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}>
+                                  {result.status === "active" ? "Active ✅" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addKeyToPool("openai")}
+                    className="w-full py-2 rounded-xl border border-dashed border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add OpenAI Key
+                  </button>
                 </div>
+
+
 
                 {/* Ultra-HD Quality Assurance Notice */}
                 <div className="p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-950/20 space-y-1">
