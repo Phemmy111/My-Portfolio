@@ -29,7 +29,7 @@ export async function sendWhatsAppMessage(
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName =
       customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
@@ -124,7 +124,7 @@ export async function sendWhatsAppButtons(params: {
 }): Promise<{ success: boolean; fallbackText?: boolean; error?: string }> {
   const { recipient, text, buttons, title, footer, instanceName: customInstance } = params;
   try {
-    const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -198,7 +198,7 @@ export async function sendWhatsAppList(params: {
 }): Promise<{ success: boolean; fallbackText?: boolean; error?: string }> {
   const { recipient, title, description, buttonText, sections, footer, instanceName: customInstance } = params;
   try {
-    const evoUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -309,7 +309,7 @@ export async function fetchEvolutionMediaBase64(
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = instanceOverride || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -362,7 +362,7 @@ export async function sendWhatsAppAudio(
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -447,7 +447,7 @@ export async function sendWhatsAppImage(
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -498,7 +498,7 @@ export async function sendWhatsAppDocument(
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -565,7 +565,7 @@ export async function createEvolutionInstance(
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const isNumberMode = Boolean(options?.number);
@@ -590,7 +590,7 @@ export async function createEvolutionInstance(
 export async function deleteEvolutionInstance(instanceName: string) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const res = await fetch(`${evoUrl}/instance/delete/${instanceName}`, {
@@ -607,7 +607,7 @@ export async function deleteEvolutionInstance(instanceName: string) {
 export async function getEvolutionInstanceQR(instanceName: string) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -636,7 +636,7 @@ export async function getEvolutionPairingCode(
 ): Promise<{ success: boolean; pairingCode?: string; error?: string }> {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const cleaned = phoneNumber.replace(/\D/g, "");
@@ -733,7 +733,7 @@ export async function getEvolutionPairingCode(
 export async function getEvolutionConnectionState(instanceName: string) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const res = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {
@@ -749,7 +749,7 @@ export async function getEvolutionConnectionState(instanceName: string) {
 export async function setEvolutionInstanceWebhook(instanceName: string, webhookUrl: string) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const res = await fetch(`${evoUrl}/webhook/set/${instanceName}`, {
@@ -775,7 +775,7 @@ export async function setEvolutionInstanceWebhook(instanceName: string, webhookU
 export async function logoutEvolutionInstance(instanceName: string) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const res = await fetch(`${evoUrl}/instance/logout/${instanceName}`, {
@@ -805,7 +805,7 @@ export async function sendWhatsAppStatusPost(params: {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -975,7 +975,7 @@ export async function deleteWhatsAppStatusPost(params: {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || "obey";
 
@@ -1036,7 +1036,7 @@ export async function sendWhatsAppReaction(params: {
   try {
     const evoUrl =
       process.env.EVOLUTION_API_URL ||
-      "https://evolution-api-latest-cx3y.onrender.com";
+      "https://obey-whatsapp-api.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
     const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
@@ -1085,7 +1085,7 @@ export async function setEvolutionInstanceSettings(
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const res = await fetch(`${evoUrl}/settings/set/${instanceName}`, {
@@ -1119,7 +1119,7 @@ export async function markWhatsAppMessageRead(
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
@@ -1161,7 +1161,7 @@ export async function sendWhatsAppPresence(
 ) {
   const evoUrl =
     process.env.EVOLUTION_API_URL ||
-    "https://evolution-api-latest-cx3y.onrender.com";
+    "https://obey-whatsapp-api.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   try {
     const cleaned = number.replace(/\D/g, "");
