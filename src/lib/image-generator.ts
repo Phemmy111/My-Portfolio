@@ -253,9 +253,6 @@ export async function generateAIImage(
     // 1. Expand prompt if this is a flyer, graphic, promotional design, or beauty service
     const { expandedPrompt, isPortraitFlyer } = await synthesizeCommercialGraphicPrompt(userPrompt);
 
-    const width = options?.width || (isPortraitFlyer ? 1080 : 1024);
-    const height = options?.height || (isPortraitFlyer ? 1350 : 1024);
-    const enhance = options?.enhance !== false;
     const seed = options?.seed !== undefined ? options.seed : Math.floor(Math.random() * 1000000);
 
     // Clean and sanitize prompt
@@ -263,21 +260,90 @@ export async function generateAIImage(
       .replace(/^(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration) of|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup) of|draw (me )?|show me|design a (logo|picture|banner|flyer|mockup) for|generate|create a logo for)\s*/i, "")
       .trim();
 
-    const encodedPrompt = encodeURIComponent(cleanedPrompt || "modern high-tech creative software design");
+    let finalImageUrl = "";
 
-    // Pollinations URL with consistent seed
+    // ── DALL-E 3 HD (premium, same engine as ChatGPT) ──────────────────────
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+      try {
+        // DALL-E 3 supports: 1024x1024 | 1024x1792 | 1792x1024
+        const dalleSize = isPortraitFlyer ? "1024x1792" : "1024x1024";
+
+        const dalleRes = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openaiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "dall-e-3",
+            prompt: cleanedPrompt || "modern creative high-tech design",
+            n: 1,
+            size: dalleSize,
+            quality: "hd",
+            style: "vivid",
+          }),
+        });
+
+        if (dalleRes.ok) {
+          const dalleData = await dalleRes.json();
+          const tempUrl: string = dalleData?.data?.[0]?.url || "";
+          const revisedByDalle: string = dalleData?.data?.[0]?.revised_prompt || cleanedPrompt;
+
+          if (tempUrl) {
+            // Upload to Cloudinary to make URL permanent (DALL-E URLs expire after ~1h)
+            if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+              try {
+                const uploadRes = await cloudinary.uploader.upload(tempUrl, {
+                  folder: "obey-artwork",
+                  resource_type: "image",
+                });
+                const permanentUrl = cloudinary.url(uploadRes.public_id, {
+                  transformation: [{ quality: "auto:best" }],
+                  secure: true,
+                });
+                finalImageUrl = permanentUrl || tempUrl;
+              } catch (cloudErr) {
+                console.warn("[Image Generator] Cloudinary upload failed, using DALL-E temp URL:", cloudErr);
+                finalImageUrl = tempUrl;
+              }
+            } else {
+              finalImageUrl = tempUrl;
+            }
+
+            return {
+              success: true,
+              imageUrl: finalImageUrl,
+              revisedPrompt: revisedByDalle,
+              seed,
+            };
+          }
+        } else {
+          const errBody = await dalleRes.text();
+          console.warn("[Image Generator] DALL-E 3 error:", dalleRes.status, errBody);
+        }
+      } catch (dalleErr) {
+        console.warn("[Image Generator] DALL-E 3 exception, falling back to Pollinations:", dalleErr);
+      }
+    }
+
+    // ── Fallback: Pollinations/Flux (if no OpenAI key or DALL-E failed) ────
+    console.log("[Image Generator] Using Pollinations fallback");
+    const width = options?.width || (isPortraitFlyer ? 1080 : 1024);
+    const height = options?.height || (isPortraitFlyer ? 1350 : 1024);
+    const enhance = options?.enhance !== false;
+    const encodedPrompt = encodeURIComponent(cleanedPrompt || "modern high-tech creative software design");
     const rawPollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=${enhance}&model=flux`;
 
-    let finalImageUrl = rawPollinationsUrl;
+    finalImageUrl = rawPollinationsUrl;
 
-    // Frame out the watermark by uploading to Cloudinary and cropping top 93%
+    // Frame out watermark via Cloudinary crop
     if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
       try {
         const uploadRes = await cloudinary.uploader.upload(rawPollinationsUrl, {
           folder: "obey-artwork",
           resource_type: "image",
         });
-
         const framedUrl = cloudinary.url(uploadRes.public_id, {
           transformation: [
             { height: 0.93, crop: "crop", gravity: "north" },
@@ -285,10 +351,7 @@ export async function generateAIImage(
           ],
           secure: true,
         });
-
-        if (framedUrl) {
-          finalImageUrl = framedUrl;
-        }
+        if (framedUrl) finalImageUrl = framedUrl;
       } catch (cloudErr) {
         console.warn("[Image Generator] Cloudinary framing fallback:", cloudErr);
       }
@@ -311,3 +374,4 @@ export async function generateAIImage(
     };
   }
 }
+

@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
           instanceName,
           backgroundColor: background_color || "#075E54",
           textColor: text_color || "#FFFFFF",
-          font: typeof font === "number" ? font : 0,
+          font: typeof font === "number" && font >= 1 ? font : 1,
         })
           .then(async (dispatchRes) => {
             if (dispatchRes.success && dispatchRes.messageId) {
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
         media_type: media_type || (hasMedia ? "image" : "text"),
         background_color: background_color || "#075E54",
         text_color: text_color || "#FFFFFF",
-        font: typeof font === "number" ? font : 0,
+        font: typeof font === "number" && font >= 1 ? font : 1,
         message_id: null,
         status: initialStatus,
         error_message: null,

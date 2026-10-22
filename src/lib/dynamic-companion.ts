@@ -390,7 +390,7 @@ AVAILABLE TOOLS & ACTIONS:
 2. "draft_whatsapp_message": Use when the user asks you to message, text, or relay words to any phone number or person.
    - Look back across prior turns to recover recipient phone and message content if shared across multiple messages.
    - Parameters: "recipient_phone" (digits only, e.g. 234...), "message_content" (the core message or request).
-3. "generate_new_image": Use when the user wants to generate, draw, paint, or visualize a brand new image or scene from scratch.
+3. "generate_new_image": Use ONLY when the user is EXPLICITLY commanding you to create, draw, generate, design, paint, or visualize a brand new image, artwork, flyer, poster, banner, or logo FROM SCRATCH. The user must use a direct creation verb (e.g. "make", "create", "draw", "generate", "design", "paint"). DO NOT use this action if the user is discussing your image capabilities, asking how image generation works, wanting to upgrade/improve your image engine, or using the word "image" in any meta/conversational context.
    - Parameters: "image_prompt" (rich descriptive prompt).
 4. "modify_existing_image": Use when the user wants to adjust, modify, recolor, or change elements of their PREVIOUS artwork in context (e.g. changing color, weather, lighting, day/night).
    - Parameters: "image_modification" (specific edits to apply).
@@ -900,10 +900,24 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
   }
 
   // DETERMINISTIC IMAGE / FLYER / GRAPHIC RECOVERY:
-  // If user asks for a flyer, graphic design, promotional poster, banner, or logo:
+  // Only fire when the user is EXPLICITLY commanding an image to be created/drawn/designed.
+  // Must have an explicit creation verb (make, create, draw, generate, design, paint) + visual subject.
+  // NEVER fire for meta-discussion phrases like "upgrade your image creation", "your image generator", "how does image generation work", etc.
+  const isMetaImageDiscussion =
+    /\b(your\s+image|image\s+(gen|creat|capab|upgrad|qualit|feature|abilit|engine|function|tool)|upgrade.*image|improve.*image|image.*upgrade|image.*improve|how.*image|image.*work|image.*system)\b/i.test(userText.trim());
+
   const requestsImageOrFlyer =
-    /\b(flyer|flyer off|flyer of|design a flyer|make a flyer|create a flyer|poster|banner|design a logo|generate (?:an? )?image|draw|paint|picture of|artwork|illustration|graphic design)\b/i.test(userText.trim()) ||
-    (/\b(flyer|poster|logo|banner)\b/i.test(userText.trim()) && /\b(work|business|services|brand|design|make|create|help)\b/i.test(userText.trim()));
+    !isMetaImageDiscussion &&
+    (
+      // Explicit "make/create/generate/draw/design/paint" + visual noun
+      /\b(make|create|generate|draw|design|paint|produce|build|give me)\s+(me\s+)?(an?\s+)?(image|photo|picture|artwork|illustration|flyer|poster|banner|logo|graphic|portrait|scene|visual|thumbnail)\b/i.test(userText.trim()) ||
+      // "flyer for/of", "poster for/of", "logo for" — but must have a business/topic context
+      (/\b(flyer|poster|logo|banner)\s+(for|of)\b/i.test(userText.trim()) && /\b(work|business|services|brand|salon|school|church|shop|product|event|nails|beauty|promo|launch)\b/i.test(userText.trim())) ||
+      // "create a flyer", "make a banner", "design a logo" — explicit imperatives
+      /\b(create|make|design|build|produce)\s+(a|an)\s+(flyer|poster|banner|logo|graphic|artwork|visual)\b/i.test(userText.trim()) ||
+      // "draw me", "paint me" — classic image creation
+      /\b(draw|paint)\s+(me\s+)?[a-z]/i.test(userText.trim())
+    );
 
   if (
     requestsImageOrFlyer &&
@@ -915,6 +929,7 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
     if (!decision.action_params) decision.action_params = {};
     decision.action_params.image_prompt = userText.trim();
   }
+
 
   // 4. EXECUTE AUTONOMOUS DECISION
 
@@ -1333,7 +1348,221 @@ After closing </artifact>, provide a 1-sentence executive summary of what was cr
       const docFormat = decision.action_params?.document_format || "doc";
       const userGreetingName = senderName ? senderName.replace(/[^\w\s]/gi, "").trim() : "";
 
-      const docPrompt = `You are Obey, an elite executive assistant and business architect.
+      // ── Detect Academic / Research Chapter Request ──────────────────────────
+      const isAcademicResearch =
+        /\b(chapter\s+\d|chapter\s+(?:one|two|three|four|five)|research\s+(chapter|project|work|paper|proposal)|literature\s+review|conceptual\s+framework|theoretical\s+framework|empirical\s+review|methodology|academic\s+(paper|research|project|writing|work)|project\s+(?:chapter|writing|for\s+student)|student\s+project|undergraduate|postgraduate|dissertation|thesis|journal\s+article|scholarly|peer.?reviewed|APA\s*(?:7|format)|research\s+question|hypothesis|background\s+of\s+study|statement\s+of\s+problem|scope\s+of\s+study|significance\s+of\s+study|review\s+of\s+(?:related\s+)?literature|data\s+collection|research\s+methodology|sample\s+(?:size|population)|quantitative|qualitative|mixed.?method)\b/i.test(docTopic + " " + docTitle + " " + userText);
+
+      let fileContent = "";
+
+      if (isAcademicResearch) {
+        // ── ACADEMIC MODE: Multi-section 30+ page research document ────────────
+        const currentYear = new Date().getFullYear();
+
+        // Detect which chapter(s) are needed
+        const chapterMatch = (docTopic + " " + userText).match(/chapter\s*(\d+|one|two|three|four|five)/i);
+        const chapterNumMap: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+        const rawChapterNum = chapterMatch?.[1] || "";
+        const chapterNum = /\d/.test(rawChapterNum) ? parseInt(rawChapterNum) : (chapterNumMap[rawChapterNum.toLowerCase()] || 2);
+
+        const chapterTitles: Record<number, string> = {
+          1: "Introduction",
+          2: "Review of Related Literature",
+          3: "Research Methodology",
+          4: "Data Presentation, Analysis and Discussion of Findings",
+          5: "Summary, Conclusion and Recommendations",
+        };
+        const chapterTitle = chapterTitles[chapterNum] || "Review of Related Literature";
+
+        // Build chapter-specific section prompts
+        const sectionPrompts: { heading: string; prompt: string }[] = [];
+
+        if (chapterNum === 1) {
+          sectionPrompts.push(
+            {
+              heading: "1.1 Background to the Study",
+              prompt: `Write a detailed, scholarly 800-1000 word background to the study for: "${docTopic}". Include historical evolution of the problem, current state in Nigeria/West Africa, relevant global trends, and why this study is timely and important. Use formal academic language.`,
+            },
+            {
+              heading: "1.2 Statement of the Problem",
+              prompt: `Write a formal 400-600 word statement of the problem for: "${docTopic}". Identify specific gaps, challenges, and deficiencies in existing knowledge or practice that this research addresses.`,
+            },
+            {
+              heading: "1.3 Objectives of the Study",
+              prompt: `List 5-7 specific, measurable research objectives for the study on: "${docTopic}". Each objective must begin with an action verb (To examine, To assess, To determine, To evaluate, To investigate, To establish, To compare).`,
+            },
+            {
+              heading: "1.4 Research Questions",
+              prompt: `Formulate 5-7 research questions corresponding to the objectives for the study on: "${docTopic}". Questions should be clear, focused, and empirically answerable.`,
+            },
+            {
+              heading: "1.5 Research Hypotheses",
+              prompt: `State 3-5 null and alternate hypotheses for the study on: "${docTopic}". Format as H₀ (null) and H₁ (alternative) pairs.`,
+            },
+            {
+              heading: "1.6 Significance of the Study",
+              prompt: `Write 400-500 words on the significance of the study on: "${docTopic}". Discuss importance to: policy makers, practitioners, researchers, and the academic community. Be specific about real-world contributions.`,
+            },
+            {
+              heading: "1.7 Scope and Delimitation of the Study",
+              prompt: `Write the scope and delimitation for the study on: "${docTopic}". Specify geographic scope (Nigeria/specific state), time period, target population, and what is excluded from the study.`,
+            },
+            {
+              heading: "1.8 Limitations of the Study",
+              prompt: `Discuss 3-4 limitations the researcher may encounter in studying: "${docTopic}". Suggest mitigation strategies for each.`,
+            },
+            {
+              heading: "1.9 Definition of Terms",
+              prompt: `Provide operational definitions for 8-10 key technical terms used in the study on: "${docTopic}". Cite authoritative sources (APA 7th edition format) for each definition.`,
+            }
+          );
+        } else if (chapterNum === 2) {
+          sectionPrompts.push(
+            {
+              heading: "2.1 Introduction",
+              prompt: `Write a 200-word introduction to Chapter Two for: "${docTopic}". Preview the sections that will be reviewed in this chapter.`,
+            },
+            {
+              heading: "2.2 Conceptual Review",
+              prompt: `Write a comprehensive 1000-1200 word conceptual review for: "${docTopic}". Define and clarify key concepts central to the study. Discuss how scholars have conceptualized them. Cite at least 8 real, plausible academic sources in APA 7th format (e.g., Author, A. B., & Author, C. D. (${currentYear - 2}). Title. Journal Name, Volume(Issue), pages. https://doi.org/...).`,
+            },
+            {
+              heading: "2.3 Theoretical Framework",
+              prompt: `Write a detailed 800-1000 word theoretical framework for: "${docTopic}". Present 2-3 relevant theories (e.g., systems theory, human capital theory, diffusion of innovations, etc.) that underpin the study. For each theory: state the theorist and year, core assumptions, and how it relates to this study. Use APA 7th format citations.`,
+            },
+            {
+              heading: "2.4 Empirical Review",
+              prompt: `Write a thorough 1200-1500 word empirical review for: "${docTopic}". Synthesize findings from at least 12 empirical studies. Include Nigerian/West African studies, other African contexts, and global studies. For each study discuss: authors, year, location, objective, methodology, sample size, findings, and relevance. Use APA 7th in-text citations.`,
+            },
+            {
+              heading: "2.5 Summary of Literature Review and Identified Gaps",
+              prompt: `Write a 400-600 word synthesis summarizing the key themes emerging from the literature review on: "${docTopic}". Explicitly identify 3-5 knowledge gaps that justify this study. Explain how the current study fills these gaps.`,
+            },
+            {
+              heading: "References",
+              prompt: `Generate a properly formatted APA 7th edition reference list with at least 20 references for a study on: "${docTopic}". Include: journal articles, books, book chapters, government reports, and online sources. Mix Nigerian, African, and international authors. Use realistic DOIs and publisher information. Format each entry properly hanging-indent style.`,
+            }
+          );
+        } else if (chapterNum === 3) {
+          sectionPrompts.push(
+            {
+              heading: "3.1 Introduction",
+              prompt: `Write a 150-word introduction to Chapter Three (Research Methodology) for: "${docTopic}".`,
+            },
+            {
+              heading: "3.2 Research Design",
+              prompt: `Write 400-500 words describing the research design adopted for: "${docTopic}". Justify the choice (descriptive survey, correlational, experimental, etc.) with scholarly references (APA 7th).`,
+            },
+            {
+              heading: "3.3 Area of Study",
+              prompt: `Write 300-400 words describing the area of study for the research on: "${docTopic}". Include geographic, demographic, and institutional context of the research site in Nigeria.`,
+            },
+            {
+              heading: "3.4 Population of the Study",
+              prompt: `Write 300-400 words detailing the population of the study for: "${docTopic}". State the total accessible population and describe their characteristics.`,
+            },
+            {
+              heading: "3.5 Sample Size and Sampling Technique",
+              prompt: `Write 400-500 words on sample size determination and sampling technique for: "${docTopic}". Use Taro Yamane or Krejcie and Morgan formula if relevant. Justify the sampling method chosen (stratified, purposive, random, etc.).`,
+            },
+            {
+              heading: "3.6 Instrument for Data Collection",
+              prompt: `Write 400-500 words describing the research instrument for: "${docTopic}". Describe the questionnaire structure, scale used (Likert, etc.), and each section. Include a sample of 5-item questionnaire items.`,
+            },
+            {
+              heading: "3.7 Validity of the Instrument",
+              prompt: `Write 250-350 words on how the validity of the research instrument was established for: "${docTopic}". Reference face validity, content validity, and expert review process.`,
+            },
+            {
+              heading: "3.8 Reliability of the Instrument",
+              prompt: `Write 250-350 words on the reliability testing of the instrument for: "${docTopic}". Reference Cronbach's alpha coefficient, pilot study, and acceptable threshold values.`,
+            },
+            {
+              heading: "3.9 Method of Data Collection",
+              prompt: `Write 250-350 words on the method of data collection for: "${docTopic}". Describe the procedure for administering and retrieving questionnaires.`,
+            },
+            {
+              heading: "3.10 Method of Data Analysis",
+              prompt: `Write 300-400 words on methods of data analysis for: "${docTopic}". Specify statistical tools: descriptive statistics (mean, standard deviation, frequency, percentage), and inferential statistics (t-test, ANOVA, Pearson r, regression) as appropriate. Reference SPSS or relevant software.`,
+            }
+          );
+        }
+
+        // If no specific chapter detected or generic research, default to Chapter 2
+        if (sectionPrompts.length === 0) {
+          sectionPrompts.push(
+            {
+              heading: "2.1 Conceptual Review",
+              prompt: `Write a comprehensive 1000-word conceptual review for: "${docTopic}". Define key concepts with APA 7th citations.`,
+            },
+            {
+              heading: "2.2 Theoretical Framework",
+              prompt: `Write a detailed 800-word theoretical framework for: "${docTopic}". Present 2 relevant theories, explain their core assumptions and relevance.`,
+            },
+            {
+              heading: "2.3 Empirical Review",
+              prompt: `Write a thorough 1200-word empirical review for: "${docTopic}" with at least 10 empirical studies including Nigerian/African studies.`,
+            },
+            {
+              heading: "2.4 Summary and Gaps",
+              prompt: `Write a 500-word synthesis of the literature and identify 3-5 research gaps for: "${docTopic}".`,
+            }
+          );
+        }
+
+        // Generate each section sequentially and assemble
+        const academicSystemPrompt = `You are Dr. Obey, an expert academic researcher and university professor specializing in research methodology. You write in formal, scholarly Nigerian academic English. You are producing a section for a full academic research project. Write with depth, precision, and academic rigour. Use REAL plausible citations in APA 7th edition format. Each section you write should be SUBSTANTIAL — minimum 400 words unless specified otherwise. Do NOT add introductory filler like "Certainly!" or "Here is the section". Output ONLY the academic content.`;
+
+        const sectionResults: string[] = [];
+        for (const section of sectionPrompts) {
+          try {
+            const sRes = await executeAICompletion({
+              systemPrompt: academicSystemPrompt,
+              userPrompt: `${section.prompt}\n\nWrite the complete section now:`,
+              temperature: 0.4,
+              maxTokens: 2000,
+            });
+            sectionResults.push(`<h2>${section.heading}</h2>\n<p>${sRes.text.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>")}</p>`);
+          } catch (sErr) {
+            console.warn(`[Companion] Research section error (${section.heading}):`, sErr);
+          }
+        }
+
+        const chapterBodyHtml = sectionResults.join("\n\n");
+
+        fileContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${docTitle}</title>
+<style>
+  body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 2.0; color: #000; max-width: 850px; margin: auto; padding: 60px 80px; }
+  h1 { font-size: 14pt; text-align: center; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; }
+  h2 { font-size: 13pt; font-weight: bold; margin-top: 28px; margin-bottom: 8px; }
+  h3 { font-size: 12pt; font-weight: bold; font-style: italic; margin-top: 18px; }
+  p { text-align: justify; margin-bottom: 14px; text-indent: 0.5in; }
+  .cover { text-align: center; padding: 80px 0; }
+  .cover h1 { font-size: 16pt; text-transform: uppercase; }
+  .cover p { text-indent: 0; text-align: center; }
+  .chapter-heading { text-align: center; text-transform: uppercase; font-size: 14pt; font-weight: bold; margin: 40px 0 20px; }
+  hr { margin: 40px 0; border: none; border-top: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <h1>${docTitle}</h1>
+  <p style="margin-top:40px;">CHAPTER ${chapterNum}</p>
+  <p><strong>${chapterTitle.toUpperCase()}</strong></p>
+  <p style="margin-top:60px;">Prepared by Obey AI Research Assistant<br>${watDate}</p>
+</div>
+<hr>
+<div class="chapter-heading">CHAPTER ${chapterNum}<br>${chapterTitle.toUpperCase()}</div>
+${chapterBodyHtml}
+</body>
+</html>`;
+
+      } else {
+        // ── BUSINESS MODE: Original executive document ──────────────────────────
+        const docPrompt = `You are Obey, an elite executive assistant and business architect.
 Generate a comprehensive, beautifully structured, publication-grade executive document for: "${docTitle}".
 Full context & source details discussed: "${docTopic}".
 User/Recipient: ${userGreetingName || "Leader"}
@@ -1351,14 +1580,15 @@ Format the output in clean, elegant Word-compatible HTML markup with clear <h1>,
 Ensure it looks stunning and opens natively in Microsoft Word, Google Docs, or an internet browser!
 Return ONLY the complete HTML document starting with <!DOCTYPE html><html>...</html>.`;
 
-      const docRes = await executeAICompletion({
-        systemPrompt: "You are an elite executive document writer. Generate professional, polished, high-value business documents and proposals.",
-        userPrompt: docPrompt,
-        temperature: 0.3,
-      });
+        const docRes = await executeAICompletion({
+          systemPrompt: "You are an elite executive document writer. Generate professional, polished, high-value business documents and proposals.",
+          userPrompt: docPrompt,
+          temperature: 0.3,
+        });
+        fileContent = docRes.text;
+      }
 
       const safeTitle = docTitle.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_") || "Document";
-      const fileContent = docRes.text;
 
       // Save as artifact so it has a permanent web link
       const saved = await saveArtifact({
@@ -1377,9 +1607,16 @@ Return ONLY the complete HTML document starting with <!DOCTYPE html><html>...</h
         await sendWhatsAppDocument(fileContent, `${safeTitle}${ext}`, userIdentifier, `📄 *${docTitle}*`, mime);
       }
 
-      return {
-        reply: cleanWhatsApp(
-          `📄 *${docTitle} is ready!*
+      const isResearchMsg = isAcademicResearch
+        ? `📚 *${docTitle} — Chapter Complete!*
+
+I've written the full academic chapter with detailed sections, literature citations (APA 7th), theoretical frameworks, and empirical studies.
+
+📄 *Word-compatible document attached above*
+🌐 *Live link:* ${link}
+
+You can open it in Microsoft Word or Google Docs. Let me know which other chapter you need next!`
+        : `📄 *${docTitle} is ready!*
 
 I've converted the pitch and plan into a complete, professional executive document and dispatched the file directly here for you.
 
@@ -1387,8 +1624,10 @@ I've converted the pitch and plan into a complete, professional executive docume
 ${link}
 
 📁 *Word & Google Docs Compatible:*
-Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.`
-        ),
+Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.`;
+
+      return {
+        reply: cleanWhatsApp(isResearchMsg),
         artifactId: saved.id,
         artifactTitle: docTitle,
         artifactContent: fileContent,
@@ -1397,6 +1636,7 @@ Open the attached file in Microsoft Word, Google Docs, or on your phone anytime.
       console.error("[Companion] Document generation error:", err);
     }
   }
+
 
   // Tool: Generate Production-Ready n8n Workflow JSON (.json)
   if (decision.action === "generate_n8n_workflow") {
