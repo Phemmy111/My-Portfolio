@@ -109,15 +109,21 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
   // AI Image Generator Keys Verification State
   const [verifyingImageKeys, setVerifyingImageKeys] = useState(false);
+  const [verifyingImageSection, setVerifyingImageSection] = useState<string | null>(null);
   const [imageKeyVerificationResults, setImageKeyVerificationResults] = useState<any[] | null>(null);
 
-  const handleVerifyImageKeys = async () => {
-    setVerifyingImageKeys(true);
+  const handleVerifyImageKeys = async (provider?: string) => {
+    if (provider) {
+      setVerifyingImageSection(provider);
+    } else {
+      setVerifyingImageKeys(true);
+    }
     try {
       const res = await fetch("/api/obey/verify-image-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           geminiKeys: generalKeys.GEMINI_API_KEYS,
           hfKeys: generalKeys.HUGGINGFACE_API_KEYS,
           cfTokens: generalKeys.CLOUDFLARE_API_TOKENS,
@@ -127,12 +133,17 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       });
       const data = await res.json();
       if (data.results) {
-        setImageKeyVerificationResults(data.results);
+        setImageKeyVerificationResults((prev) => {
+          if (!prev || !provider) return data.results;
+          const filtered = prev.filter((r) => r.provider !== provider);
+          return [...filtered, ...data.results];
+        });
       }
     } catch (err: any) {
       console.error("Verification error:", err);
     } finally {
       setVerifyingImageKeys(false);
+      setVerifyingImageSection(null);
     }
   };
 
@@ -1237,13 +1248,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         >
                           <div className="flex items-center justify-between font-bold">
                             <span>{r.provider}</span>
-                            <span className="text-[10px] font-black uppercase px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10">
-                              {r.status}
+                            <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10">
+                              {r.status === "active" ? "Active" : r.status === "image_quota_zero" ? "Quota 0 (Chat Only)" : r.status === "invalid_format" ? "Format Error" : "Invalid"}
                             </span>
                           </div>
-                          <p className="text-[11px] leading-snug line-clamp-2">{r.message}</p>
-                          {r.keyMask && (
-                            <span className="text-[10px] font-mono opacity-70 block">{r.keyMask}</span>
+                          <p className="text-[11px] leading-snug">{r.message}</p>
+                          {(r.keyMasked || r.keyMask) && (
+                            <span className="text-[10px] font-mono opacity-70 block">{r.keyMasked || r.keyMask}</span>
                           )}
                         </div>
                       ))}
@@ -1264,6 +1275,16 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("google")}
+                        disabled={verifyingImageSection === "google" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test all Google keys in this box live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "google" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "google" ? "Testing..." : "🧪 Test Google Keys"}
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1303,6 +1324,55 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     placeholder="AIzaSy..., AIzaSy... (comma-separated for multi-key pool)"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   />
+
+                  {/* Live Per-Key Results for Google */}
+                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "google").length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {imageKeyVerificationResults
+                        .filter((r: any) => r.provider === "google")
+                        .map((r: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                              r.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                : r.status === "image_quota_zero"
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
+                            }`}
+                          >
+                            <div className="flex items-start sm:items-center gap-2">
+                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
+                                {r.keyMasked || r.keyMask}
+                              </span>
+                              <span className="text-[11px] leading-snug">{r.message}</span>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              {r.latencyMs !== undefined && (
+                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
+                              )}
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  r.status === "active"
+                                    ? "bg-emerald-500 text-white"
+                                    : r.status === "image_quota_zero"
+                                    ? "bg-amber-500 text-black font-black"
+                                    : "bg-red-500 text-white"
+                                }`}
+                              >
+                                {r.status === "active"
+                                  ? "Active ✅"
+                                  : r.status === "image_quota_zero"
+                                  ? "Quota 0 ⚠️"
+                                  : r.status === "invalid_format"
+                                  ? "Wrong Format ❌"
+                                  : "Invalid ❌"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Hugging Face FLUX.1 */}
@@ -1317,14 +1387,26 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         100% Free Read Token
                       </span>
                     </div>
-                    <a
-                      href="https://huggingface.co/settings/tokens"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-amber-500 hover:underline flex items-center gap-1 font-semibold"
-                    >
-                      Get HF Token (Hugging Face) <ExternalLink size={11} />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("huggingface")}
+                        disabled={verifyingImageSection === "huggingface" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test all Hugging Face tokens live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "huggingface" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "huggingface" ? "Testing..." : "🧪 Test HF Tokens"}
+                      </button>
+                      <a
+                        href="https://huggingface.co/settings/tokens"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-amber-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        Get HF Token (Hugging Face) <ExternalLink size={11} />
+                      </a>
+                    </div>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     Create a free Read Token at Hugging Face (starts with <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded text-zinc-800 dark:text-zinc-200">hf_...</code>). Ultra-fast commercial flyers and advertising visuals.
@@ -1336,6 +1418,43 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     placeholder="hf_..., hf_... (comma-separated for multi-key pool)"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   />
+
+                  {/* Live Per-Key Results for Hugging Face */}
+                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "huggingface").length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {imageKeyVerificationResults
+                        .filter((r: any) => r.provider === "huggingface")
+                        .map((r: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                              r.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
+                            }`}
+                          >
+                            <div className="flex items-start sm:items-center gap-2">
+                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
+                                {r.keyMasked || r.keyMask}
+                              </span>
+                              <span className="text-[11px] leading-snug">{r.message}</span>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              {r.latencyMs !== undefined && (
+                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
+                              )}
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}
+                              >
+                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. Cloudflare Workers AI */}
@@ -1350,14 +1469,26 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         10,000 neurons/day free
                       </span>
                     </div>
-                    <a
-                      href="https://dash.cloudflare.com/profile/api-tokens"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-orange-500 hover:underline flex items-center gap-1 font-semibold"
-                    >
-                      Cloudflare API Tokens <ExternalLink size={11} />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("cloudflare")}
+                        disabled={verifyingImageSection === "cloudflare" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test Cloudflare token live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "cloudflare" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "cloudflare" ? "Testing..." : "🧪 Test Cloudflare Token"}
+                      </button>
+                      <a
+                        href="https://dash.cloudflare.com/profile/api-tokens"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-orange-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        Cloudflare API Tokens <ExternalLink size={11} />
+                      </a>
+                    </div>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     High-speed global edge inference with Cloudflare Workers AI FLUX.1-schnell model.
@@ -1388,6 +1519,43 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       />
                     </div>
                   </div>
+
+                  {/* Live Results for Cloudflare */}
+                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "cloudflare").length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {imageKeyVerificationResults
+                        .filter((r: any) => r.provider === "cloudflare")
+                        .map((r: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                              r.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
+                            }`}
+                          >
+                            <div className="flex items-start sm:items-center gap-2">
+                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
+                                {r.keyMasked || r.keyMask}
+                              </span>
+                              <span className="text-[11px] leading-snug">{r.message}</span>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              {r.latencyMs !== undefined && (
+                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
+                              )}
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}
+                              >
+                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* 4. OpenAI DALL-E 3 */}
@@ -1402,14 +1570,26 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         HD 1024x1792 Quality
                       </span>
                     </div>
-                    <a
-                      href="https://platform.openai.com/api-keys"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-emerald-500 hover:underline flex items-center gap-1 font-semibold"
-                    >
-                      OpenAI Platform <ExternalLink size={11} />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("openai")}
+                        disabled={verifyingImageSection === "openai" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test OpenAI keys live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "openai" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "openai" ? "Testing..." : "🧪 Test OpenAI Keys"}
+                      </button>
+                      <a
+                        href="https://platform.openai.com/api-keys"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-emerald-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        OpenAI Platform <ExternalLink size={11} />
+                      </a>
+                    </div>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     If configured, Obey can fall back to OpenAI DALL-E 3 HD. Leave blank to rely entirely on free Google Gemini and Hugging Face FLUX.
@@ -1421,6 +1601,43 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     placeholder="sk-..., sk-... (comma-separated)"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   />
+
+                  {/* Live Results for OpenAI */}
+                  {imageKeyVerificationResults?.filter((r: any) => r.provider === "openai").length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {imageKeyVerificationResults
+                        .filter((r: any) => r.provider === "openai")
+                        .map((r: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                              r.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
+                            }`}
+                          >
+                            <div className="flex items-start sm:items-center gap-2">
+                              <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
+                                {r.keyMasked || r.keyMask}
+                              </span>
+                              <span className="text-[11px] leading-snug">{r.message}</span>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              {r.latencyMs !== undefined && (
+                                <span className="text-[10px] opacity-60 font-mono">{r.latencyMs}ms</span>
+                              )}
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  r.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}
+                              >
+                                {r.status === "active" ? "Active ✅" : "Invalid ❌"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Ultra-HD Quality Assurance Notice */}
