@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /**
  * Proxy endpoint for Control Room Website Live Chat Simulator.
@@ -26,9 +26,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const parsed = new URL(targetUrl);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 35000);
 
     const res = await fetch(targetUrl, {
       signal: controller.signal,
@@ -44,6 +43,9 @@ export async function GET(req: NextRequest) {
     });
     clearTimeout(timeout);
 
+    const finalUrl = res.url || targetUrl;
+    const finalParsed = new URL(finalUrl);
+
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("text/html") && !contentType.includes("application/xhtml")) {
       return new NextResponse(
@@ -58,11 +60,11 @@ export async function GET(req: NextRequest) {
 
     let html = await res.text();
 
-    // 1. Remove meta CSP and meta X-Frame-Options tags
-    html = html.replace(/<meta[^>]*http-equiv=["']?(?:Content-Security-Policy|X-Frame-Options)["']?[^>]*>/gi, "");
+    // 1. Remove meta CSP, meta X-Frame-Options, and meta refresh tags
+    html = html.replace(/<meta[^>]*http-equiv=["']?(?:Content-Security-Policy|X-Frame-Options|refresh)["']?[^>]*>/gi, "");
 
-    // 2. Anti-Frame-Busting and Base Href injection
-    const baseUrl = `${parsed.protocol}//${parsed.host}${parsed.pathname.substring(0, parsed.pathname.lastIndexOf("/") + 1) || "/"}`;
+    // 2. Anti-Frame-Busting and Base Href injection using final redirected host
+    const baseUrl = `${finalParsed.protocol}//${finalParsed.host}${finalParsed.pathname.substring(0, finalParsed.pathname.lastIndexOf("/") + 1) || "/"}`;
     const injection = `
       <base href="${baseUrl}">
       <script>

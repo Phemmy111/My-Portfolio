@@ -1282,6 +1282,9 @@ function ControlRoomContent() {
       setMediaFileName("");
       setStatusScheduledAt("");
       setStatusPostMode("post_now");
+      if (data?.newStatus) {
+        setStatuses((prev) => [data.newStatus, ...prev.filter((s: any) => s.id !== data.newStatus.id)]);
+      }
       await fetchStatuses(currentWs.id);
     } catch (err: any) {
       let msg = err.message || "Failed to post status to WhatsApp";

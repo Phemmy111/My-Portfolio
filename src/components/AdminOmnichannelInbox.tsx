@@ -21,6 +21,8 @@ import { formatToWAT } from "@/lib/utils";
 
 interface InboxThread {
   contact_id: string;
+  workspace_id?: string;
+  workspace_name?: string;
   sender_name: string | null;
   channel: "whatsapp" | "telegram" | "web";
   total_messages: number;
@@ -37,25 +39,30 @@ interface ThreadMessage {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  workspace_id?: string;
 }
 
 export default function AdminOmnichannelInbox() {
   const [threads, setThreads] = useState<InboxThread[]>([]);
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
-  const selectedContactIdRef = useRef<string | null>(null);
+  const [selectedThreadKey, setSelectedThreadKey] = useState<string | null>(null);
+  const selectedThreadKeyRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState<"all" | "whatsapp" | "telegram" | "web">("all");
+  const [botFilter, setBotFilter] = useState<"all" | "main" | "autolearn">("all");
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const getThreadKey = (t: { contact_id: string; workspace_id?: string }) =>
+    `${t.contact_id}__${t.workspace_id || "ws_femi_default"}`;
+
   // Keep ref synchronized with state to prevent stale closure in interval polling
   useEffect(() => {
-    selectedContactIdRef.current = selectedContactId;
-  }, [selectedContactId]);
+    selectedThreadKeyRef.current = selectedThreadKey;
+  }, [selectedThreadKey]);
 
   // Fetch threads list
   const fetchThreads = async () => {
@@ -65,8 +72,8 @@ export default function AdminOmnichannelInbox() {
       if (data.ok && Array.isArray(data.threads)) {
         setThreads(data.threads);
         // Only select first thread on desktop if none selected yet
-        if (!selectedContactIdRef.current && data.threads.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
-          setSelectedContactId(data.threads[0].contact_id);
+        if (!selectedThreadKeyRef.current && data.threads.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+          setSelectedThreadKey(getThreadKey(data.threads[0]));
         }
       }
     } catch (err) {
@@ -77,10 +84,13 @@ export default function AdminOmnichannelInbox() {
   };
 
   // Fetch messages for selected thread
-  const fetchMessages = async (contactId: string) => {
+  const fetchMessages = async (contactId: string, wsId?: string) => {
     setLoadingMessages(true);
     try {
-      const res = await fetch(`/api/admin/inbox?contactId=${encodeURIComponent(contactId)}`);
+      const url = wsId
+        ? `/api/admin/inbox?contactId=${encodeURIComponent(contactId)}&workspaceId=${encodeURIComponent(wsId)}`
+        : `/api/admin/inbox?contactId=${encodeURIComponent(contactId)}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (data.ok && Array.isArray(data.messages)) {
         setMessages(data.messages);
@@ -98,11 +108,13 @@ export default function AdminOmnichannelInbox() {
     return () => clearInterval(interval);
   }, []);
 
+  const selectedThread = threads.find((t) => getThreadKey(t) === selectedThreadKey);
+
   useEffect(() => {
-    if (selectedContactId) {
-      fetchMessages(selectedContactId);
+    if (selectedThread) {
+      fetchMessages(selectedThread.contact_id, selectedThread.workspace_id);
     }
-  }, [selectedContactId]);
+  }, [selectedThreadKey]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,10 +122,9 @@ export default function AdminOmnichannelInbox() {
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim() || !selectedContactId || sendingReply) return;
+    if (!replyText.trim() || !selectedThread || sendingReply) return;
 
-    const currentThread = threads.find((t) => t.contact_id === selectedContactId);
-    const channel = currentThread?.channel || "whatsapp";
+    const channel = selectedThread?.channel || "whatsapp";
 
     setSendingReply(true);
     try {
@@ -121,7 +132,8 @@ export default function AdminOmnichannelInbox() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contactId: selectedContactId,
+          contactId: selectedThread.contact_id,
+          workspaceId: selectedThread.workspace_id,
           channel,
           message: replyText.trim(),
         }),
@@ -134,7 +146,7 @@ export default function AdminOmnichannelInbox() {
         if (data.message) {
           setMessages((prev) => [...prev, data.message]);
         } else {
-          fetchMessages(selectedContactId);
+          fetchMessages(selectedThread.contact_id, selectedThread.workspace_id);
         }
       }
     } catch (err) {
@@ -144,17 +156,47 @@ export default function AdminOmnichannelInbox() {
     }
   };
 
-  // Filtered threads
+  // Filtered threads (Isolated per bot and contact)
   const filteredThreads = threads.filter((t) => {
     const matchesChannel = channelFilter === "all" || t.channel === channelFilter;
+    const wsId = t.workspace_id || "ws_femi_default";
+    const matchesBot =
+      botFilter === "all"
+        ? true
+        : botFilter === "main"
+        ? wsId === "ws_femi_default"
+        : wsId === "ws_1792134967173_6ii61" || wsId.includes("autolearn") || (t.workspace_name && t.workspace_name.toLowerCase().includes("autolearn"));
+
     const matchesSearch =
       t.contact_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.sender_name && t.sender_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.workspace_name && t.workspace_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (t.last_message && t.last_message.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesChannel && matchesSearch;
+    return matchesChannel && matchesBot && matchesSearch;
   });
 
-  const selectedThread = threads.find((t) => t.contact_id === selectedContactId);
+  const getWorkspaceBadge = (wsId?: string, wsName?: string) => {
+    const name = wsName || (wsId === "ws_1792134967173_6ii61" || wsId?.includes("autolearn") ? "AutoLearn Spot" : "Main Obey");
+    if (wsId === "ws_1792134967173_6ii61" || wsId?.includes("autolearn") || name.toLowerCase().includes("autolearn")) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
+          🎓 {name}
+        </span>
+      );
+    }
+    if (wsId === "ws_femi_default" || !wsId) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
+          ⚡ {name}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25">
+        🏢 {name}
+      </span>
+    );
+  };
 
   const getChannelBadge = (ch: string) => {
     switch (ch) {
@@ -184,7 +226,7 @@ export default function AdminOmnichannelInbox() {
     <div className="h-[750px] max-h-[82vh] bg-white dark:bg-[#080808] border border-zinc-300 dark:border-zinc-800 rounded-2xl shadow-sm flex flex-col md:flex-row overflow-hidden">
       {/* LEFT COLUMN: Contacts Thread List */}
       <div className={`w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 bg-zinc-50/50 dark:bg-[#0c0c0e]/50 ${
-        selectedContactId ? "hidden md:flex" : "flex flex-1"
+        selectedThreadKey ? "hidden md:flex" : "flex flex-1"
       }`}>
         {/* Search & Actions Bar */}
         <div className="p-3.5 border-b border-zinc-200 dark:border-zinc-800 space-y-2.5">
@@ -244,6 +286,27 @@ export default function AdminOmnichannelInbox() {
               </button>
             ))}
           </div>
+
+          {/* Bot / Business Filters */}
+          <div className="flex items-center gap-1 pt-1">
+            {[
+              { id: "all", label: "All Bots" },
+              { id: "main", label: "⚡ Main Obey" },
+              { id: "autolearn", label: "🎓 AutoLearn Spot" },
+            ].map((b) => (
+              <button
+                key={b.id}
+                onClick={() => setBotFilter(b.id as any)}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all ${
+                  botFilter === b.id
+                    ? "bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs"
+                    : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Thread Items List */}
@@ -258,13 +321,14 @@ export default function AdminOmnichannelInbox() {
             </div>
           ) : (
             filteredThreads.map((t) => {
-              const isSelected = t.contact_id === selectedContactId;
+              const threadKey = getThreadKey(t);
+              const isSelected = threadKey === selectedThreadKey;
               const formattedTime = formatToWAT(t.last_message_at);
 
               return (
                 <button
-                  key={t.contact_id}
-                  onClick={() => setSelectedContactId(t.contact_id)}
+                  key={threadKey}
+                  onClick={() => setSelectedThreadKey(threadKey)}
                   className={`w-full text-left p-3.5 transition-colors flex flex-col gap-1.5 ${
                     isSelected
                       ? "bg-emerald-50/70 dark:bg-emerald-950/20 border-l-4 border-emerald-500"
@@ -272,9 +336,21 @@ export default function AdminOmnichannelInbox() {
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="font-bold text-xs text-zinc-900 dark:text-white truncate max-w-[170px]">
-                      {t.sender_name || (t.contact_id.startsWith("web-") ? "Web Visitor" : `+${t.contact_id}`)}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white truncate max-w-[130px]">
+                        {t.sender_name || (t.contact_id.startsWith("web-") ? "Web Visitor" : `+${t.contact_id}`)}
+                      </span>
+                      <span className="text-[10px] text-zinc-400">·</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded truncate max-w-[110px] ${
+                        t.workspace_id === "ws_1792134967173_6ii61" || t.workspace_id?.includes("autolearn")
+                          ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25"
+                          : t.workspace_id === "ws_femi_default" || !t.workspace_id
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25"
+                      }`}>
+                        {t.workspace_name || (t.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Main Obey")}
+                      </span>
+                    </div>
                     <span className="text-[10px] text-zinc-400 shrink-0">{formattedTime}</span>
                   </div>
 
@@ -283,8 +359,11 @@ export default function AdminOmnichannelInbox() {
                   </p>
 
                   <div className="flex items-center justify-between w-full pt-0.5">
-                    {getChannelBadge(t.channel)}
-                    <span className="text-[10px] text-zinc-400 font-medium">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {getChannelBadge(t.channel)}
+                      {getWorkspaceBadge(t.workspace_id, t.workspace_name)}
+                    </div>
+                    <span className="text-[10px] text-zinc-400 font-medium shrink-0">
                       {t.total_messages} msg{t.total_messages > 1 ? "s" : ""}
                     </span>
                   </div>
@@ -297,7 +376,7 @@ export default function AdminOmnichannelInbox() {
 
       {/* RIGHT COLUMN: Active Conversation & Manual Takeover */}
       <div className={`flex-1 flex flex-col bg-white dark:bg-[#080808] ${
-        selectedContactId ? "flex" : "hidden md:flex"
+        selectedThreadKey ? "flex" : "hidden md:flex"
       }`}>
         {selectedThread ? (
           <>
@@ -306,7 +385,7 @@ export default function AdminOmnichannelInbox() {
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Mobile Back to Threads Button */}
                 <button
-                  onClick={() => setSelectedContactId(null)}
+                  onClick={() => setSelectedThreadKey(null)}
                   className="md:hidden p-1.5 -ml-1 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1 text-xs font-bold"
                   title="Back to conversations list"
                 >
@@ -318,14 +397,15 @@ export default function AdminOmnichannelInbox() {
                   <User size={16} />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 sm:gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white truncate max-w-[140px] sm:max-w-none">
                       {selectedThread.sender_name || `+${selectedThread.contact_id}`}
                     </h4>
                     {getChannelBadge(selectedThread.channel)}
+                    {getWorkspaceBadge(selectedThread.workspace_id, selectedThread.workspace_name)}
                   </div>
                   <p className="text-[10px] sm:text-[11px] font-mono text-zinc-500 truncate">
-                    ID: {selectedThread.contact_id}
+                    Bot: <strong className="text-zinc-800 dark:text-zinc-200">{selectedThread.workspace_name || (selectedThread.workspace_id === "ws_1792134967173_6ii61" ? "AutoLearn Spot" : "Main Obey")}</strong> · Contact: +{selectedThread.contact_id}
                   </p>
                 </div>
               </div>
@@ -335,7 +415,7 @@ export default function AdminOmnichannelInbox() {
                   {messages.length} messages in history
                 </span>
                 <button
-                  onClick={() => fetchMessages(selectedThread.contact_id)}
+                  onClick={() => fetchMessages(selectedThread.contact_id, selectedThread.workspace_id)}
                   className="p-1.5 rounded-lg text-zinc-500 hover:text-black dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                   title="Reload thread"
                 >

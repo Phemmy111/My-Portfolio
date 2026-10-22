@@ -378,15 +378,25 @@ export async function dbGetGuestMessages(phoneNumber: string, limit: number = 50
   if (!db) return [];
   try {
     await createGuestChatTables();
-    const targetWsId = workspaceId || "ws_femi_default";
-    const rows = await db`
-      SELECT id, phone_number, sender_name, channel, role, content, created_at, workspace_id
-      FROM guest_chat_messages
-      WHERE phone_number = ${phoneNumber}
-        AND (workspace_id = ${targetWsId} OR (workspace_id IS NULL AND ${targetWsId} = 'ws_femi_default'))
-      ORDER BY created_at DESC
-      LIMIT ${limit}
-    `;
+    let rows;
+    if (workspaceId && workspaceId !== "all") {
+      rows = await db`
+        SELECT id, phone_number, sender_name, channel, role, content, created_at, workspace_id
+        FROM guest_chat_messages
+        WHERE phone_number = ${phoneNumber}
+          AND (workspace_id = ${workspaceId} OR (workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `;
+    } else {
+      rows = await db`
+        SELECT id, phone_number, sender_name, channel, role, content, created_at, workspace_id
+        FROM guest_chat_messages
+        WHERE phone_number = ${phoneNumber}
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `;
+    }
     return rows ? [...rows].reverse() : [];
   } catch (e) {
     console.warn("dbGetGuestMessages fallback:", e);
@@ -432,35 +442,76 @@ export async function dbGetRecentActiveGuestNumber(withinMinutes: number = 30): 
   }
 }
 
-export async function dbGetInboxThreads() {
+export async function dbGetInboxThreads(workspaceId?: string | null) {
   const db = getSql();
   if (!db) return [];
   try {
     await createGuestChatTables();
+    if (workspaceId && workspaceId !== "all") {
+      const rows = await db`
+        SELECT 
+          m.phone_number AS contact_id,
+          COALESCE(m.workspace_id, 'ws_femi_default') AS workspace_id,
+          COALESCE(w.name, CASE WHEN m.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN m.workspace_id IS NULL OR m.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE m.workspace_id END) AS workspace_name,
+          MAX(m.sender_name) AS sender_name,
+          COALESCE(MAX(m.channel), 'whatsapp') AS channel,
+          COUNT(*)::int AS total_messages,
+          MAX(m.created_at) AS last_message_at,
+          (
+            SELECT content 
+            FROM guest_chat_messages sub 
+            WHERE sub.phone_number = m.phone_number 
+              AND (sub.workspace_id = ${workspaceId} OR (sub.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
+            ORDER BY sub.created_at DESC 
+            LIMIT 1
+          ) AS last_message,
+          (
+            SELECT role 
+            FROM guest_chat_messages sub 
+            WHERE sub.phone_number = m.phone_number 
+              AND (sub.workspace_id = ${workspaceId} OR (sub.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
+            ORDER BY sub.created_at DESC 
+            LIMIT 1
+          ) AS last_role
+        FROM guest_chat_messages m
+        LEFT JOIN workspaces w ON w.id = m.workspace_id
+        WHERE (m.workspace_id = ${workspaceId} OR (m.workspace_id IS NULL AND ${workspaceId} = 'ws_femi_default'))
+        GROUP BY m.phone_number, COALESCE(m.workspace_id, 'ws_femi_default'), w.name
+        ORDER BY MAX(m.created_at) DESC
+      `;
+      return rows;
+    }
+
+    // Global multi-tenant threads (Separates each bot conversation for the same person)
     const rows = await db`
       SELECT 
-        phone_number AS contact_id,
-        MAX(sender_name) AS sender_name,
-        COALESCE(MAX(channel), 'whatsapp') AS channel,
+        m.phone_number AS contact_id,
+        COALESCE(m.workspace_id, 'ws_femi_default') AS workspace_id,
+        COALESCE(w.name, CASE WHEN m.workspace_id = 'ws_1792134967173_6ii61' THEN 'AutoLearn Spot' WHEN m.workspace_id IS NULL OR m.workspace_id = 'ws_femi_default' THEN 'Main Obey' ELSE m.workspace_id END) AS workspace_name,
+        MAX(m.sender_name) AS sender_name,
+        COALESCE(MAX(m.channel), 'whatsapp') AS channel,
         COUNT(*)::int AS total_messages,
-        MAX(created_at) AS last_message_at,
+        MAX(m.created_at) AS last_message_at,
         (
           SELECT content 
           FROM guest_chat_messages sub 
-          WHERE sub.phone_number = guest_chat_messages.phone_number 
+          WHERE sub.phone_number = m.phone_number 
+            AND COALESCE(sub.workspace_id, 'ws_femi_default') = COALESCE(m.workspace_id, 'ws_femi_default')
           ORDER BY sub.created_at DESC 
           LIMIT 1
         ) AS last_message,
         (
           SELECT role 
           FROM guest_chat_messages sub 
-          WHERE sub.phone_number = guest_chat_messages.phone_number 
+          WHERE sub.phone_number = m.phone_number 
+            AND COALESCE(sub.workspace_id, 'ws_femi_default') = COALESCE(m.workspace_id, 'ws_femi_default')
           ORDER BY sub.created_at DESC 
           LIMIT 1
         ) AS last_role
-      FROM guest_chat_messages
-      GROUP BY phone_number
-      ORDER BY MAX(created_at) DESC
+      FROM guest_chat_messages m
+      LEFT JOIN workspaces w ON w.id = m.workspace_id
+      GROUP BY m.phone_number, COALESCE(m.workspace_id, 'ws_femi_default'), w.name
+      ORDER BY MAX(m.created_at) DESC
     `;
     return rows;
   } catch (e) {

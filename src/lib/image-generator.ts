@@ -202,6 +202,43 @@ export async function synthesizeImageRevisionPrompt(
  * Generates AI artwork and automatically frames out any watermark via Cloudinary.
  * Supports consistent seed preservation for adjusting existing images.
  */
+/**
+ * Synthesizes a high-definition commercial graphic or advertising prompt for Flux.
+ */
+async function synthesizeCommercialGraphicPrompt(
+  rawPrompt: string
+): Promise<{ expandedPrompt: string; isPortraitFlyer: boolean }> {
+  const lower = rawPrompt.toLowerCase();
+  const isGraphicOrFlyer = /\b(flyer|poster|banner|ad|advertisement|graphic|logo|promo|promotional|beauty|salon|nails|pedicure|facial|eyelash|lashes|spa|catalog|branding|price list)\b/i.test(lower);
+  const isPortrait = /\b(flyer|poster|ad|promo|instagram)\b/i.test(lower);
+
+  if (!isGraphicOrFlyer) {
+    return { expandedPrompt: rawPrompt, isPortraitFlyer: isPortrait };
+  }
+
+  try {
+    const aiRes = await executeAICompletion({
+      systemPrompt: `You are an elite Creative Director and Commercial Advertising Photographer.
+Transform the user's raw brief into an ultra-sharp, photorealistic, luxury commercial visual prompt for FLUX.
+RULES:
+- Compose a stunning, high-fashion, high-end commercial visual: 8k resolution, Hasselblad medium format photography, luxury aesthetic, soft studio beauty lighting, pristine depth of field.
+- If the brief mentions beauty/services (nails, pedicure, lashes, facial, salon): showcase immaculate nail art with glossy top coat, flawless glowing skin, pristine eyelash extensions, elegant luxury salon interior in soft background blur with golden hour or champagne-rose studio lighting.
+- Focus strictly on photographic visual aesthetics, pristine subject matter, and immaculate composition.
+- Return ONLY the final visual prompt (maximum 75 words). No quotes, no markdown, no conversational commentary.`,
+      userPrompt: `BRIEF: "${rawPrompt}"\n\nCOMMERCIAL FLUX PROMPT:`,
+      temperature: 0.3,
+      maxTokens: 180,
+    });
+    const expanded = aiRes.text.trim().replace(/^["']|["']$/g, "");
+    return {
+      expandedPrompt: expanded || rawPrompt,
+      isPortraitFlyer: isPortrait,
+    };
+  } catch (err) {
+    return { expandedPrompt: rawPrompt, isPortraitFlyer: isPortrait };
+  }
+}
+
 export async function generateAIImage(
   userPrompt: string,
   options?: {
@@ -213,13 +250,16 @@ export async function generateAIImage(
   }
 ): Promise<GeneratedImageResult> {
   try {
-    const width = options?.width || 1024;
-    const height = options?.height || 1024;
+    // 1. Expand prompt if this is a flyer, graphic, promotional design, or beauty service
+    const { expandedPrompt, isPortraitFlyer } = await synthesizeCommercialGraphicPrompt(userPrompt);
+
+    const width = options?.width || (isPortraitFlyer ? 1080 : 1024);
+    const height = options?.height || (isPortraitFlyer ? 1350 : 1024);
     const enhance = options?.enhance !== false;
     const seed = options?.seed !== undefined ? options.seed : Math.floor(Math.random() * 1000000);
 
     // Clean and sanitize prompt
-    const cleanedPrompt = userPrompt
+    const cleanedPrompt = expandedPrompt
       .replace(/^(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration) of|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup) of|draw (me )?|show me|design a (logo|picture|banner|flyer|mockup) for|generate|create a logo for)\s*/i, "")
       .trim();
 

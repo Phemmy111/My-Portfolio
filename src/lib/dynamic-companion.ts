@@ -216,6 +216,9 @@ export async function processDynamicCompanionTurn(params: {
   const declaresRemember = /^(?:remember|never forget|note this|save this|keep in mind|from now on)\b/i.test(userText.trim()) ||
     /\b(?:my name is|i am called|my business is|my company is)\b/i.test(userText);
 
+  // Check if user is asking to do a task (flyer, image, design, write, calculate, etc.) along with introducing themselves
+  const hasActionableIntent = /\b(flyer|design|poster|banner|image|logo|graphic|photo|art|drawing|write|create|make|help me|can you|draft|build|code|calculate|generate|summary|price|pricing)\b/i.test(userText);
+
   if (declaresFemale) {
     await saveUserPersonalMemory({
       userIdentifier,
@@ -235,15 +238,30 @@ export async function processDynamicCompanionTurn(params: {
       reply: cleanWhatsApp(`Got it! I've noted that in my memory (*he/him*). How can I assist you today?`),
     };
   } else if (declaresRemember) {
-    const noteToSave = userText.replace(/^(?:remember|never forget|note this|save this|keep in mind|from now on)[:\s]*/i, "").trim();
-    await saveUserPersonalMemory({
-      userIdentifier,
-      userNotes: noteToSave,
-      userName: senderName,
-    });
-    return {
-      reply: cleanWhatsApp(`Understood and noted! 🧠 I have committed this permanently to memory for your chat:\n\n• "${noteToSave}"\n\nI will remember and apply this in all our conversations.`),
-    };
+    const nameMatch = userText.match(/\b(?:my name is|i am called)\s+([a-zA-Z0-9_\s]{2,30})/i);
+    const bizMatch = userText.match(/\b(?:my business is|my company is|my brand is)\s+([a-zA-Z0-9_\s]{2,40})/i);
+    const extractedName = nameMatch ? nameMatch[1].trim() : senderName;
+    const extractedBiz = bizMatch ? bizMatch[1].trim() : undefined;
+
+    if (hasActionableIntent) {
+      // Quietly save the user's name/business to memory, but DO NOT block the request from executing!
+      await saveUserPersonalMemory({
+        userIdentifier,
+        userName: extractedName,
+        userNotes: extractedBiz ? `Business: ${extractedBiz}` : undefined,
+      });
+      // Fall through to execute the flyer / task!
+    } else {
+      const noteToSave = userText.replace(/^(?:remember|never forget|note this|save this|keep in mind|from now on)[:\s]*/i, "").trim();
+      await saveUserPersonalMemory({
+        userIdentifier,
+        userNotes: noteToSave,
+        userName: extractedName || senderName,
+      });
+      return {
+        reply: cleanWhatsApp(`Understood and noted! 🧠 I have committed this permanently to memory for your chat:\n\n• "${noteToSave}"\n\nI will remember and apply this in all our conversations.`),
+      };
+    }
   }
 
   // 2. CHECK FOR PENDING HUMAN-IN-THE-LOOP APPROVAL (STRICTLY VALIDATED)
@@ -881,14 +899,33 @@ Format with clean WhatsApp styling (*bolding*, bullet points, emojis). Keep it s
     };
   }
 
+  // DETERMINISTIC IMAGE / FLYER / GRAPHIC RECOVERY:
+  // If user asks for a flyer, graphic design, promotional poster, banner, or logo:
+  const requestsImageOrFlyer =
+    /\b(flyer|flyer off|flyer of|design a flyer|make a flyer|create a flyer|poster|banner|design a logo|generate (?:an? )?image|draw|paint|picture of|artwork|illustration|graphic design)\b/i.test(userText.trim()) ||
+    (/\b(flyer|poster|logo|banner)\b/i.test(userText.trim()) && /\b(work|business|services|brand|design|make|create|help)\b/i.test(userText.trim()));
+
+  if (
+    requestsImageOrFlyer &&
+    decision.action !== "draft_whatsapp_message" &&
+    decision.action !== "create_website_artifact" &&
+    decision.action !== "modify_website_artifact"
+  ) {
+    decision.action = "generate_new_image";
+    if (!decision.action_params) decision.action_params = {};
+    decision.action_params.image_prompt = userText.trim();
+  }
+
   // 4. EXECUTE AUTONOMOUS DECISION
 
   // Tool: Notify Femi Adeleke of User Suggestion / Feedback
-  // NEVER trigger notify_femi if the user provided a recipient phone or is delegating a message to someone else!
+  // NEVER trigger notify_femi for romantic banter, teasing, personal jokes, or casual chat!
+  // ONLY trigger if the user EXPLICITLY asks to forward formal feedback or message to Femi!
   const hasExternalRecipient = Boolean(recentPhoneInContext) || /\b\d{10,14}\b/.test(userText) || decision.action === "draft_whatsapp_message";
   const explicitFemiFeedback = /\b(tell your boss|tell femi|let femi know|suggest to femi|pass to femi|forward to femi)\b/i.test(userText);
+  const isPersonalOrRomanticBanter = /\b(romance|romantic|kiss|love|boyfriend|girlfriend|bed|bad|dating?|crush|flirt|sweet|fine boy|marry|marriage|sex|tease|teasing)\b/i.test(userText);
 
-  if (!hasExternalRecipient && (decision.action === "notify_femi" || (explicitFemiFeedback && !isFemi))) {
+  if (!hasExternalRecipient && !isPersonalOrRomanticBanter && explicitFemiFeedback && !isFemi) {
     try {
       const recentDiscussion = (historyText || "").split("\n").slice(-4).join("\n");
       await sendWhatsAppMessage(
@@ -1703,10 +1740,11 @@ If you encounter any error or want to adjust or diagnose any node, send me a scr
   }
 
   // 5. COMPANION & CONVERSATIONAL SYNTHESIS (Concise, 100% Human, Deep Emotional Intelligence)
-  // Load dynamic workspace knowledge & business catalog ONLY when user asks about custom software/developer services
+  // Load dynamic workspace knowledge & business catalog ONLY when user explicitly asks about hiring Femi or custom software/developer services
   let workspaceCatalogContext = "";
   try {
-    const asksAboutSoftwareServices = /\b(build (?:a )?(?:website|app|software)|hire|portfolio|services|developer|engineer|femi's services|how much do you charge|pricing for website)\b/i.test(userText);
+    const isAskingAboutUserOwnBusiness = /\b(my (?:work|business|craft|services|price|prices|pricing|clients|salon|shop|sister)|draft (?:a )?(?:simple )?price|price list for me|set my prices|my handiwork)\b/i.test(userText);
+    const asksAboutSoftwareServices = !isAskingAboutUserOwnBusiness && /\b(hire femi|femi's services|build (?:a )?(?:custom )?(?:website|app|software)|femi's software rates|how much does femi charge)\b/i.test(userText);
     if (asksAboutSoftwareServices) {
       const wsSettings = await dbGetWorkspaceSettings("ws_femi_default");
       if (wsSettings) {
@@ -1829,7 +1867,12 @@ ${latestExecutedAction ? `   - You recently dispatched an approved message to +$
 • Starter Plan: ₦${platformPricing.starter_price.toLocaleString()}/month (1 single workspace, 250 auto-saved customer leads, 10 auto-responders, 15h WebRTC voice).
 • Pro Business Plan (Most Popular): ₦${platformPricing.pro_price.toLocaleString()}/month (${platformPricing.trial_days}-day 100% free trial, UNLIMITED customer leads, 50 auto-responders, 50h WebRTC voice, audio recordings & transcripts on WhatsApp, custom catalog).
 • Enterprise / Founder Plan: ₦${platformPricing.enterprise_price.toLocaleString()}/month (multi-business up to 2 distinct workspaces, full multi-tenant WhatsApp bot, UNLIMITED voice hotline, autonomous n8n workflows & web apps, 24/7 dedicated priority support).
-When anyone asks about pricing, packages, trials, or platform features, quote these live database figures accurately!
+CRITICAL DISTINCTION & PRICING RULES:
+- ONLY quote these Obey/Femi figures if the user is explicitly asking about subscribing to OBEY PLATFORM or hiring FEMI for custom software engineering/apps!
+- If the user is asking for advice, coaching, or asking you to draft a price list / pricing guide for THEIR OWN business or craft (e.g. nail technician, hair salon, eyelashes, fashion, makeup, catering, photography, beauty services for their clients):
+  * NEVER EVER quote Obey packages or Femi's ₦2.2M software tiers! That is completely irrelevant and breaks trust.
+  * Act as their brilliant business coach and craft a realistic, tailored price guide for THEIR specific craft (e.g. for nails/lashes: Gel Polish: ₦5,000 - ₦8,000; Acrylic Full Set: ₦12,000 - ₦18,000; Pedicure: ₦6,000 - ₦10,000; Classic Lashes: ₦10,000 - ₦15,000) factoring in materials cost + margin!
+- When anyone asks about Obey platform pricing or subscription packages, quote the live database figures above accurately!
 
 12. STRICT PROHIBITION OF FAKE WORKFLOWS, ARTIFACTS, & ATTACHMENTS (CRITICAL):
 - Real files and artifacts can ONLY be dispatched by executing real system tools and saving them to the database.

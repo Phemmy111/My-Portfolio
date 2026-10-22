@@ -336,25 +336,7 @@ export async function POST(req: NextRequest) {
       const normalizedMediaType: "image" | "video" | undefined =
         media_type === "video" ? "video" : (media_type === "image" || hasMedia ? "image" : undefined);
 
-      if (!isScheduled && auto_post_now) {
-        const dispatchRes = await sendWhatsAppStatusPost({
-          text: (content || "").trim(),
-          mediaUrl: media_url ? media_url.trim() : undefined,
-          mediaType: normalizedMediaType,
-          instanceName,
-          backgroundColor: background_color || "#075E54",
-          textColor: text_color || "#FFFFFF",
-          font: typeof font === "number" ? font : 1,
-        });
-
-        postSuccess = dispatchRes.success;
-        messageId = dispatchRes.messageId || null;
-        if (!dispatchRes.success) {
-          errorMsg = dispatchRes.error || "Evolution API broadcast failed";
-        }
-      }
-
-      const initialStatus = isScheduled ? "scheduled" : postSuccess ? "posted" : "failed";
+      const initialStatus = isScheduled ? "scheduled" : "posted";
 
       await sql`
         INSERT INTO workspace_statuses (
@@ -383,25 +365,78 @@ export async function POST(req: NextRequest) {
           ${background_color || "#075E54"},
           ${text_color || "#FFFFFF"},
           ${font || 1},
-          ${messageId},
+          NULL,
           ${initialStatus},
-          ${errorMsg},
+          NULL,
           ${scheduledIso},
-          ${postSuccess ? new Date().toISOString() : null},
+          ${!isScheduled ? new Date().toISOString() : null},
           0,
           NOW(),
           NOW()
         )
       `;
 
+      // Dispatch to WhatsApp Status asynchronously so client returns in <50ms without 504 timeout
+      if (!isScheduled && auto_post_now) {
+        sendWhatsAppStatusPost({
+          text: (content || "").trim(),
+          mediaUrl: media_url ? media_url.trim() : undefined,
+          mediaType: normalizedMediaType,
+          instanceName,
+          backgroundColor: background_color || "#075E54",
+          textColor: text_color || "#FFFFFF",
+          font: typeof font === "number" ? font : 1,
+        })
+          .then(async (dispatchRes) => {
+            if (dispatchRes.success && dispatchRes.messageId) {
+              await sql`
+                UPDATE workspace_statuses
+                SET message_id = ${dispatchRes.messageId},
+                    status = 'posted',
+                    posted_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = ${statusId}
+              `;
+            } else if (!dispatchRes.success) {
+              await sql`
+                UPDATE workspace_statuses
+                SET error_message = ${dispatchRes.error || "Evolution broadcast error"},
+                    updated_at = NOW()
+                WHERE id = ${statusId}
+              `;
+            }
+          })
+          .catch((err) => {
+            console.error("[Status Broadcast Background] Error:", err);
+          });
+      }
+
+      const createdStatusObj = {
+        id: statusId,
+        workspace_id: targetWsId,
+        content: (content || "").trim(),
+        media_url: media_url || null,
+        media_type: media_type || (hasMedia ? "image" : "text"),
+        background_color: background_color || "#075E54",
+        text_color: text_color || "#FFFFFF",
+        font: font || 1,
+        message_id: null,
+        status: initialStatus,
+        error_message: null,
+        scheduled_at: scheduledIso,
+        posted_at: !isScheduled ? new Date().toISOString() : null,
+        view_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
       return NextResponse.json({
-        success: isScheduled || postSuccess,
+        success: true,
         statusId,
+        newStatus: createdStatusObj,
         message: isScheduled
           ? `Status scheduled for ${new Date(scheduledIso!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}!`
-          : postSuccess
-          ? "Status successfully published to WhatsApp Broadcast & synced to My Status!"
-          : errorMsg || "Status saved",
+          : "Status successfully published to WhatsApp Broadcast & synced to My Status!",
       });
     }
 
