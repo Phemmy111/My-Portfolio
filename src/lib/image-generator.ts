@@ -239,6 +239,39 @@ RULES:
   }
 }
 
+// Multi-key helper: extracts unique keys from comma/space/newline separated values across multiple env vars
+export function getKeyPool(envVarNames: string[]): string[] {
+  const keys: string[] = [];
+  for (const name of envVarNames) {
+    const val = process.env[name];
+    if (val) {
+      val.split(/[\s,]+/).forEach((k) => {
+        const trimmed = k.trim();
+        if (trimmed && !keys.includes(trimmed)) {
+          keys.push(trimmed);
+        }
+      });
+    }
+  }
+  return keys;
+}
+
+export function getImageProvidersStatus() {
+  const geminiKeys = getKeyPool(["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"]);
+  const hfKeys = getKeyPool(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"]);
+  const cfKeys = getKeyPool(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"]);
+  const cfAccounts = getKeyPool(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"]);
+  const openaiKeys = getKeyPool(["OPENAI_API_KEYS", "OPENAI_API_KEY"]);
+
+  return {
+    gemini: { activeKeys: geminiKeys.length, enabled: geminiKeys.length > 0 },
+    huggingface: { activeKeys: hfKeys.length, enabled: hfKeys.length > 0 },
+    cloudflare: { activeKeys: cfKeys.length, accounts: cfAccounts.length, enabled: cfKeys.length > 0 && cfAccounts.length > 0 },
+    openai: { activeKeys: openaiKeys.length, enabled: openaiKeys.length > 0 },
+    pollinations: { enabled: true, fallback: true },
+  };
+}
+
 export async function generateAIImage(
   userPrompt: string,
   options?: {
@@ -254,25 +287,192 @@ export async function generateAIImage(
     const { expandedPrompt, isPortraitFlyer } = await synthesizeCommercialGraphicPrompt(userPrompt);
 
     const seed = options?.seed !== undefined ? options.seed : Math.floor(Math.random() * 1000000);
+    const width = options?.width || (isPortraitFlyer ? 1024 : 1024);
+    const height = options?.height || (isPortraitFlyer ? 1792 : 1024);
 
     // Clean and sanitize prompt
     const cleanedPrompt = expandedPrompt
       .replace(/^(generate (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup|graphic|illustration) of|create (an? )?(image|picture|photo|logo|flyer|banner|poster|mockup) of|draw (me )?|show me|design a (logo|picture|banner|flyer|mockup) for|generate|create a logo for)\s*/i, "")
       .trim();
 
-    let finalImageUrl = "";
-
-    // ── DALL-E 3 HD (premium, same engine as ChatGPT) ──────────────────────
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
+    // ────────────────────────────────────────────────────────────────────────
+    // PROVIDER 1: Google Gemini Image Models (gemini-2.5-flash-image / gemini-3.1-flash-image)
+    // Supports rotating pool via GEMINI_API_KEYS="key1,key2,key3" or GEMINI_API_KEY
+    // ────────────────────────────────────────────────────────────────────────
+    const geminiKeys = getKeyPool(["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"]);
+    for (let i = 0; i < geminiKeys.length; i++) {
+      const gKey = geminiKeys[i];
       try {
-        // DALL-E 3 supports: 1024x1024 | 1024x1792 | 1792x1024
-        const dalleSize = isPortraitFlyer ? "1024x1792" : "1024x1024";
+        console.log(`[Image Generator] Trying Google Gemini Image with key ${i + 1}/${geminiKeys.length}...`);
+        const gRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(gKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: cleanedPrompt || "modern creative high-tech design" }] }],
+            }),
+          }
+        );
 
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const parts = gData?.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part?.inlineData?.data) {
+              const base64Data = part.inlineData.data;
+              const mime = part.inlineData.mimeType || "image/jpeg";
+              const dataUri = `data:${mime};base64,${base64Data}`;
+
+              // Upload to Cloudinary for fast permanent CDN hosting
+              if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+                const cloudRes = await cloudinary.uploader.upload(dataUri, {
+                  folder: "obey-artwork",
+                  resource_type: "image",
+                });
+                return {
+                  success: true,
+                  imageUrl: cloudRes.secure_url || dataUri,
+                  revisedPrompt: cleanedPrompt,
+                  seed,
+                };
+              }
+              return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
+            }
+          }
+        } else {
+          console.warn(`[Image Generator] Google Gemini Image error (${gRes.status}) on key ${i + 1}:`, await gRes.text());
+        }
+      } catch (gErr) {
+        console.warn(`[Image Generator] Google Gemini Image exception on key ${i + 1}:`, gErr);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // PROVIDER 2: Hugging Face Serverless (FLUX.1-schnell)
+    // Supports rotating pool via HUGGINGFACE_API_KEYS="token1,token2" or HF_TOKEN
+    // ────────────────────────────────────────────────────────────────────────
+    const hfKeys = getKeyPool(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"]);
+    for (let i = 0; i < hfKeys.length; i++) {
+      const hfKey = hfKeys[i];
+      try {
+        console.log(`[Image Generator] Trying Hugging Face FLUX.1 with key ${i + 1}/${hfKeys.length}...`);
+        const hfRes = await fetch("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: cleanedPrompt || "modern creative high-tech design",
+            parameters: { width, height },
+          }),
+        });
+
+        if (hfRes.ok) {
+          const arrayBuffer = await hfRes.arrayBuffer();
+          const base64Data = Buffer.from(arrayBuffer).toString("base64");
+          const dataUri = `data:image/jpeg;base64,${base64Data}`;
+
+          if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+            const cloudRes = await cloudinary.uploader.upload(dataUri, {
+              folder: "obey-artwork",
+              resource_type: "image",
+            });
+            return {
+              success: true,
+              imageUrl: cloudRes.secure_url || dataUri,
+              revisedPrompt: cleanedPrompt,
+              seed,
+            };
+          }
+          return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
+        } else {
+          console.warn(`[Image Generator] Hugging Face error (${hfRes.status}) on key ${i + 1}:`, await hfRes.text());
+        }
+      } catch (hfErr) {
+        console.warn(`[Image Generator] Hugging Face exception on key ${i + 1}:`, hfErr);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // PROVIDER 3: Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell)
+    // 10,000 free daily neurons per account
+    // Supports CLOUDFLARE_API_TOKENS="tok1,tok2" + CLOUDFLARE_ACCOUNT_ID
+    // ────────────────────────────────────────────────────────────────────────
+    const cfTokens = getKeyPool(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"]);
+    const cfAccounts = getKeyPool(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"]);
+    if (cfTokens.length > 0 && cfAccounts.length > 0) {
+      for (let i = 0; i < cfTokens.length; i++) {
+        const cfToken = cfTokens[i];
+        const cfAccount = cfAccounts[i % cfAccounts.length];
+        try {
+          console.log(`[Image Generator] Trying Cloudflare Workers AI FLUX with token ${i + 1}/${cfTokens.length}...`);
+          const cfRes = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount)}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${cfToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                prompt: cleanedPrompt || "modern creative high-tech design",
+                steps: 4,
+              }),
+            }
+          );
+
+          if (cfRes.ok) {
+            const contentType = cfRes.headers.get("content-type") || "";
+            let dataUri = "";
+            if (contentType.includes("application/json")) {
+              const cfData = await cfRes.json();
+              const imgBase64 = cfData?.result?.image;
+              if (imgBase64) dataUri = `data:image/jpeg;base64,${imgBase64}`;
+            } else {
+              const arrayBuffer = await cfRes.arrayBuffer();
+              const base64Data = Buffer.from(arrayBuffer).toString("base64");
+              dataUri = `data:image/jpeg;base64,${base64Data}`;
+            }
+
+            if (dataUri) {
+              if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+                const cloudRes = await cloudinary.uploader.upload(dataUri, {
+                  folder: "obey-artwork",
+                  resource_type: "image",
+                });
+                return {
+                  success: true,
+                  imageUrl: cloudRes.secure_url || dataUri,
+                  revisedPrompt: cleanedPrompt,
+                  seed,
+                };
+              }
+              return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
+            }
+          } else {
+            console.warn(`[Image Generator] Cloudflare error (${cfRes.status}) on token ${i + 1}:`, await cfRes.text());
+          }
+        } catch (cfErr) {
+          console.warn(`[Image Generator] Cloudflare exception on token ${i + 1}:`, cfErr);
+        }
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // PROVIDER 4: OpenAI DALL-E 3 HD (If OPENAI_API_KEYS or OPENAI_API_KEY has balance)
+    // ────────────────────────────────────────────────────────────────────────
+    const openaiKeys = getKeyPool(["OPENAI_API_KEYS", "OPENAI_API_KEY"]);
+    for (let i = 0; i < openaiKeys.length; i++) {
+      const oKey = openaiKeys[i];
+      try {
+        console.log(`[Image Generator] Trying OpenAI DALL-E 3 with key ${i + 1}/${openaiKeys.length}...`);
+        const dalleSize = isPortraitFlyer ? "1024x1792" : "1024x1024";
         const dalleRes = await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${openaiKey}`,
+            Authorization: `Bearer ${oKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -287,57 +487,52 @@ export async function generateAIImage(
 
         if (dalleRes.ok) {
           const dalleData = await dalleRes.json();
-          const tempUrl: string = dalleData?.data?.[0]?.url || "";
-          const revisedByDalle: string = dalleData?.data?.[0]?.revised_prompt || cleanedPrompt;
+          const tempUrl = dalleData?.data?.[0]?.url || "";
+          const revisedByDalle = dalleData?.data?.[0]?.revised_prompt || cleanedPrompt;
 
           if (tempUrl) {
-            // Upload to Cloudinary to make URL permanent (DALL-E URLs expire after ~1h)
+            let finalUrl = tempUrl;
             if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
               try {
                 const uploadRes = await cloudinary.uploader.upload(tempUrl, {
                   folder: "obey-artwork",
                   resource_type: "image",
                 });
-                const permanentUrl = cloudinary.url(uploadRes.public_id, {
+                finalUrl = cloudinary.url(uploadRes.public_id, {
                   transformation: [{ quality: "auto:best" }],
                   secure: true,
-                });
-                finalImageUrl = permanentUrl || tempUrl;
+                }) || tempUrl;
               } catch (cloudErr) {
-                console.warn("[Image Generator] Cloudinary upload failed, using DALL-E temp URL:", cloudErr);
-                finalImageUrl = tempUrl;
+                console.warn("[Image Generator] Cloudinary upload fallback for DALL-E:", cloudErr);
               }
-            } else {
-              finalImageUrl = tempUrl;
             }
 
             return {
               success: true,
-              imageUrl: finalImageUrl,
+              imageUrl: finalUrl,
               revisedPrompt: revisedByDalle,
               seed,
             };
           }
         } else {
-          const errBody = await dalleRes.text();
-          console.warn("[Image Generator] DALL-E 3 error:", dalleRes.status, errBody);
+          console.warn(`[Image Generator] DALL-E error (${dalleRes.status}) on key ${i + 1}:`, await dalleRes.text());
         }
       } catch (dalleErr) {
-        console.warn("[Image Generator] DALL-E 3 exception, falling back to Pollinations:", dalleErr);
+        console.warn(`[Image Generator] DALL-E exception on key ${i + 1}:`, dalleErr);
       }
     }
 
-    // ── Fallback: Pollinations/Flux (if no OpenAI key or DALL-E failed) ────
-    console.log("[Image Generator] Using Pollinations fallback");
-    const width = options?.width || (isPortraitFlyer ? 1080 : 1024);
-    const height = options?.height || (isPortraitFlyer ? 1350 : 1024);
+    // ────────────────────────────────────────────────────────────────────────
+    // PROVIDER 5: Pollinations FLUX Engine (Always-free, unlimited safety net)
+    // Automatically frames out any watermark via Cloudinary crop
+    // ────────────────────────────────────────────────────────────────────────
+    console.log("[Image Generator] Using Pollinations FLUX safety net...");
     const enhance = options?.enhance !== false;
     const encodedPrompt = encodeURIComponent(cleanedPrompt || "modern high-tech creative software design");
     const rawPollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=${enhance}&model=flux`;
 
-    finalImageUrl = rawPollinationsUrl;
+    let finalImageUrl = rawPollinationsUrl;
 
-    // Frame out watermark via Cloudinary crop
     if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
       try {
         const uploadRes = await cloudinary.uploader.upload(rawPollinationsUrl, {

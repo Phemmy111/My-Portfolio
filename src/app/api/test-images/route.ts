@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { generateAIImage } from "@/lib/image-generator";
+import { generateAIImage, getImageProvidersStatus } from "@/lib/image-generator";
 import { sendWhatsAppImage } from "@/lib/whatsapp-gateway";
 
 const USER_PHONE = "2348120934828";
 const INSTANCE = "obey";
 
 export async function GET() {
+  const providers = getImageProvidersStatus();
   const results = [];
 
   const testCases = [
@@ -44,5 +45,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ success: true, results });
+  return NextResponse.json({ success: true, providers, results });
 }
