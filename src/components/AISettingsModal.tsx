@@ -675,7 +675,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   : activeTab === "ai"
                   ? "Configure multiple keys for Gemini, Grok, etc. Auto-fails over with zero downtime."
                   : activeTab === "image"
-                  ? "Configure multiple free keys for Google Gemini Imagen, Hugging Face FLUX.1, Cloudflare Workers AI & Pollinations for zero-cost graphics generation."
+                  ? "Configure multiple free keys for Google Gemini Imagen, Hugging Face FLUX.1 Serverless, Cloudflare Workers AI & OpenAI DALL-E 3 for ultra-high-definition graphics generation."
                   : activeTab === "phone"
                   ? "Live WhatsApp QR code pairing, keepalive status, and Telegram bot phone gateway."
                   : activeTab === "voice"
@@ -1412,7 +1412,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     </a>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    If configured, Obey can fall back to OpenAI DALL-E 3. Leave blank to rely entirely on free Google Gemini, Hugging Face, and Pollinations.
+                    If configured, Obey can fall back to OpenAI DALL-E 3 HD. Leave blank to rely entirely on free Google Gemini and Hugging Face FLUX.
                   </p>
                   <input
                     type="password"
@@ -1423,21 +1423,16 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                   />
                 </div>
 
-                {/* 5. Pollinations.ai (Permanent Free Safety Net) */}
-                <div className="p-4 rounded-2xl border border-purple-500/20 bg-purple-500/5 dark:bg-purple-950/20 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
-                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
-                        5. Pollinations.ai (Always Active Free Safety Net)
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                      🟢 100% Free · No Key Needed
+                {/* Ultra-HD Quality Assurance Notice */}
+                <div className="p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-950/20 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                      Ultra-HD Quality Protected
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                    Zero setup required. If every other key is exhausted or rate-limited, Obey instantly uses Pollinations FLUX engine with Cloudinary auto-framing so image generation never fails.
+                    Low-quality free web fallbacks are permanently disabled. Obey only outputs high-resolution photorealistic artwork via your configured Google, Hugging Face FLUX.1, Cloudflare, or DALL-E engines.
                   </p>
                 </div>
 

@@ -371,7 +371,6 @@ export async function getImageProvidersStatus(workspaceId?: string) {
     huggingface: { activeKeys: hfKeys.length, enabled: hfKeys.length > 0 },
     cloudflare: { activeKeys: cfKeys.length, accounts: cfAccounts.length, enabled: cfKeys.length > 0 && cfAccounts.length > 0 },
     openai: { activeKeys: openaiKeys.length, enabled: openaiKeys.length > 0 },
-    pollinations: { enabled: true, fallback: true },
   };
 }
 
@@ -449,7 +448,12 @@ export async function generateAIImage(
             }
           }
         } else {
-          console.warn(`[Image Generator] Google Gemini Image error (${gRes.status}) on key ${i + 1}:`, await gRes.text());
+          const errText = await gRes.text();
+          console.warn(`[Image Generator] Google Gemini Image error (${gRes.status}) on key ${i + 1}:`, errText);
+          if (errText.includes("limit: 0") || (gRes.status === 429 && i >= 1)) {
+            console.log("[Image Generator] Google Gemini Image free-tier quota unavailable, cascading immediately to next provider...");
+            break;
+          }
         }
       } catch (gErr) {
         console.warn(`[Image Generator] Google Gemini Image exception on key ${i + 1}:`, gErr);
@@ -647,40 +651,17 @@ export async function generateAIImage(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // PROVIDER 5: Pollinations FLUX Engine (Always-free, unlimited safety net)
-    // Automatically frames out any watermark via Cloudinary crop
+    // If all high-definition providers fail or have no active keys, fail cleanly.
+    // Low-quality public safety-nets (Pollinations) are completely removed so they
+    // never override high-definition artwork or deliver degraded visual output.
     // ────────────────────────────────────────────────────────────────────────
-    console.log("[Image Generator] Using Pollinations FLUX safety net...");
-    const enhance = options?.enhance !== false;
-    const encodedPrompt = encodeURIComponent(cleanedPrompt || "modern high-tech creative software design");
-    const rawPollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=${enhance}&model=flux`;
-
-    let finalImageUrl = rawPollinationsUrl;
-
-    if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-      try {
-        const uploadRes = await cloudinary.uploader.upload(rawPollinationsUrl, {
-          folder: "obey-artwork",
-          resource_type: "image",
-        });
-        const framedUrl = cloudinary.url(uploadRes.public_id, {
-          transformation: [
-            { height: 0.93, crop: "crop", gravity: "north" },
-            { quality: "auto:best" },
-          ],
-          secure: true,
-        });
-        if (framedUrl) finalImageUrl = framedUrl;
-      } catch (cloudErr) {
-        console.warn("[Image Generator] Cloudinary framing fallback:", cloudErr);
-      }
-    }
-
+    console.warn("[Image Generator] No high-definition image provider available or all active keys exhausted.");
     return {
-      success: true,
-      imageUrl: finalImageUrl,
+      success: false,
+      imageUrl: "",
       revisedPrompt: cleanedPrompt,
       seed,
+      error: "High-definition image generation requires an active Hugging Face FLUX token, Cloudflare Workers AI token, or OpenAI DALL-E key in Admin Settings.",
     };
   } catch (err: any) {
     console.error("[Image Generator] Error generating image:", err);

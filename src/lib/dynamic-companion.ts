@@ -1228,8 +1228,9 @@ INSTRUCTIONS:
         imageUrl: imgRes.imageUrl,
       };
     } else {
+      const errorDetail = imgRes.error || `I tried generating your artwork for "${prompt}", but encountered a temporary graphics rendering issue.`;
       return {
-        reply: cleanWhatsApp(`I tried generating your artwork for "${prompt}", but encountered a temporary graphics rendering glitch. Could you rephrase your description or try again in a moment?`),
+        reply: cleanWhatsApp(`⚠️ *Image Generation Notice:*\n\n${errorDetail}`),
       };
     }
   }
