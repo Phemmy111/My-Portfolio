@@ -256,12 +256,48 @@ export function getKeyPool(envVarNames: string[]): string[] {
   return keys;
 }
 
-export function getImageProvidersStatus() {
-  const geminiKeys = getKeyPool(["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"]);
-  const hfKeys = getKeyPool(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"]);
-  const cfKeys = getKeyPool(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"]);
-  const cfAccounts = getKeyPool(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"]);
-  const openaiKeys = getKeyPool(["OPENAI_API_KEYS", "OPENAI_API_KEY"]);
+// Database-aware key pool: checks both environment variables AND PostgreSQL workspace_settings
+export async function getKeyPoolAsync(
+  envVarNames: string[],
+  dbColumn?: "gemini_api_keys" | "huggingface_api_keys" | "cloudflare_api_tokens" | "cloudflare_account_id" | "openai_api_keys",
+  workspaceId?: string
+): Promise<string[]> {
+  const keys: string[] = getKeyPool(envVarNames);
+
+  if (dbColumn) {
+    try {
+      const sql = getSql();
+      let rows: any[] = [];
+      if (workspaceId) {
+        rows = await sql`SELECT ${sql(dbColumn)} FROM workspace_settings WHERE workspace_id = ${workspaceId} LIMIT 1`;
+      }
+      if (!rows.length || !rows[0]?.[dbColumn]) {
+        // Fallback to latest configured workspace_settings
+        rows = await sql`SELECT ${sql(dbColumn)} FROM workspace_settings WHERE ${sql(dbColumn)} IS NOT NULL AND ${sql(dbColumn)} != '' ORDER BY updated_at DESC LIMIT 1`;
+      }
+      if (rows.length && rows[0]?.[dbColumn]) {
+        const val = String(rows[0][dbColumn]);
+        val.split(/[\s,]+/).forEach((k) => {
+          const trimmed = k.trim();
+          if (trimmed && !keys.includes(trimmed)) {
+            keys.push(trimmed);
+          }
+        });
+      }
+    } catch (err) {
+      console.warn(`[Image Generator] Could not read ${dbColumn} from database:`, err);
+    }
+  }
+
+  return keys;
+}
+
+export async function getImageProvidersStatus(workspaceId?: string) {
+  const geminiKeys = await getKeyPoolAsync(["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"], "gemini_api_keys", workspaceId);
+  const hfKeys = await getKeyPoolAsync(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"], "huggingface_api_keys", workspaceId);
+  const cfKeys = await getKeyPoolAsync(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"], "cloudflare_api_tokens", workspaceId);
+  const cfAccounts = await getKeyPoolAsync(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"], "cloudflare_account_id", workspaceId);
+  const openaiKeys = await getKeyPoolAsync(["OPENAI_API_KEYS", "OPENAI_API_KEY"], "openai_api_keys", workspaceId);
 
   return {
     gemini: { activeKeys: geminiKeys.length, enabled: geminiKeys.length > 0 },
@@ -280,6 +316,7 @@ export async function generateAIImage(
     enhance?: boolean;
     seed?: number;
     model?: string;
+    workspaceId?: string;
   }
 ): Promise<GeneratedImageResult> {
   try {
@@ -297,9 +334,13 @@ export async function generateAIImage(
 
     // ────────────────────────────────────────────────────────────────────────
     // PROVIDER 1: Google Gemini Image Models (gemini-2.5-flash-image / gemini-3.1-flash-image)
-    // Supports rotating pool via GEMINI_API_KEYS="key1,key2,key3" or GEMINI_API_KEY
+    // Supports rotating pool via Admin Dashboard, GEMINI_API_KEYS="key1,key2,key3", or GEMINI_API_KEY
     // ────────────────────────────────────────────────────────────────────────
-    const geminiKeys = getKeyPool(["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"]);
+    const geminiKeys = await getKeyPoolAsync(
+      ["GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEYS"],
+      "gemini_api_keys",
+      options?.workspaceId
+    );
     for (let i = 0; i < geminiKeys.length; i++) {
       const gKey = geminiKeys[i];
       try {
@@ -350,9 +391,13 @@ export async function generateAIImage(
 
     // ────────────────────────────────────────────────────────────────────────
     // PROVIDER 2: Hugging Face Serverless (FLUX.1-schnell)
-    // Supports rotating pool via HUGGINGFACE_API_KEYS="token1,token2" or HF_TOKEN
+    // Supports rotating pool via Admin Dashboard, HUGGINGFACE_API_KEYS="token1,token2", or HF_TOKEN
     // ────────────────────────────────────────────────────────────────────────
-    const hfKeys = getKeyPool(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"]);
+    const hfKeys = await getKeyPoolAsync(
+      ["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN", "HF_TOKENS"],
+      "huggingface_api_keys",
+      options?.workspaceId
+    );
     for (let i = 0; i < hfKeys.length; i++) {
       const hfKey = hfKeys[i];
       try {
@@ -398,10 +443,18 @@ export async function generateAIImage(
     // ────────────────────────────────────────────────────────────────────────
     // PROVIDER 3: Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell)
     // 10,000 free daily neurons per account
-    // Supports CLOUDFLARE_API_TOKENS="tok1,tok2" + CLOUDFLARE_ACCOUNT_ID
+    // Supports Admin Dashboard, CLOUDFLARE_API_TOKENS="tok1,tok2" + CLOUDFLARE_ACCOUNT_ID
     // ────────────────────────────────────────────────────────────────────────
-    const cfTokens = getKeyPool(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"]);
-    const cfAccounts = getKeyPool(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"]);
+    const cfTokens = await getKeyPoolAsync(
+      ["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"],
+      "cloudflare_api_tokens",
+      options?.workspaceId
+    );
+    const cfAccounts = await getKeyPoolAsync(
+      ["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"],
+      "cloudflare_account_id",
+      options?.workspaceId
+    );
     if (cfTokens.length > 0 && cfAccounts.length > 0) {
       for (let i = 0; i < cfTokens.length; i++) {
         const cfToken = cfTokens[i];
@@ -461,9 +514,13 @@ export async function generateAIImage(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // PROVIDER 4: OpenAI DALL-E 3 HD (If OPENAI_API_KEYS or OPENAI_API_KEY has balance)
+    // PROVIDER 4: OpenAI DALL-E 3 HD (If Admin Dashboard or OPENAI_API_KEYS has balance)
     // ────────────────────────────────────────────────────────────────────────
-    const openaiKeys = getKeyPool(["OPENAI_API_KEYS", "OPENAI_API_KEY"]);
+    const openaiKeys = await getKeyPoolAsync(
+      ["OPENAI_API_KEYS", "OPENAI_API_KEY"],
+      "openai_api_keys",
+      options?.workspaceId
+    );
     for (let i = 0; i < openaiKeys.length; i++) {
       const oKey = openaiKeys[i];
       try {

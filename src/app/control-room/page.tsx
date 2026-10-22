@@ -138,6 +138,12 @@ interface WorkspaceSettings {
   fallback_action?: string | null;
   voice_id?: string | null;
   voice_personality?: string | null;
+  website_url?: string | null;
+  gemini_api_keys?: string | null;
+  huggingface_api_keys?: string | null;
+  cloudflare_api_tokens?: string | null;
+  cloudflare_account_id?: string | null;
+  openai_api_keys?: string | null;
 }
 
 interface WorkspaceRule {
@@ -5309,6 +5315,123 @@ function ControlRoomContent() {
                       <p className="text-[11px] text-zinc-500 leading-tight">{option.desc}</p>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Card 5: AI Image & Graphics Generator Keys (Multi-Key Fallback Pool) */}
+              <div className="bg-zinc-950 border border-purple-500/30 rounded-2xl p-4 sm:p-6 space-y-5 shadow-lg shadow-purple-500/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-850 pb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-purple-400" />
+                      AI Image & Graphics Generator Keys (Multi-Key Fallback Pool)
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Add free Google AI Studio, Hugging Face, or Cloudflare keys directly here. Obey automatically rotates across them and cascades when one key hits quota limits — no coding or Vercel required.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1 self-start sm:self-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" /> Multi-Key Rotation
+                  </span>
+                </div>
+
+                <div className="bg-purple-950/20 border border-purple-500/20 rounded-xl p-3 text-xs text-purple-300 flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white">Pro-tip for Google AI Studio keys:</strong> Yes, your Google Gemini API key works for <em>both</em> chat and image models (<code className="bg-purple-900/40 px-1 py-0.5 rounded text-[11px]">gemini-2.5-flash-image</code>)! You can paste multiple keys separated by commas to multiply your free quota across multiple accounts.
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Google Gemini / Imagen Keys */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                        Google Gemini / Imagen API Keys (Free Tier)
+                      </span>
+                      <span className="text-[10px] font-normal text-zinc-500">Separate multiple keys with commas</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={settings.gemini_api_keys || ""}
+                      onChange={(e) => setSettings({ ...settings, gemini_api_keys: e.target.value })}
+                      placeholder="AIzaSy..., AIzaSy..."
+                      className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
+                    />
+                    <p className="text-[10px] text-zinc-500">
+                      Get free keys at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">aistudio.google.com</a>.
+                    </p>
+                  </div>
+
+                  {/* Hugging Face Tokens */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        Hugging Face FLUX.1 Serverless Tokens (Free Ultra-Photorealistic)
+                      </span>
+                      <span className="text-[10px] font-normal text-zinc-500">Separate multiple tokens with commas</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={settings.huggingface_api_keys || ""}
+                      onChange={(e) => setSettings({ ...settings, huggingface_api_keys: e.target.value })}
+                      placeholder="hf_..., hf_..."
+                      className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
+                    />
+                    <p className="text-[10px] text-zinc-500">
+                      Get free Read tokens at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">huggingface.co/settings/tokens</a>. Runs Black Forest Labs FLUX.1-schnell.
+                    </p>
+                  </div>
+
+                  {/* Cloudflare Workers AI */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-orange-400" />
+                        Cloudflare Account ID
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.cloudflare_account_id || ""}
+                        onChange={(e) => setSettings({ ...settings, cloudflare_account_id: e.target.value })}
+                        placeholder="e.g. b2c3..."
+                        className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-orange-400" />
+                        Cloudflare API Tokens (10k Daily Free Neurons)
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.cloudflare_api_tokens || ""}
+                        onChange={(e) => setSettings({ ...settings, cloudflare_api_tokens: e.target.value })}
+                        placeholder="cf_token1, cf_token2"
+                        className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* OpenAI DALL-E 3 */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        OpenAI DALL-E 3 HD Keys (Pay-As-You-Go Optional)
+                      </span>
+                      <span className="text-[10px] font-normal text-zinc-500">Optional</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={settings.openai_api_keys || ""}
+                      onChange={(e) => setSettings({ ...settings, openai_api_keys: e.target.value })}
+                      placeholder="sk-proj-..."
+                      className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 font-mono transition"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

@@ -769,6 +769,11 @@ export interface WorkspaceSettings {
   voice_id?: string | null;
   voice_personality?: string | null;
   website_url?: string | null;
+  gemini_api_keys?: string | null;
+  huggingface_api_keys?: string | null;
+  cloudflare_api_tokens?: string | null;
+  cloudflare_account_id?: string | null;
+  openai_api_keys?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -850,6 +855,11 @@ export async function createWorkspaceTables() {
       )
     `;
     await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS website_url TEXT`;
+    await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS gemini_api_keys TEXT`;
+    await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS huggingface_api_keys TEXT`;
+    await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS cloudflare_api_tokens TEXT`;
+    await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS cloudflare_account_id TEXT`;
+    await db`ALTER TABLE workspace_settings ADD COLUMN IF NOT EXISTS openai_api_keys TEXT`;
 
     await db`
       CREATE TABLE IF NOT EXISTS workspace_rules (
@@ -1911,7 +1921,12 @@ export async function dbUpsertWorkspaceSettings(
   try {
     await createWorkspaceTables();
     const [row] = await db`
-      INSERT INTO workspace_settings (workspace_id, business_bio, catalog_summary, voice_greeting, whatsapp_welcome, fallback_action, voice_id, voice_personality, website_url, updated_at)
+      INSERT INTO workspace_settings (
+        workspace_id, business_bio, catalog_summary, voice_greeting, whatsapp_welcome,
+        fallback_action, voice_id, voice_personality, website_url,
+        gemini_api_keys, huggingface_api_keys, cloudflare_api_tokens, cloudflare_account_id, openai_api_keys,
+        updated_at
+      )
       VALUES (
         ${workspaceId},
         ${settings.business_bio ?? null},
@@ -1922,6 +1937,11 @@ export async function dbUpsertWorkspaceSettings(
         ${settings.voice_id ?? 'nigerian_male'},
         ${settings.voice_personality ?? 'professional'},
         ${settings.website_url ?? null},
+        ${settings.gemini_api_keys ?? null},
+        ${settings.huggingface_api_keys ?? null},
+        ${settings.cloudflare_api_tokens ?? null},
+        ${settings.cloudflare_account_id ?? null},
+        ${settings.openai_api_keys ?? null},
         NOW()
       )
       ON CONFLICT (workspace_id) DO UPDATE SET
@@ -1933,6 +1953,11 @@ export async function dbUpsertWorkspaceSettings(
         voice_id = COALESCE(EXCLUDED.voice_id, workspace_settings.voice_id),
         voice_personality = COALESCE(EXCLUDED.voice_personality, workspace_settings.voice_personality),
         website_url = COALESCE(EXCLUDED.website_url, workspace_settings.website_url),
+        gemini_api_keys = COALESCE(EXCLUDED.gemini_api_keys, workspace_settings.gemini_api_keys),
+        huggingface_api_keys = COALESCE(EXCLUDED.huggingface_api_keys, workspace_settings.huggingface_api_keys),
+        cloudflare_api_tokens = COALESCE(EXCLUDED.cloudflare_api_tokens, workspace_settings.cloudflare_api_tokens),
+        cloudflare_account_id = COALESCE(EXCLUDED.cloudflare_account_id, workspace_settings.cloudflare_account_id),
+        openai_api_keys = COALESCE(EXCLUDED.openai_api_keys, workspace_settings.openai_api_keys),
         updated_at = NOW()
       RETURNING *
     `;

@@ -82,6 +82,11 @@ export async function PATCH(
       voice_id,
       voice_personality,
       website_url,
+      gemini_api_keys,
+      huggingface_api_keys,
+      cloudflare_api_tokens,
+      cloudflare_account_id,
+      openai_api_keys,
     } = body;
 
     let updatedWorkspace = ws;
@@ -113,6 +118,11 @@ export async function PATCH(
       voice_id,
       voice_personality,
       website_url,
+      gemini_api_keys,
+      huggingface_api_keys,
+      cloudflare_api_tokens,
+      cloudflare_account_id,
+      openai_api_keys,
     });
 
     if (voice_id) {
