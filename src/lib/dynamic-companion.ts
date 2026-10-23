@@ -561,8 +561,8 @@ Respond ONLY with a valid JSON object matching this schema:
 
   if (naturalCallIntent) {
     decision.action = "direct_voice_call";
-  } else if (decision.action === "direct_voice_call" && isShortAffirmation) {
-    // Only reset if it was an accidental false positive on a generic confirmation word
+  } else if (decision.action === "direct_voice_call" && !naturalCallIntent) {
+    // Disallow false-positive voice call responses if user never explicitly asked for a call
     decision.action = "none";
   }
 

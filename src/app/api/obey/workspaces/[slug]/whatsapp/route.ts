@@ -25,7 +25,8 @@ export async function GET(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const instanceName = ws.whatsapp_instance_name || `obey-${ws.slug}`;
+    const isMainObey = ws.slug === "femi-adeleke" || ws.slug === "default";
+    const instanceName = ws.whatsapp_instance_name || (isMainObey ? (process.env.EVOLUTION_INSTANCE_NAME || "obey") : `obey-${ws.slug}`);
 
     // 1. Check current connection state
     const stateData = await getEvolutionConnectionState(instanceName);
@@ -101,7 +102,8 @@ export async function POST(
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || "qr";
-    const instanceName = `obey-${ws.slug}`;
+    const isMainObey = ws.slug === "femi-adeleke" || ws.slug === "default";
+    const instanceName = ws.whatsapp_instance_name || (isMainObey ? (process.env.EVOLUTION_INSTANCE_NAME || "obey") : `obey-${ws.slug}`);
     const origin = req.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
     const webhookUrl = `${origin}/api/obey/whatsapp/webhook/${instanceName}`;
 

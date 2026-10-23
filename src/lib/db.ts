@@ -942,6 +942,8 @@ export async function createWorkspaceTables() {
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS auto_save_contacts BOOLEAN DEFAULT TRUE`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS status_excluded_phones JSONB DEFAULT '[]'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS bot_bypass BOOLEAN DEFAULT FALSE`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS whatsapp_instance_name TEXT`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS whatsapp_status TEXT DEFAULT 'disconnected'`;
 
     // Ensure contact auto-save and phone status columns exist in workspace_leads
     await db`ALTER TABLE workspace_leads ADD COLUMN IF NOT EXISTS is_saved BOOLEAN DEFAULT FALSE`;
@@ -1694,7 +1696,10 @@ export async function dbGetWorkspacesByOwnerClerkId(
       SELECT * FROM workspaces
       WHERE owner_clerk_id = ${clerkId}
          OR (${cleanEmail} != '' AND LOWER(COALESCE(owner_email, '')) = ${cleanEmail})
-         OR (${cleanPhone} != '' AND REGEXP_REPLACE(owner_phone, '\\D', '', 'g') = ${cleanPhone})
+         OR (${cleanPhone} != '' AND (
+           REGEXP_REPLACE(owner_phone, '\\D', '', 'g') = ${cleanPhone}
+           OR (${cleanPhone.length >= 10} AND RIGHT(REGEXP_REPLACE(owner_phone, '\\D', '', 'g'), 10) = RIGHT(${cleanPhone}, 10))
+         ))
          OR (${isFemi} AND slug = 'femi-adeleke')
       ORDER BY created_at DESC
     `;

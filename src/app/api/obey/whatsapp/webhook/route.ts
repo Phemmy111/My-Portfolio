@@ -2204,14 +2204,14 @@ Output ONLY the comment text.`,
             if (transRes.success && transRes.text) {
               activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
             } else {
-              activeText = userText ? `${userText} [Voice note audio was unclear]` : "I sent you a voice note, but the audio was unclear or silent.";
+              activeText = userText ? `${userText} [Voice note was unclear]` : "[Unclear Voice Note]";
             }
           } else {
-            activeText = userText ? `${userText} [Voice note download delayed]` : "I sent you a voice note.";
+            activeText = userText || "[Unclear Voice Note]";
           }
         } catch (audioErr) {
           console.warn("[WA Webhook] Voice note handling notice:", audioErr);
-          activeText = userText || "I sent you a voice note.";
+          activeText = userText || "[Unclear Voice Note]";
         }
       }
 
