@@ -1780,8 +1780,10 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
     instanceName = "obey-autolearn-spot";
   } else if (
     detectedInstanceId === "f3fd36fd-b59c-462d-863d-01eaf4c8c190" ||
+    detectedInstanceId === "74f619e3-3793-4aa1-8208-32dda0e38a8f" ||
     connectedOwner.endsWith("9161488564") ||
-    instanceName === "f3fd36fd-b59c-462d-863d-01eaf4c8c190"
+    instanceName === "f3fd36fd-b59c-462d-863d-01eaf4c8c190" ||
+    instanceName === "74f619e3-3793-4aa1-8208-32dda0e38a8f"
   ) {
     instanceName = "obey";
   }
