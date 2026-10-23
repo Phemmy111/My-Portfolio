@@ -461,7 +461,7 @@ export async function generateAIImage(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // PROVIDER 2: Hugging Face Serverless (FLUX.1-schnell)
+    // PROVIDER 2: Hugging Face (FLUX.1-dev / SDXL via Router, or FLUX.1-schnell API)
     // Supports rotating pool via Admin Dashboard, HUGGINGFACE_API_KEYS="token1,token2", or HF_TOKEN
     // ────────────────────────────────────────────────────────────────────────
     const hfKeys = await getKeyPoolAsync(
@@ -469,45 +469,50 @@ export async function generateAIImage(
       "huggingface_api_keys",
       options?.workspaceId
     );
+    const hfEndpointCascade = [
+      { url: "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
+      { url: "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
+      { url: "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design", parameters: { width, height } }) },
+    ];
     for (let i = 0; i < hfKeys.length; i++) {
       const hfKey = hfKeys[i];
-      try {
-        console.log(`[Image Generator] Trying Hugging Face FLUX.1 with key ${i + 1}/${hfKeys.length}...`);
-        const hfRes = await fetch("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${hfKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            inputs: cleanedPrompt || "modern creative high-tech design",
-            parameters: { width, height },
-          }),
-        });
+      for (const endpoint of hfEndpointCascade) {
+        try {
+          console.log(`[Image Generator] Trying Hugging Face ${endpoint.url} (key ${i + 1}/${hfKeys.length})...`);
+          const hfRes = await fetch(endpoint.url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${hfKey}`,
+              "Content-Type": "application/json",
+            },
+            body: endpoint.body,
+          });
 
-        if (hfRes.ok) {
-          const arrayBuffer = await hfRes.arrayBuffer();
-          const base64Data = Buffer.from(arrayBuffer).toString("base64");
-          const dataUri = `data:image/jpeg;base64,${base64Data}`;
+          if (hfRes.ok) {
+            const arrayBuffer = await hfRes.arrayBuffer();
+            const base64Data = Buffer.from(arrayBuffer).toString("base64");
+            const dataUri = `data:image/jpeg;base64,${base64Data}`;
 
-          if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-            const cloudRes = await cloudinary.uploader.upload(dataUri, {
-              folder: "obey-artwork",
-              resource_type: "image",
-            });
-            return {
-              success: true,
-              imageUrl: cloudRes.secure_url || dataUri,
-              revisedPrompt: cleanedPrompt,
-              seed,
-            };
+            if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+              const cloudRes = await cloudinary.uploader.upload(dataUri, {
+                folder: "obey-artwork",
+                resource_type: "image",
+              });
+              return {
+                success: true,
+                imageUrl: cloudRes.secure_url || dataUri,
+                revisedPrompt: cleanedPrompt,
+                seed,
+              };
+            }
+            return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
+          } else {
+            const errTxt = await hfRes.text();
+            console.warn(`[Image Generator] Hugging Face ${endpoint.url} error (${hfRes.status}):`, errTxt.slice(0, 200));
           }
-          return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
-        } else {
-          console.warn(`[Image Generator] Hugging Face error (${hfRes.status}) on key ${i + 1}:`, await hfRes.text());
+        } catch (hfErr) {
+          console.warn(`[Image Generator] Hugging Face ${endpoint.url} exception on key ${i + 1}:`, hfErr);
         }
-      } catch (hfErr) {
-        console.warn(`[Image Generator] Hugging Face exception on key ${i + 1}:`, hfErr);
       }
     }
 
@@ -651,17 +656,49 @@ export async function generateAIImage(
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // If all high-definition providers fail or have no active keys, fail cleanly.
-    // Low-quality public safety-nets (Pollinations) are completely removed so they
-    // never override high-definition artwork or deliver degraded visual output.
+    // PROVIDER 5: Pollinations.ai FLUX (zero-key, always available, HD quality)
+    // 100% free, no API key required, powered by FLUX model, Cloudinary CDN upload
     // ────────────────────────────────────────────────────────────────────────
-    console.warn("[Image Generator] No high-definition image provider available or all active keys exhausted.");
+    try {
+      console.log("[Image Generator] Falling back to Pollinations FLUX (zero-key provider)...");
+      const encodedPollinationsPrompt = encodeURIComponent(cleanedPrompt || "modern creative high-tech design");
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPollinationsPrompt}?model=flux&width=${width}&height=${height}&nologo=true&seed=${seed}`;
+      const pollRes = await fetch(pollinationsUrl);
+
+      if (pollRes.ok) {
+        const arrayBuffer = await pollRes.arrayBuffer();
+        const base64Data = Buffer.from(arrayBuffer).toString("base64");
+        const dataUri = `data:image/jpeg;base64,${base64Data}`;
+
+        if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+          const cloudRes = await cloudinary.uploader.upload(dataUri, {
+            folder: "obey-artwork",
+            resource_type: "image",
+          });
+          console.log("[Image Generator] Pollinations FLUX success, uploaded to Cloudinary.");
+          return {
+            success: true,
+            imageUrl: cloudRes.secure_url || dataUri,
+            revisedPrompt: cleanedPrompt,
+            seed,
+          };
+        }
+        return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
+      } else {
+        console.warn(`[Image Generator] Pollinations error (${pollRes.status})`);
+      }
+    } catch (pollErr) {
+      console.warn("[Image Generator] Pollinations exception:", pollErr);
+    }
+
+    // All providers exhausted
+    console.warn("[Image Generator] All image generation providers exhausted.");
     return {
       success: false,
       imageUrl: "",
       revisedPrompt: cleanedPrompt,
       seed,
-      error: "High-definition image generation requires an active Hugging Face FLUX token, Cloudflare Workers AI token, or OpenAI DALL-E key in Admin Settings.",
+      error: "Image generation is temporarily unavailable. Please try again in a moment.",
     };
   } catch (err: any) {
     console.error("[Image Generator] Error generating image:", err);
