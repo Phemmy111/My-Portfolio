@@ -127,6 +127,9 @@ export async function POST(
         );
       }
 
+      // Ensure instance exists on Evolution API before requesting pairing code
+      await createEvolutionInstance(instanceName);
+
       // Configure webhook for this instance
       await setEvolutionInstanceWebhook(instanceName, webhookUrl);
       setEvolutionInstanceSettings(instanceName).catch(() => {});

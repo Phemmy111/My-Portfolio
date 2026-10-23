@@ -10,6 +10,7 @@ import {
   dbClaimWorkspaceForClerkUser,
   dbCreateWorkspaceRule,
 } from "@/lib/db";
+import { createEvolutionInstance } from "@/lib/whatsapp-gateway";
 
 export async function GET(req: NextRequest) {
   try {
@@ -149,6 +150,9 @@ export async function POST(req: NextRequest) {
     if (!created) {
       return NextResponse.json({ error: "Failed to create workspace in database" }, { status: 500 });
     }
+
+    // Pre-provision Evolution API instance in background so it exists immediately
+    createEvolutionInstance(`obey-${cleanSlug}`).catch(() => {});
 
     // Seed default smart rules for this workspace
     await dbCreateWorkspaceRule({

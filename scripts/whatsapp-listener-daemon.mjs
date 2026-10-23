@@ -140,7 +140,7 @@ async function checkEvolutionKeepAlive() {
     }
     const instances = await res.json();
     const inst = Array.isArray(instances) ? instances.find((i) => i.name === EVO_INSTANCE) : null;
-    const isConnected = Boolean(inst && inst.connectionStatus === 'open' && !inst.disconnectionReasonCode);
+    const isConnected = Boolean(inst && inst.connectionStatus === 'open');
 
     if (!isConnected) {
       console.log(`[WA Keepalive] Instance '${EVO_INSTANCE}' is ${inst?.connectionStatus || 'offline'}. Reconnecting...`);
