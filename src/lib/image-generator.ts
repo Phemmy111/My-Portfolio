@@ -469,10 +469,14 @@ export async function generateAIImage(
       "huggingface_api_keys",
       options?.workspaceId
     );
+    // NOTE: HF free tier (hf-inference provider) has deprecated FLUX and SDXL endpoints (all return 410).
+    // Paid provider routing (together, fal-ai, replicate, nebius) requires HF account billing/credits.
+    // The endpoints below will skip gracefully if the account has no paid credits.
     const hfEndpointCascade = [
-      { url: "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
-      { url: "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
-      { url: "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design", parameters: { width, height } }) },
+      // These require HF Pro or billing credits — kept for future use when account is funded
+      { url: "https://router.huggingface.co/together/models/black-forest-labs/FLUX.1-schnell", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
+      { url: "https://router.huggingface.co/together/models/black-forest-labs/FLUX.1-dev", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
+      { url: "https://router.huggingface.co/fal-ai/models/black-forest-labs/FLUX.1-schnell", body: JSON.stringify({ inputs: cleanedPrompt || "modern creative high-tech design" }) },
     ];
     for (let i = 0; i < hfKeys.length; i++) {
       const hfKey = hfKeys[i];
@@ -655,41 +659,6 @@ export async function generateAIImage(
       }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // PROVIDER 5: Pollinations.ai FLUX (zero-key, always available, HD quality)
-    // 100% free, no API key required, powered by FLUX model, Cloudinary CDN upload
-    // ────────────────────────────────────────────────────────────────────────
-    try {
-      console.log("[Image Generator] Falling back to Pollinations FLUX (zero-key provider)...");
-      const encodedPollinationsPrompt = encodeURIComponent(cleanedPrompt || "modern creative high-tech design");
-      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPollinationsPrompt}?model=flux&width=${width}&height=${height}&nologo=true&seed=${seed}`;
-      const pollRes = await fetch(pollinationsUrl);
-
-      if (pollRes.ok) {
-        const arrayBuffer = await pollRes.arrayBuffer();
-        const base64Data = Buffer.from(arrayBuffer).toString("base64");
-        const dataUri = `data:image/jpeg;base64,${base64Data}`;
-
-        if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-          const cloudRes = await cloudinary.uploader.upload(dataUri, {
-            folder: "obey-artwork",
-            resource_type: "image",
-          });
-          console.log("[Image Generator] Pollinations FLUX success, uploaded to Cloudinary.");
-          return {
-            success: true,
-            imageUrl: cloudRes.secure_url || dataUri,
-            revisedPrompt: cleanedPrompt,
-            seed,
-          };
-        }
-        return { success: true, imageUrl: dataUri, revisedPrompt: cleanedPrompt, seed };
-      } else {
-        console.warn(`[Image Generator] Pollinations error (${pollRes.status})`);
-      }
-    } catch (pollErr) {
-      console.warn("[Image Generator] Pollinations exception:", pollErr);
-    }
 
     // All providers exhausted
     console.warn("[Image Generator] All image generation providers exhausted.");
