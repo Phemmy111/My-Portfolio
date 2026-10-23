@@ -127,8 +127,8 @@ export async function POST(
         );
       }
 
-      // Ensure instance exists on Evolution API before requesting pairing code
-      await createEvolutionInstance(instanceName);
+      // Ensure instance exists on Evolution API in number mode before requesting pairing code
+      await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
 
       // Configure webhook for this instance
       await setEvolutionInstanceWebhook(instanceName, webhookUrl);

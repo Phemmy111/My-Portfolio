@@ -575,6 +575,7 @@ export async function createEvolutionInstance(
       headers: { "Content-Type": "application/json", apikey: evoKey },
       body: JSON.stringify({
         instanceName,
+        token: evoKey,
         qrcode: options?.qrcode !== undefined ? options.qrcode : !isNumberMode,
         number: cleanedNumber,
         integration: "WHATSAPP-BAILEYS",
@@ -679,10 +680,8 @@ export async function getEvolutionPairingCode(
       }
 
       // If instance was missing or error on connect, create it if not created yet
-      if (
-        lastData?.message?.includes?.("does not exist") ||
-        (Array.isArray(lastData?.message) && lastData.message[0]?.includes?.("does not exist"))
-      ) {
+      const errStr = JSON.stringify(lastData || {});
+      if (errStr.includes("does not exist") || errStr.includes("Not Found")) {
         await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
         await setEvolutionInstanceWebhook(instanceName, webhookUrl);
       }
