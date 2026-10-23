@@ -1,0 +1,18 @@
+name: Render & Evolution API 24/7 Keep-Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes, 24/7, to keep Render free-tier from spinning down
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Evolution API on Render
+        run: |
+          echo "Pinging Evolution API on Render..."
+          curl -s -f -m 60 https://obey-whatsapp-api.onrender.com/ || echo "Render pinged (waking if sleeping)"
+          echo "Pinging Obey Vercel App..."
+          curl -s -f -m 30 https://obeyai.vercel.app/ || echo "Vercel pinged"
