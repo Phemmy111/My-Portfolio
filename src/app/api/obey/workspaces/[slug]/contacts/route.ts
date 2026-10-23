@@ -97,7 +97,7 @@ export async function GET(
 
     // 2. Fetch live contacts from Evolution API
     const contactsMap = new Map<string, ContactItem>();
-    const evoApiUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoApiUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
     const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
 
     try {
@@ -275,7 +275,7 @@ export async function POST(
       instanceName = slug === "femi-adeleke" ? "obey" : `obey-${slug}`;
     }
     const ownerNumber = (ws as any).owner_whatsapp_number || process.env.BOSS_WHATSAPP_NUMBER || "2348120934828";
-    const evoApiUrl = process.env.EVOLUTION_API_URL || "https://evolution-api-latest-cx3y.onrender.com";
+    const evoApiUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
     const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
 
     // Helper to push contact cards to owner WhatsApp

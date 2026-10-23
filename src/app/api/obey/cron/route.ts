@@ -7,15 +7,19 @@ export async function GET(req: NextRequest) {
   const querySecret = searchParams.get("secret");
 
   // Allow public keepalive pings without auth to ensure external monitors like cron-job.org can keep Render awake
-  if (type === "keepalive" || type === "whatsapp") {
-    const { GET: handleKeepalive } = await import("../whatsapp/keepalive/route");
-    return handleKeepalive(req);
+  if (type === "keepalive" || type === "whatsapp" || type === "pulse") {
+    if (type === "keepalive" || type === "whatsapp") {
+      const { GET: handleKeepalive } = await import("../whatsapp/keepalive/route");
+      return handleKeepalive(req);
+    }
   }
 
   // Check auth or Vercel cron header (CRON_SECRET, query param, or auth session)
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
+  const isPublicPing = type === "pulse" || type === "keepalive" || type === "whatsapp";
   if (
+    !isPublicPing &&
     cronSecret &&
     authHeader !== `Bearer ${cronSecret}` &&
     querySecret !== cronSecret &&
