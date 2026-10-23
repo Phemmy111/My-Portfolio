@@ -149,9 +149,44 @@ interface ProcessMessageParams {
 }
 
 /**
+ * Universal WhatsApp Status Post Command Extractor
+ * Matches all variations of owner commands to publish to status:
+ * - "Post: Thank you Lord"
+ * - "post: test"
+ * - "Post status: Flash sale!"
+ * - "status: We are open"
+ * - "Put on status: Good morning"
+ * - "Share to status: Hello"
+ * - "Post to status: ..."
+ * - "Post status Flash sale" (no colon)
+ */
+function extractStatusPostText(input: string): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+
+  // 1. Prefix with colon or hyphen: "Post: ...", "Post status: ...", "Status: ...", etc.
+  const colonMatch = trimmed.match(
+    /^(?:post\s+status|status\s+update|status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|post\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status|publish\s+status|share\s+(?:to|on)\s+status|post)\s*[:\-]\s*(.+)$/i
+  );
+  if (colonMatch && colonMatch[1]) {
+    return colonMatch[1].trim();
+  }
+
+  // 2. Explicit phrase commands without colon: "Post status Hello", "Put on status Hello", "Post to status Hello"
+  const phraseMatch = trimmed.match(
+    /^(?:post\s+status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|post\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status|publish\s+status|share\s+(?:to|on)\s+status)\s+(.+)$/i
+  );
+  if (phraseMatch && phraseMatch[1]) {
+    return phraseMatch[1].trim();
+  }
+
+  return null;
+}
+
+/**
  * Handles incoming WhatsApp messages for Obey Business instances (e.g. AutoLearn Spot).
  * - Only responds to the business OWNER as their private AI business manager.
- * - Allows posting status updates on command ("Post status: ...").
+ * - Allows posting status updates on command ("Post: ...", "Post status: ...").
  * - Does NOT auto-reply to others, keeping the number 100% normal for regular chat.
  */
 async function handleObeyBusinessOwnerTurn(params: {
@@ -229,26 +264,26 @@ async function handleObeyBusinessOwnerTurn(params: {
     return;
   }
 
-  // 1. WhatsApp Status Automation Commands: "post status: ...", "status: ...", "put on status: ..."
-  if (lower.startsWith("post status:") || lower.startsWith("status:") || lower.startsWith("put on status:")) {
-    const statusText = userText.replace(/^(post status:|status:|put on status:)/i, "").trim();
-    if (!statusText) {
-      await reply("Boss, please specify what you want me to post to your WhatsApp Status! E.g. `Post status: Flash sale today! 20% off all orders.`");
+  // 1. WhatsApp Status Automation Commands: "post: ...", "post status: ...", "status: ...", "put on status: ..."
+  const extractedStatus = extractStatusPostText(userText);
+  if (extractedStatus !== null) {
+    if (!extractedStatus) {
+      await reply("Boss, please specify what you want me to post to your WhatsApp Status! E.g. `Post: Flash sale today! 20% off all orders.`");
       return;
     }
 
     const res = await sendWhatsAppStatusPost({
-      text: statusText,
+      text: extractedStatus,
       instanceName,
     });
 
     if (res.success) {
-      await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${statusText}"`);
+      await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${extractedStatus}"`);
       try {
         if (sql) {
           await sql`
             INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at)
-            VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${statusText}, 'posted', ${res.messageId || null}, NOW())
+            VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${extractedStatus}, 'posted', ${res.messageId || null}, NOW())
           `;
         }
       } catch {}
@@ -362,9 +397,13 @@ VOICE CALL CAPABILITY:
 Your role and personality:
 - You are their dedicated business manager and operations co-pilot for "${currentWs.name}".
 - Address them respectfully and warmly as "Boss".
-- Help them run and grow "${currentWs.name}" — draft WhatsApp status posts, brainstorm promos, check leads, answer catalog questions.
-- If they want to post a status, tell them they can simply type: "Post status: [their text]" and you will publish it immediately to their WhatsApp status stories.
-- OBEY PLATFORM MANUAL & HOW-TO GUIDE:
+- WHATSAPP STATUS POSTING RULES:
+  • You CANNOT post to WhatsApp status stories conversationally.
+  • Status posting is triggered ONLY by the backend command system when Boss prefixes their message with "Post: [text]" or "Post status: [text]".
+  • NEVER, under any circumstance, tell Boss that you have posted, published, or broadcast their message to WhatsApp status stories.
+  • If Boss asks to post or publish something in conversational language (e.g. "put this on status", "can you post this?"), NEVER pretend it is done. Instead, present the suggested draft and explicitly instruct Boss:
+    "To post this live to your WhatsApp status story, simply reply with:
+    Post: [Your text here]"
   You have the complete Obey Manual memorized. Guide Boss on how to use every feature: connecting WhatsApp with Plan B pairing code, saving leads with 1-click VCF export, creating Contact Buckets, running status broadcasts, and setting up keyword triggers.
 - MAIN OBEY & ADVANCED CUSTOM ENGINEERING:
   You are fully aware of Main Obey (Femi Adeleke's flagship personal AI engineer & executive companion).
@@ -1455,6 +1494,35 @@ How can I help you today?`;
 
   // 5. Special Femi Admin Commands
   if (isOwner && isDefaultFemi) {
+    // 5.0 WhatsApp Status Publishing Command: "Post: ...", "Post status: ...", "Status: ...", "Put on status: ..."
+    const femiStatusText = extractStatusPostText(userText);
+    if (femiStatusText !== null) {
+      if (!femiStatusText) {
+        await reply("Boss, please specify what you want me to post to your WhatsApp Status! E.g. `Post: Flash sale today! 20% off all orders.`");
+        return;
+      }
+
+      const res = await sendWhatsAppStatusPost({
+        text: femiStatusText,
+        instanceName: "obey",
+      });
+
+      if (res.success) {
+        await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${femiStatusText}"`);
+        try {
+          if (sql) {
+            await sql`
+              INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at)
+              VALUES (${'stat_' + Date.now()}, ${currentWs?.id || 'femi-adeleke'}, ${femiStatusText}, 'posted', ${res.messageId || null}, NOW())
+            `;
+          }
+        } catch {}
+      } else {
+        await reply(`⚠️ Could not post status: ${res.error || "Evolution broadcast error"}. Please make sure your WhatsApp session is connected in your Control Room.`);
+      }
+      return;
+    }
+
     if (lower.includes("morning brief") || lower.includes("morning report") || lower === "briefing") {
       try {
         await dispatchMorningBriefing();

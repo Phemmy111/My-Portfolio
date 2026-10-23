@@ -2230,6 +2230,13 @@ CRITICAL DISTINCTION & PRICING RULES:
   * If live search results are present, use them accurately and cite the authentic words.
   * If the answer is not in your training data or search results, BE HONEST AND DIRECT: state what you know and do not know (e.g. "I don't have their verified full name/lyrics right now, Boss", or "Let me look that up for you!"), rather than making up answers with "pure vibes and guessing"!
 
+14. STRICT STATUS POSTING RULE:
+- NEVER claim or tell the user that you have published, posted, or broadcast anything to WhatsApp Status stories conversationally!
+- WhatsApp status publishing is ONLY executed by the backend system when the user types a command starting with 'Post: [message]' or 'Post status: [message]'.
+- If the user asks in conversation to post something to status, provide the suggested text and instruct them:
+  "To publish this live to your WhatsApp status story, simply reply with:
+  Post: [Your status text here]"
+
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 
   // Build MCQ context-break prefix to prevent hallucination lock-in
@@ -2259,6 +2266,13 @@ FRESH QUESTION FROM USER:
     });
 
     let finalReply = aiRes.text;
+
+    // Post-generation guard: If conversational text hallucinates a status publish confirmation
+    if (/\b(?:status\s+published|posted\s+live\s+to\s+your\s+whatsapp\s+status|published\s+to\s+your\s+status\s+story)\b/i.test(finalReply)) {
+      console.warn("[Companion] Intercepted hallucinated status publish claim.");
+      const cleanDraft = userText.replace(/^(?:post|status|put\s+on\s+status)[:\s]*/i, "").trim();
+      finalReply = `Here is a suggested status update for you:\n\n"${cleanDraft || "Updates coming soon!"}"\n\n👉 *To publish this live to your WhatsApp status story*, simply reply with:\n\`Post: ${cleanDraft || "Your text here"}\``;
+    }
 
     // Post-generation guard: If conversational text hallucinates an artifact link or fake attachment claim
     const hasHallucinatedArtifact =

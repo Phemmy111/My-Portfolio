@@ -14,6 +14,9 @@ import {
   setEvolutionInstanceSettings,
 } from "@/lib/whatsapp-gateway";
 
+export const maxDuration = 45;
+export const dynamic = "force-dynamic";
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -130,15 +133,9 @@ export async function POST(
         );
       }
 
-      // Ensure instance exists on Evolution API in number mode before requesting pairing code
-      await createEvolutionInstance(instanceName, { qrcode: false, number: cleaned });
-
-      // Configure webhook for this instance
-      await setEvolutionInstanceWebhook(instanceName, webhookUrl);
-      setEvolutionInstanceSettings(instanceName).catch(() => {});
-
       // Request 8-digit Baileys pairing code from Evolution API
       const pairRes = await getEvolutionPairingCode(instanceName, cleaned);
+      setEvolutionInstanceSettings(instanceName).catch(() => {});
       if (!pairRes.success || !pairRes.pairingCode) {
         return NextResponse.json(
           { error: pairRes.error || "Failed to generate 8-digit pairing code" },
