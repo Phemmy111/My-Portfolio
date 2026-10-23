@@ -68,8 +68,9 @@ export async function GET(
       });
     }
 
-    // 3. If disconnected or connecting, fetch QR code
-    const qrData = await getEvolutionInstanceQR(instanceName);
+    // 3. Passive status check - do NOT invoke connect/QR to avoid aborting active pairing codes
+    const needQr = req.nextUrl.searchParams.get("qr") === "true";
+    const qrData = needQr ? await getEvolutionInstanceQR(instanceName) : null;
 
     return NextResponse.json({
       status: currentState === "open" ? "connected" : "disconnected",
