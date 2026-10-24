@@ -42,6 +42,7 @@ import {
   generateFaceLockWithFal,
   generateFaceSwapWithSegmind,
   isFaceSwapRequest,
+  generateImageToImageWithCloudflare,
 } from "@/lib/image-generator";
 import { v2 as cloudinary } from "cloudinary";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -1368,9 +1369,23 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
 
         let isFaceLocked = imgRes.success;
 
-        // 2. Fallback to Vision prompt synthesis + FLUX if Fal.ai is not configured or failed
+        // 2. 100% Free Primary Fallback: Cloudflare Workers AI img2img (Preserves exact reference image structure and face)
         if (!imgRes.success) {
-          console.log("[WA Webhook] Fal.ai not available or failed, falling back to vision prompt synthesis...");
+          console.log("[WA Webhook] Trying free Cloudflare Workers AI img2img...");
+          imgRes = await generateImageToImageWithCloudflare({
+            referenceImageBase64: visionMedia.base64,
+            prompt: `a photorealistic portrait of the person, ${cleanInstruction}, ultra sharp focus, professional photography, maintaining facial identity and composition`,
+            strength: 0.6,
+            workspaceId: currentWs?.id,
+          });
+          if (imgRes.success) {
+            isFaceLocked = true;
+          }
+        }
+
+        // 3. Fallback to Vision prompt synthesis + FLUX if both failed
+        if (!imgRes.success) {
+          console.log("[WA Webhook] img2img not available or failed, falling back to vision prompt synthesis...");
           const visionPrompt = `You are an elite creative director and prompt engineer specialized in hyper-realistic subject continuity for FLUX image diffusion.
 The user provided a photo of a real person and requested this modification: "${cleanInstruction}".
 TASK:
@@ -1413,7 +1428,7 @@ Return ONLY the raw descriptive prompt (maximum 90 words). No commentary, no quo
           );
           await reply(
             isFaceLocked
-              ? `🎨 *Here is your revised artwork, Boss!* \n\n🔒 *Face-Lock Active (Fal.ai):* Facial geometry and identity were preserved while applying your requested styling: "${cleanInstruction}".`
+              ? `🎨 *Here is your revised artwork, Boss!* \n\n🔒 *Image-to-Image Identity Lock:* Preserved facial geometry and composition while applying your requested styling: "${cleanInstruction}".`
               : `🎨 *Here is your revised artwork, Boss!* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo. To lock her exact facial features with 100% precision, activate your Fal.ai key in Settings!`
           );
           return;

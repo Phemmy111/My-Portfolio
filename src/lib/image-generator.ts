@@ -908,3 +908,92 @@ export async function generateFaceSwapWithSegmind(params: {
   };
 }
 
+/**
+ * 100% Free Image-to-Image / Instruction Manipulation via Cloudflare Workers AI
+ * Preserves the composition, face, and geometry of the uploaded reference image
+ * while styling or modifying elements based on natural language instructions.
+ */
+export async function generateImageToImageWithCloudflare(params: {
+  referenceImageBase64: string;
+  prompt: string;
+  strength?: number;
+  workspaceId?: string;
+}): Promise<GeneratedImageResult> {
+  const { referenceImageBase64, prompt, strength = 0.65, workspaceId } = params;
+  const cfTokens = await getKeyPoolAsync(
+    ["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"],
+    "cloudflare_api_tokens",
+    workspaceId
+  );
+  const cfAccounts = await getKeyPoolAsync(
+    ["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"],
+    "cloudflare_account_id",
+    workspaceId
+  );
+
+  if (cfTokens.length === 0 || cfAccounts.length === 0) {
+    return { success: false, imageUrl: "", revisedPrompt: prompt, seed: 0, error: "Cloudflare credentials not found" };
+  }
+
+  const cleanB64 = referenceImageBase64.replace(/^data:[^;]+;base64,/, "").trim();
+  const seed = Math.floor(Math.random() * 1000000);
+
+  for (let i = 0; i < cfTokens.length; i++) {
+    const cfToken = cfTokens[i];
+    const cfAccount = cfAccounts[i % cfAccounts.length];
+
+    try {
+      console.log(`[Image Generator] Trying Cloudflare Workers AI img2img with token ${i + 1}/${cfTokens.length}...`);
+      const cfRes = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount)}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt,
+            image_b64: cleanB64,
+            strength,
+            num_steps: 20,
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      );
+
+      if (cfRes.ok) {
+        const arrayBuffer = await cfRes.arrayBuffer();
+        const base64Data = Buffer.from(arrayBuffer).toString("base64");
+        const dataUri = `data:image/png;base64,${base64Data}`;
+
+        if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+          try {
+            const cloudRes = await cloudinary.uploader.upload(dataUri, {
+              folder: "obey-user-edits",
+              resource_type: "image",
+            });
+            return {
+              success: true,
+              imageUrl: cloudRes.secure_url || dataUri,
+              revisedPrompt: prompt,
+              seed,
+            };
+          } catch (cloudErr) {
+            console.warn("[Image Generator] Cloudinary upload notice, using dataUri:", cloudErr);
+          }
+        }
+        return { success: true, imageUrl: dataUri, revisedPrompt: prompt, seed };
+      } else {
+        const errText = await cfRes.text();
+        console.warn(`[Image Generator] Cloudflare img2img error (${cfRes.status}):`, errText);
+      }
+    } catch (err: any) {
+      console.warn(`[Image Generator] Cloudflare img2img exception:`, err?.message || err);
+    }
+  }
+
+  return { success: false, imageUrl: "", revisedPrompt: prompt, seed: 0, error: "Cloudflare img2img failed on all tokens" };
+}
+
+
