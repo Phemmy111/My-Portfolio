@@ -72,13 +72,14 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
         const targetModel = p.model?.trim() || "gemini-flash-latest";
         const candidateModels = isAudioMedia
           ? [
-              "gemini-3.5-transcribe",
-              "gemini-3.8-flash",
-              "gemini-3.5-flash",
+              "gemini-2.5-flash",
               "gemini-flash-latest",
+              "gemini-2.5-flash-lite",
+              "gemini-3.8-flash",
             ]
           : [
               targetModel,
+              "gemini-2.5-flash",
               "gemini-flash-latest",
               "gemini-flash-lite-latest",
               "gemini-3.8-flash",
