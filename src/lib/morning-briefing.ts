@@ -140,13 +140,17 @@ DO NOT use markdown, emojis, asterisks, or bullet points in the spoken script. W
     }
 
     // 7. Deliver formatted Executive Summary card text
+    const audioNotice = audioSent
+      ? `💬 *Executive Voice Briefing delivered above!* Let's take the day! 🚀`
+      : `💬 *Executive briefing prepared above.* Let's take the day! 🚀`;
+
     const summaryCard =
       `🎙️ *Morning Executive Briefing | Obey AI*\n` +
       `📅 *${dateStr}* (7:30 AM WAT)\n\n` +
       `Good morning Boss Femi! 🌅\n\n` +
       `📊 *Overnight Leads:* ${newLeadsCount > 0 ? `${newLeadsCount} new leads captured 🔥` : "Pipeline steady"}\n` +
       `📋 *Agenda Today:*\n${pendingTasksSummary}\n\n` +
-      `💬 *Executive Voice Briefing delivered above!* Let's take the day! 🚀`;
+      audioNotice;
 
     await sendWhatsAppMessage(summaryCard, targetPhone, "obey");
 

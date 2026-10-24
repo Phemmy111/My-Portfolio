@@ -1335,17 +1335,21 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
         console.log(`[WA Webhook] Image edit request detected on user photo: "${cleanInstruction}"`);
         await reply("🎨 *On it, Boss!* Analyzing your photo and generating your revised artwork now... ⚡");
 
-        const visionPrompt = `You are an elite creative director and visual prompt engineer for FLUX image generation.
-The user provided this photograph and commanded: "${cleanInstruction}".
+        const visionPrompt = `You are an elite creative director and prompt engineer specialized in hyper-realistic subject continuity for FLUX image diffusion.
+The user provided a photo of a real person and requested this modification: "${cleanInstruction}".
 TASK:
-Analyze the subject in the photo (gender, ethnicity, facial features, pose, outfit, lighting, background).
-Then compose a detailed, high-resolution, photorealistic visual prompt that recreates this subject while precisely applying the user's requested edit ("${cleanInstruction}") flawlessly (e.g. adding the beret, changing clothing, altering colors or background).
-Keep the person's identity, ethnicity, and core aesthetic recognizable.
-Return ONLY the raw visual prompt (maximum 75 words). No markdown, no quotes, no conversational commentary.`;
+Analyze the person's exact physical identity with forensic detail:
+1. Exact age range, precise skin tone and undertone (e.g. rich warm mahogany, deep espresso, golden caramel, olive).
+2. Precise facial architecture: face shape (oval, heart, square, soft jaw), cheekbone structure, eye shape and color, eyebrow arch/thickness, nose bridge width and nostril shape, mouth and lip fullness.
+3. Hair texture, color, length, parting, hairline.
+4. Camera angle, lighting direction, focal length (e.g. 85mm portrait, soft rim light).
+5. Apply the user's requested edit ("${cleanInstruction}") seamlessly (e.g. wearing a white beret, changing outfit).
+Compose a prompt that maximizes subject resemblance while applying the modification.
+Return ONLY the raw descriptive prompt (maximum 90 words). No commentary, no quotes.`;
 
         const aiRes = await executeAICompletionWithMedia({
           systemPrompt:
-            "You are an elite visual prompt engineer. Return ONLY the concise descriptive prompt string for image generation.",
+            "You are an elite visual prompt engineer specialized in photographic subject resemblance. Return ONLY the concise descriptive prompt string for image generation.",
           userPrompt: visionPrompt,
           mediaBase64: visionMedia.base64,
           mimeType: visionMedia.mimetype || "image/jpeg",
@@ -1371,7 +1375,7 @@ Return ONLY the raw visual prompt (maximum 75 words). No markdown, no quotes, no
             currentWs?.whatsapp_instance_name || instanceName || "obey"
           );
           await reply(
-            `🎨 *Here is your edited image!* Let me know if you would like me to adjust any colors, lighting, or details.`
+            `🎨 *Here is your revised artwork, Boss!* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo's facial features and styling. If you want me to fine-tune the outfit, beret style, or lighting, just let me know!`
           );
           return;
         } else {
@@ -2305,94 +2309,92 @@ Output ONLY the comment text.`,
 
   console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : isSticker ? '[Sticker]' : '[Doc]')}"`);
 
-  after(async () => {
-    let queueId: string | null = null;
-    const msgId = msgObj.key?.id;
-    try {
-      // Step 3B: Asynchronous Message Queue tracking
-      queueId = await dbEnqueueWorkspaceMessage({
-        instanceName,
-        senderPhone: senderNumber,
-        messageId: msgId,
-        payload: {
-          pushName: msgObj.pushName,
-          textSample: (userText || "").slice(0, 160),
-          isAudio,
-          isImage,
-          isDoc,
-          isSticker,
-        },
-        status: "processing",
-      });
+  let queueId: string | null = null;
+  const msgId = msgObj.key?.id;
+  try {
+    // Step 3B: Asynchronous Message Queue tracking
+    queueId = await dbEnqueueWorkspaceMessage({
+      instanceName,
+      senderPhone: senderNumber,
+      messageId: msgId,
+      payload: {
+        pushName: msgObj.pushName,
+        textSample: (userText || "").slice(0, 160),
+        isAudio,
+        isImage,
+        isDoc,
+        isSticker,
+      },
+      status: "processing",
+    });
 
-      let activeText = userText;
-      let isVoiceNote = false;
-      let visionMedia: { base64: string; mimetype: string } | null = null;
-      let docMedia: { base64: string; mimetype: string } | null = null;
+    let activeText = userText;
+    let isVoiceNote = false;
+    let visionMedia: { base64: string; mimetype: string } | null = null;
+    let docMedia: { base64: string; mimetype: string } | null = null;
 
-      // 1. Voice Note Transcription
-      if (isAudio) {
-        isVoiceNote = true;
-        try {
-          const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
-          if (media?.base64) {
-            const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
-            if (transRes.success && transRes.text) {
-              activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
-            } else {
-              activeText = userText ? `${userText} [Voice note was unclear]` : "[Unclear Voice Note]";
-            }
+    // 1. Voice Note Transcription
+    if (isAudio) {
+      isVoiceNote = true;
+      try {
+        const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
+        if (media?.base64) {
+          const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
+          if (transRes.success && transRes.text) {
+            activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
           } else {
-            activeText = userText || "[Unclear Voice Note]";
+            activeText = userText ? `${userText} [Voice note was unclear]` : "[Unclear Voice Note]";
           }
-        } catch (audioErr) {
-          console.warn("[WA Webhook] Voice note handling notice:", audioErr);
+        } else {
           activeText = userText || "[Unclear Voice Note]";
         }
-      }
-
-      // 2. Multimodal Vision (Photos, Screenshots, Stickers)
-      if (isImage || isSticker) {
-        visionMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
-        if (!activeText) activeText = isSticker ? "[Sticker Received]" : "[Image Received]";
-      }
-
-      // 3. Documents (PDFs, CVs, Invoices)
-      if (isDoc) {
-        docMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
-        if (!activeText) activeText = "[Document Received]";
-      }
-
-      await processMessage({
-        senderNumber,
-        userText: activeText,
-        pushName: msgObj.pushName,
-        isVoiceNote,
-        isSticker,
-        messageId: msgId,
-        visionMedia,
-        docMedia,
-        documentFileName: msgObj.message?.documentMessage?.fileName,
-        instanceName,
-        connectedOwner,
-      });
-
-      if (queueId) {
-        await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
-      }
-    } catch (err: any) {
-      console.error("[WA] processMessage background task error:", err);
-      if (queueId) {
-        await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
-      }
-    } finally {
-      if (queueId) {
-        try {
-          await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
-        } catch {}
+      } catch (audioErr) {
+        console.warn("[WA Webhook] Voice note handling notice:", audioErr);
+        activeText = userText || "[Unclear Voice Note]";
       }
     }
-  });
+
+    // 2. Multimodal Vision (Photos, Screenshots, Stickers)
+    if (isImage || isSticker) {
+      visionMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
+      if (!activeText) activeText = isSticker ? "[Sticker Received]" : "[Image Received]";
+    }
+
+    // 3. Documents (PDFs, CVs, Invoices)
+    if (isDoc) {
+      docMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
+      if (!activeText) activeText = "[Document Received]";
+    }
+
+    await processMessage({
+      senderNumber,
+      userText: activeText,
+      pushName: msgObj.pushName,
+      isVoiceNote,
+      isSticker,
+      messageId: msgId,
+      visionMedia,
+      docMedia,
+      documentFileName: msgObj.message?.documentMessage?.fileName,
+      instanceName,
+      connectedOwner,
+    });
+
+    if (queueId) {
+      await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
+    }
+  } catch (err: any) {
+    console.error("[WA] processMessage execution error:", err);
+    if (queueId) {
+      await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
+    }
+  } finally {
+    if (queueId) {
+      try {
+        await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
+      } catch {}
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }
