@@ -116,7 +116,32 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const [geminiKeyPool, setGeminiKeyPool] = useState<string[]>([""]);
   const [hfKeyPool, setHfKeyPool] = useState<string[]>([""]);
   const [cfKeyPool, setCfKeyPool] = useState<string[]>([""]);
+  const [cfAccountPool, setCfAccountPool] = useState<string[]>([""]);
   const [openaiKeyPool, setOpenaiKeyPool] = useState<string[]>([""]);
+
+  // Cloudflare paired account helpers
+  const addCfAccount = () => {
+    setCfKeyPool((prev) => [...prev, ""]);
+    setCfAccountPool((prev) => [...prev, ""]);
+  };
+
+  const removeCfAccount = (idx: number) => {
+    setCfKeyPool((prev) => prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx));
+    setCfAccountPool((prev) => prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx));
+  };
+
+  const updateCfToken = (idx: number, val: string) => {
+    setCfKeyPool((prev) => prev.map((k, i) => (i === idx ? val : k)));
+  };
+
+  const updateCfAccountId = (idx: number, val: string) => {
+    setCfAccountPool((prev) => {
+      const next = [...prev];
+      while (next.length <= idx) next.push("");
+      next[idx] = val;
+      return next;
+    });
+  };
 
   // Per-key test results: keyed by "google-0", "hf-1", "cf-0", "openai-2" etc.
   const [keyTestResults, setKeyTestResults] = useState<Record<string, any>>({});
@@ -134,11 +159,11 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
-          geminiKeys: generalKeys.GEMINI_API_KEYS,
-          hfKeys: generalKeys.HUGGINGFACE_API_KEYS,
-          cfTokens: generalKeys.CLOUDFLARE_API_TOKENS,
-          cfAccountId: generalKeys.CLOUDFLARE_ACCOUNT_ID,
-          openaiKeys: generalKeys.OPENAI_API_KEYS,
+          geminiKeys: poolToString(geminiKeyPool),
+          hfKeys: poolToString(hfKeyPool),
+          cfTokens: poolToString(cfKeyPool),
+          cfAccountId: poolToString(cfAccountPool),
+          openaiKeys: poolToString(openaiKeyPool),
         }),
       });
       const data = await res.json();
@@ -416,6 +441,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           HUGGINGFACE_API_KEYS: loadedHF,
           CLOUDFLARE_API_TOKENS: loadedCF,
           CLOUDFLARE_ACCOUNT_ID: data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
+          CLOUDFLARE_ACCOUNT_IDS: data.settings.CLOUDFLARE_ACCOUNT_IDS?.value || data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
           OPENAI_API_KEYS: loadedOAI,
         });
 
@@ -423,7 +449,18 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         const splitKeys = (s: string) => s.split(/[\s,]+/).filter(Boolean);
         setGeminiKeyPool(splitKeys(loadedGemini).length > 0 ? splitKeys(loadedGemini) : [""]);
         setHfKeyPool(splitKeys(loadedHF).length > 0 ? splitKeys(loadedHF) : [""]);
-        setCfKeyPool(splitKeys(loadedCF).length > 0 ? splitKeys(loadedCF) : [""]);
+
+        const splitTokens = splitKeys(loadedCF);
+        const splitAccounts = splitKeys(data.settings.CLOUDFLARE_ACCOUNT_IDS?.value || data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "");
+        const cfCount = Math.max(splitTokens.length, splitAccounts.length, 1);
+        const initialTokens: string[] = [];
+        const initialAccounts: string[] = [];
+        for (let i = 0; i < cfCount; i++) {
+          initialTokens.push(splitTokens[i] || "");
+          initialAccounts.push(splitAccounts[i] || "");
+        }
+        setCfKeyPool(initialTokens);
+        setCfAccountPool(initialAccounts);
         setOpenaiKeyPool(splitKeys(loadedOAI).length > 0 ? splitKeys(loadedOAI) : [""]);
       }
 
@@ -665,6 +702,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       GEMINI_API_KEYS: poolToString(geminiKeyPool),
       HUGGINGFACE_API_KEYS: poolToString(hfKeyPool),
       CLOUDFLARE_API_TOKENS: poolToString(cfKeyPool),
+      CLOUDFLARE_ACCOUNT_ID: cfAccountPool[0] || generalKeys.CLOUDFLARE_ACCOUNT_ID || "",
+      CLOUDFLARE_ACCOUNT_IDS: poolToString(cfAccountPool),
       OPENAI_API_KEYS: poolToString(openaiKeyPool),
     };
 
@@ -1595,15 +1634,15 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
 
                 {/* 3. Cloudflare Workers AI */}
-                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
                       <span className="font-bold text-xs text-zinc-950 dark:text-white">
-                        3. Cloudflare Workers AI FLUX (Serverless Edge)
+                        3. Cloudflare Workers AI FLUX (Serverless Edge Pool)
                       </span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
-                        10,000 neurons/day free
+                        10,000 neurons/day FREE per account
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1612,10 +1651,10 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                         onClick={() => handleVerifyImageKeys("cloudflare")}
                         disabled={verifyingImageSection === "cloudflare" || verifyingImageKeys}
                         className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
-                        title="Test Cloudflare token live"
+                        title="Test all Cloudflare accounts live"
                       >
                         <RefreshCw size={11} className={verifyingImageSection === "cloudflare" ? "animate-spin" : ""} />
-                        {verifyingImageSection === "cloudflare" ? "Testing..." : "🧪 Test Cloudflare Token"}
+                        {verifyingImageSection === "cloudflare" ? "Testing..." : "🧪 Test All CF Accounts"}
                       </button>
                       <a
                         href="https://dash.cloudflare.com/profile/api-tokens"
@@ -1628,64 +1667,104 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     </div>
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    High-speed global edge inference with Cloudflare Workers AI FLUX.1-schnell model.
+                    High-speed edge inference with FLUX.1-schnell. Stack multiple free Cloudflare accounts (each provides 10,000 free daily neurons, ~250–500 images/day).
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                        Cloudflare API Token
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="password"
-                          value={cfKeyPool[0] || ""}
-                          onChange={(e) => updateKeyInPool("cf", 0, e.target.value)}
-                          placeholder="cfut_..."
-                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleTestSingleKey("cloudflare", cfKeyPool[0] || "", 0, generalKeys.CLOUDFLARE_ACCOUNT_ID)}
-                          disabled={testingKey === "cloudflare-0" || !(cfKeyPool[0] || "").trim()}
-                          className="px-2.5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+
+                  <div className="space-y-3">
+                    {cfKeyPool.map((token, idx) => {
+                      const accountId = cfAccountPool[idx] || "";
+                      const resultKey = `cloudflare-${idx}`;
+                      const testRes = keyTestResults[resultKey];
+                      return (
+                        <div
+                          key={`cf-acc-${idx}`}
+                          className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 space-y-2"
                         >
-                          <RefreshCw size={10} className={testingKey === "cloudflare-0" ? "animate-spin" : ""} />
-                          {testingKey === "cloudflare-0" ? "…" : "Test"}
-                        </button>
-                      </div>
-                      {keyTestResults["cloudflare-0"] && (
-                        <div className={`mt-1.5 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
-                          keyTestResults["cloudflare-0"].status === "active"
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-                            : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
-                        }`}>
-                          <span className="leading-snug">{keyTestResults["cloudflare-0"].message}</span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {keyTestResults["cloudflare-0"].latencyMs !== undefined && (
-                              <span className="text-[10px] font-mono opacity-60">{keyTestResults["cloudflare-0"].latencyMs}ms</span>
-                            )}
-                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              keyTestResults["cloudflare-0"].status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                            }`}>
-                              {keyTestResults["cloudflare-0"].status === "active" ? "Active ✅" : "Invalid ❌"}
+                          <div className="flex items-center justify-between text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                              Cloudflare Account #{idx + 1}
                             </span>
+                            {cfKeyPool.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeCfAccount(idx)}
+                                className="text-red-500 hover:text-red-600 text-[10px] flex items-center gap-1 font-semibold"
+                              >
+                                <Trash2 size={11} /> Remove
+                              </button>
+                            )}
                           </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                Account ID #{idx + 1}
+                              </label>
+                              <input
+                                type="text"
+                                value={accountId}
+                                onChange={(e) => updateCfAccountId(idx, e.target.value)}
+                                placeholder="e.g. 3f0fbe2072c0d7834be3cef4be0b3f64"
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                API Token #{idx + 1}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="password"
+                                  value={token}
+                                  onChange={(e) => updateCfToken(idx, e.target.value)}
+                                  placeholder="cfut_..."
+                                  className="flex-1 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestSingleKey("cloudflare", token, idx, accountId)}
+                                  disabled={testingKey === resultKey || !token.trim() || !accountId.trim()}
+                                  className="px-2.5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                                >
+                                  <RefreshCw size={10} className={testingKey === resultKey ? "animate-spin" : ""} />
+                                  {testingKey === resultKey ? "…" : "Test"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {testRes && (
+                            <div className={`mt-1.5 p-2 rounded-lg border text-[11px] flex items-center justify-between gap-2 ${
+                              testRes.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{testRes.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {testRes.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{testRes.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  testRes.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}>
+                                  {testRes.status === "active" ? "Active ✅" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                        Cloudflare Account ID
-                      </label>
-                      <input
-                        type="text"
-                        value={generalKeys.CLOUDFLARE_ACCOUNT_ID || ""}
-                        onChange={(e) => setGeneralKeys((prev) => ({ ...prev, CLOUDFLARE_ACCOUNT_ID: e.target.value }))}
-                        placeholder="Found in your Cloudflare dashboard URL"
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                      />
-                    </div>
+                      );
+                    })}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={addCfAccount}
+                    className="w-full py-2 rounded-xl border border-dashed border-orange-500/40 text-orange-500 hover:bg-orange-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add Another Cloudflare Account (10,000 Free Daily Neurons)
+                  </button>
                 </div>
 
                 {/* 4. OpenAI DALL-E 3 */}

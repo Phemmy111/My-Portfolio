@@ -168,6 +168,32 @@ export async function verifyCloudflareKey(token: string, accountId?: string): Pr
     const latency = Date.now() - start;
 
     if (res.ok) {
+      if (accountId?.trim()) {
+        const cleanAcc = accountId.trim();
+        try {
+          const aiCheck = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cleanAcc}/ai/models/search?task=Text-to-Image`, {
+            headers: { Authorization: `Bearer ${trimmed}` },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (aiCheck.ok) {
+            return {
+              provider: "cloudflare",
+              keyMasked: masked,
+              status: "active",
+              message: `Token & Account verified! Active on Cloudflare Workers AI for FLUX.1 generation (10k free daily neurons).`,
+              latencyMs: Date.now() - start,
+            };
+          } else {
+            return {
+              provider: "cloudflare",
+              keyMasked: masked,
+              status: "invalid",
+              message: `Token is valid, but cannot access Account ID "${cleanAcc}" (HTTP ${aiCheck.status}). Check Account ID or Token permissions.`,
+              latencyMs: Date.now() - start,
+            };
+          }
+        } catch {}
+      }
       return {
         provider: "cloudflare",
         keyMasked: masked,
@@ -181,7 +207,7 @@ export async function verifyCloudflareKey(token: string, accountId?: string): Pr
       provider: "cloudflare",
       keyMasked: masked,
       status: "invalid",
-      message: `Cloudflare token rejected (HTTP ${res.status}). Verify permissions include Workers AI:Read.`,
+      message: `Cloudflare token rejected (HTTP ${res.status}). Verify permissions include Workers AI:Read and Workers AI:Edit.`,
       latencyMs: latency,
     };
   } catch (err: any) {
@@ -314,8 +340,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!provider || provider === "cloudflare") {
-      for (const k of cfList) {
-        checks.push(verifyCloudflareKey(k, rawCfAcc).then((r) => results.push(r)));
+      let cfAccList = parseList(rawCfAcc);
+      if (cfAccList.length === 0) {
+        cfAccList = await getKeyPoolAsync(["CLOUDFLARE_ACCOUNT_IDS", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID"], "cloudflare_account_id", workspace_id);
+      }
+      for (let i = 0; i < cfList.length; i++) {
+        const k = cfList[i];
+        const acc = cfAccList[i] || cfAccList[0] || rawCfAcc || "";
+        checks.push(verifyCloudflareKey(k, acc).then((r) => results.push(r)));
       }
     }
 

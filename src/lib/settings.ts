@@ -156,6 +156,7 @@ export const KNOWN_KEYS = [
   "HUGGINGFACE_API_KEYS",
   "CLOUDFLARE_API_TOKENS",
   "CLOUDFLARE_ACCOUNT_ID",
+  "CLOUDFLARE_ACCOUNT_IDS",
   "OPENAI_API_KEYS",
 ] as const;
 
@@ -222,20 +223,60 @@ export async function setSetting(key: string, value: string): Promise<void> {
  * Retrieves the full AI Providers Pool (multi-key list)
  */
 export async function getAIProvidersPool(): Promise<AIProviderConfig[]> {
+  let pool: AIProviderConfig[] = [];
   try {
     const raw = await getSetting("AI_PROVIDERS_POOL");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        pool = parsed.map((p: any, idx: number) => ({
+          id: p.id || `gemini-${idx}`,
+          name: p.name || `Provider #${idx + 1}`,
+          provider: p.provider || "gemini",
+          model: p.model || "gemini-2.5-flash",
+          apiKey: p.apiKey || "",
+          enabled: p.enabled !== false,
+        }));
       }
     }
   } catch (err) {
     console.warn("Failed to parse AI_PROVIDERS_POOL:", err);
   }
 
+  // Prepend verified keys from GEMINI_API_KEYS if missing
+  try {
+    const gKeysRaw = await getSetting("GEMINI_API_KEYS");
+    if (gKeysRaw) {
+      const gKeys = gKeysRaw.split(/[\s,]+/).filter(Boolean);
+      for (let i = gKeys.length - 1; i >= 0; i--) {
+        const k = gKeys[i];
+        if (k && !pool.some((p) => p.apiKey === k)) {
+          pool.unshift({
+            id: `gemini-settings-${i}`,
+            name: `Google Gemini (Settings #${i + 1})`,
+            provider: "gemini",
+            apiKey: k,
+            model: "gemini-2.5-flash",
+            enabled: true,
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // Prioritize active Google keys starting with "AIzaSy" at the top
+  pool.sort((a, b) => {
+    const aIsAi = (a.apiKey || "").startsWith("AIzaSy") ? 1 : 0;
+    const bIsAi = (b.apiKey || "").startsWith("AIzaSy") ? 1 : 0;
+    return bIsAi - aIsAi;
+  });
+
+  if (pool.length > 0) {
+    return pool;
+  }
+
   // Fallback / Auto-migration from singular keys
-  const pool: AIProviderConfig[] = [];
+  pool = [];
   const geminiKey = await getSetting("GEMINI_API_KEY");
   const geminiModel = (await getSetting("GEMINI_MODEL")) || "gemini-flash-lite-latest";
   if (geminiKey) {
