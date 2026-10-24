@@ -31,17 +31,11 @@ export function cleanTextForSpeech(text: string): string {
  * Resolves the optimal TTS voice based on personality, gender, and regional preference.
  */
 function resolveVoiceName(personality?: string, gender?: string): string {
-  if (personality === "nigerian_pidgin" || personality === "nigerian" || personality === "naija") {
-    return gender === "female" ? "en-NG-EzinneNeural" : "en-NG-AbeoNeural";
+  if (gender === "female") {
+    return "en-NG-EzinneNeural";
   }
-  if (personality === "friendly" || personality === "warm") {
-    return gender === "female" ? "en-US-JennyNeural" : "en-US-GuyNeural";
-  }
-  if (personality === "direct") {
-    return "en-US-ChristopherNeural";
-  }
-  // Executive default: Deep, authoritative, articulate Nigerian or International Male
-  return gender === "female" ? "en-NG-EzinneNeural" : "en-NG-AbeoNeural";
+  // Executive default: Deep, authoritative, articulate Nigerian Male (Abeo)
+  return "en-NG-AbeoNeural";
 }
 
 /**
