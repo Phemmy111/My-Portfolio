@@ -1025,6 +1025,23 @@ ${bookletSpec.slice(0, 3000)}`,
     decision.action_params.image_prompt = userText.trim();
   }
 
+  // DETERMINISTIC IMAGE REVISION / EDIT RECOVERY:
+  // If the user has a previous image in memory and their message is requesting an edit (e.g. "make her wear beret", "change hair to black", "now make it night"),
+  // route directly to modify_existing_image instead of falling into generic conversation.
+  const hasPreviousImageInMemory = Boolean(userImageMemory?.last_image_prompt);
+  if (
+    hasPreviousImageInMemory &&
+    !isMetaImageDiscussion &&
+    isImageRevisionRequest(userText, true) &&
+    decision.action !== "draft_whatsapp_message" &&
+    decision.action !== "create_website_artifact" &&
+    decision.action !== "modify_website_artifact"
+  ) {
+    decision.action = "modify_existing_image";
+    if (!decision.action_params) decision.action_params = {};
+    decision.action_params.image_modification = userText.trim();
+  }
+
 
   // 4. EXECUTE AUTONOMOUS DECISION
 

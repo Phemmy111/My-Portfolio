@@ -33,13 +33,20 @@ import {
   dbUpdateWorkspaceMessageQueueStatus,
   dbRecordMissedIntent,
 } from "@/lib/db";
-import { getUserFullMemory, saveUserPersonalMemory } from "@/lib/image-generator";
+import {
+  getUserFullMemory,
+  saveUserPersonalMemory,
+  generateAIImage,
+  saveUserImageMemory,
+  isImageRevisionRequest,
+} from "@/lib/image-generator";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   sendWhatsAppMessage,
   sendWhatsAppButtons,
   sendWhatsAppList,
   sendWhatsAppAudio,
+  sendWhatsAppImage,
   sendWhatsAppStatusPost,
   fetchEvolutionMediaBase64,
   markWhatsAppMessageRead,
@@ -1311,6 +1318,67 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
   // Handle Multimodal Vision (Photos, Screenshots, n8n Canvas, UI Errors, Invoices)
   if (visionMedia?.base64) {
     try {
+      const cleanInstruction = (userText || "")
+        .replace(/^\[(?:Attached\s+)?Image\s*Received\]\s*/i, "")
+        .trim();
+
+      const isImageEditIntent =
+        cleanInstruction.length > 2 &&
+        (isImageRevisionRequest(cleanInstruction, true) ||
+          /\b(edit|modify|transform|recreate|redraw|make\s+(?:her|him|them|it)|add|put|give|wear|change|turn\s+(?:this|into)|style\s+as|beret|sunglasses|dress|suit|hair)\b/i.test(
+            cleanInstruction
+          ));
+
+      // ── PHOTO EDITING & TRANSFORMATION ──
+      // If the user attached an image AND gave an explicit command to edit/modify/transform it:
+      if (isImageEditIntent) {
+        console.log(`[WA Webhook] Image edit request detected on user photo: "${cleanInstruction}"`);
+        await reply("🎨 *On it, Boss!* Analyzing your photo and generating your revised artwork now... ⚡");
+
+        const visionPrompt = `You are an elite creative director and visual prompt engineer for FLUX image generation.
+The user provided this photograph and commanded: "${cleanInstruction}".
+TASK:
+Analyze the subject in the photo (gender, ethnicity, facial features, pose, outfit, lighting, background).
+Then compose a detailed, high-resolution, photorealistic visual prompt that recreates this subject while precisely applying the user's requested edit ("${cleanInstruction}") flawlessly (e.g. adding the beret, changing clothing, altering colors or background).
+Keep the person's identity, ethnicity, and core aesthetic recognizable.
+Return ONLY the raw visual prompt (maximum 75 words). No markdown, no quotes, no conversational commentary.`;
+
+        const aiRes = await executeAICompletionWithMedia({
+          systemPrompt:
+            "You are an elite visual prompt engineer. Return ONLY the concise descriptive prompt string for image generation.",
+          userPrompt: visionPrompt,
+          mediaBase64: visionMedia.base64,
+          mimeType: visionMedia.mimetype || "image/jpeg",
+          temperature: 0.2,
+        });
+
+        const synthesizedPrompt =
+          aiRes.text.trim().replace(/^["']|["']$/g, "") || cleanInstruction;
+        console.log(`[WA Webhook] Synthesized image edit prompt: "${synthesizedPrompt}"`);
+
+        const seed = Math.floor(Math.random() * 1000000);
+        const imgRes = await generateAIImage(synthesizedPrompt, {
+          seed,
+          workspaceId: currentWs?.id,
+        });
+
+        if (imgRes.success && imgRes.imageUrl) {
+          await saveUserImageMemory(replyTo, synthesizedPrompt, imgRes.imageUrl, seed);
+          await sendWhatsAppImage(
+            imgRes.imageUrl,
+            replyTo,
+            `🎨 *Edited Artwork:*\n"${cleanInstruction}"`,
+            currentWs?.whatsapp_instance_name || instanceName || "obey"
+          );
+          await reply(
+            `🎨 *Here is your edited image!* Let me know if you would like me to adjust any colors, lighting, or details.`
+          );
+          return;
+        } else {
+          console.warn("[WA Webhook] Image generation failed during photo edit:", imgRes.error);
+        }
+      }
+
       const activeArtifact = await getLatestUserArtifact(replyTo);
       const artifactMemoryNote = activeArtifact
         ? `\n\nACTIVE ARTIFACT IN MEMORY:\n• Title: "${activeArtifact.title}" (ID: ${activeArtifact.id})\n• Note: You (Obey) created this artifact. If the user's screenshot shows this website, n8n workflow, or console errors, analyze the issue and tell them you already have the complete code/blueprint saved in memory and can update and rebuild it for them right away. NEVER ask them to paste code.`

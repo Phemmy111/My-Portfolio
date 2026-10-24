@@ -172,10 +172,16 @@ export function isImageRevisionRequest(userText: string, hasPreviousImage: boole
   if (/\b(font|button|buttons|html|css|navbar|header|footer|section|website|webpage|landing page|card|cards|pricing|layout|code|script|link|text|page|table|form|input|hero)\b/i.test(lower)) {
     return false;
   }
-  return (
-    /\b(change|make|turn|switch|adjust|replace|recolor|modify|add|remove|update|now make|make it|set the|paint the)\b/i.test(lower) &&
-    /\b(color|colour|blue|red|green|black|white|yellow|orange|purple|pink|silver|gold|grey|gray|rain|raining|snow|night|day|sunset|sunrise|background|wheels|sky|cyberpunk|anime|style|lighting|weather|car|tree|city|room|landscape)\b/i.test(lower)
-  );
+  // Check for common edit/modification verbs
+  const hasEditVerb = /\b(change|make|turn|switch|adjust|replace|recolor|modify|add|remove|update|now make|make it|set the|paint the|put|give|wear|dress|style|draw|recreate|edit|redesign)\b/i.test(lower);
+
+  // Check for visual subjects, clothing, accessories, facial features, styling, background, and lighting
+  const hasVisualTarget = /\b(color|colour|blue|red|green|black|white|yellow|orange|purple|pink|silver|gold|grey|gray|rain|raining|snow|night|day|sunset|sunrise|background|wheels|sky|cyberpunk|anime|style|lighting|weather|car|tree|city|room|landscape|beret|hat|cap|glasses|sunglasses|suit|dress|clothes|clothing|outfit|shirt|pants|jacket|hoodie|shoes|jewelry|necklace|earrings|ring|hair|hairstyle|braids|dreads|afro|blonde|brunette|beard|mustache|smile|smiling|eyes|face|expression|makeup|tattoo|wings|crown|cape|tie|watch|bag|handbag|look|vibe|scenery|ocean|beach|mountains|forest|office|studio|neon|vintage|retro|cartoon|3d|cinematic|photorealistic)\b/i.test(lower);
+
+  // Direct edit patterns like "make her wear beret", "put sunglasses on him", "give her a smile", "add a golden chain"
+  const hasDirectEditPhrase = /\b(make\s+(?:her|him|them|it)\s+(?:wear|look|have|into|more)|put\s+(?:a|an|the)?\s*[\w\s]+\s+on\s+(?:her|him|them|it)|add\s+(?:a|an|the)?\s*[\w\s]+\s+to\s+(?:her|him|it|the\s+image|the\s+picture|the\s+photo)|give\s+(?:her|him|them)\s+(?:a|an)?\s*[\w\s]+)\b/i.test(lower);
+
+  return (hasEditVerb && hasVisualTarget) || hasDirectEditPhrase;
 }
 
 /**
