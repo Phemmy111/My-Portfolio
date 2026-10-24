@@ -937,15 +937,17 @@ export async function generateImageToImageWithCloudflare(params: {
 
   const cleanB64 = referenceImageBase64.replace(/^data:[^;]+;base64,/, "").trim();
   const seed = Math.floor(Math.random() * 1000000);
+  const imgBuffer = Buffer.from(cleanB64, "base64");
+  const imgArray = Array.from(imgBuffer);
 
   for (let i = 0; i < cfTokens.length; i++) {
     const cfToken = cfTokens[i];
     const cfAccount = cfAccounts[i % cfAccounts.length];
 
     try {
-      console.log(`[Image Generator] Trying Cloudflare Workers AI img2img with token ${i + 1}/${cfTokens.length}...`);
+      console.log(`[Image Generator] Trying Cloudflare Workers AI image manipulation with token ${i + 1}/${cfTokens.length}...`);
       const cfRes = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount)}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount)}/ai/run/@cf/runwayml/stable-diffusion-v1-5-inpainting`,
         {
           method: "POST",
           headers: {
@@ -954,11 +956,12 @@ export async function generateImageToImageWithCloudflare(params: {
           },
           body: JSON.stringify({
             prompt,
-            image_b64: cleanB64,
-            strength,
+            image: imgArray,
+            mask: imgArray,
+            strength: Math.min(Math.max(strength, 0.45), 0.7),
             num_steps: 20,
           }),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(35000),
         }
       );
 
@@ -986,14 +989,14 @@ export async function generateImageToImageWithCloudflare(params: {
         return { success: true, imageUrl: dataUri, revisedPrompt: prompt, seed };
       } else {
         const errText = await cfRes.text();
-        console.warn(`[Image Generator] Cloudflare img2img error (${cfRes.status}):`, errText);
+        console.warn(`[Image Generator] Cloudflare image edit error (${cfRes.status}):`, errText);
       }
     } catch (err: any) {
-      console.warn(`[Image Generator] Cloudflare img2img exception:`, err?.message || err);
+      console.warn(`[Image Generator] Cloudflare image edit exception:`, err?.message || err);
     }
   }
 
-  return { success: false, imageUrl: "", revisedPrompt: prompt, seed: 0, error: "Cloudflare img2img failed on all tokens" };
+  return { success: false, imageUrl: "", revisedPrompt: prompt, seed: 0, error: "Cloudflare image manipulation failed on all tokens" };
 }
 
 

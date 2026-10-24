@@ -5,6 +5,7 @@ export interface SpeechSynthesisOptions {
   voice?: string;
   personality?: string;
   gender?: "male" | "female";
+  speaker?: string;
 }
 
 /**
@@ -40,7 +41,10 @@ function resolveVoiceName(personality?: string, gender?: string): string {
   return "en-NG-AbeoNeural";
 }
 
-async function synthesizeWithCloudflareTTS(text: string): Promise<Buffer | null> {
+async function synthesizeWithCloudflareTTS(
+  text: string,
+  speaker: string = "zeus"
+): Promise<Buffer | null> {
   try {
     const rawTokens =
       (await getSetting("CLOUDFLARE_API_TOKENS")) ||
@@ -69,7 +73,10 @@ async function synthesizeWithCloudflareTTS(text: string): Promise<Buffer | null>
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          speaker: speaker || "zeus",
+        }),
         signal: AbortSignal.timeout(12000),
       }
     );
@@ -110,9 +117,11 @@ export async function generateSpeechAudio(
   }
 
   // 1. Primary: Lightning-fast Cloudflare Workers AI Deepgram Aura 2 (@cf/deepgram/aura-2-en)
-  // Generates studio MP3 in < 1 second, 100% free, 0 connection errors
+  // Deep, authoritative executive male voice (zeus / orion), 100% free
   try {
-    const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText);
+    const selectedSpeaker =
+      options.gender === "female" ? "luna" : (options.speaker || "zeus");
+    const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText, selectedSpeaker);
     if (cfBuffer && cfBuffer.length > 0) {
       return {
         buffer: cfBuffer,

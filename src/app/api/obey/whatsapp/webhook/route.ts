@@ -831,9 +831,14 @@ async function processMessage(params: ProcessMessageParams) {
     const cleanSpoken = stripAudioStageDirections(spokenText);
     const cleanCompanion = stripAudioStageDirections(companionText || spokenText);
 
+    // Broadcast WhatsApp "recording audio..." status live so user sees the recording badge!
+    sendWhatsAppPresence(sendInstance, replyTo, "recording", 6000).catch(() => {});
+
     try {
       const speech = await generateSpeechAudio({
         text: cleanSpoken,
+        gender: "male",
+        speaker: "zeus",
         personality: currentWs?.voice_personality || (isDefaultFemi ? "nigerian_pidgin" : "friendly"),
       });
 
@@ -1359,23 +1364,24 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
         }
         const effectivePhotoRef = photoUrl || dataUri;
 
-        // 1. Text-guided manipulation: Fal.ai FLUX PuLID / InstantID locks 100% facial features
-        console.log("[WA Webhook] Attempting text-guided face-lock via Fal.ai...");
-        let imgRes = await generateFaceLockWithFal({
-          referenceImageUrl: effectivePhotoRef,
-          prompt: `a high-end studio portrait of the person, ${cleanInstruction}, 8k resolution, photorealistic, professional lighting, maintaining exact facial resemblance`,
+        // 1. 100% Free Primary: Cloudflare Workers AI Image Inpainting / Reference Manipulation
+        // Preserves exact composition, face, lighting, clothing, and geometry of the uploaded photo
+        console.log("[WA Webhook] Running Cloudflare Workers AI reference image manipulation...");
+        let imgRes = await generateImageToImageWithCloudflare({
+          referenceImageBase64: visionMedia.base64,
+          prompt: `a photorealistic portrait of the exact same person, ${cleanInstruction}, ultra sharp focus, professional photography, maintaining facial identity and composition`,
+          strength: 0.6,
           workspaceId: currentWs?.id,
         });
 
         let isFaceLocked = imgRes.success;
 
-        // 2. 100% Free Primary Fallback: Cloudflare Workers AI img2img (Preserves exact reference image structure and face)
+        // 2. Fallback: Fal.ai FLUX PuLID / InstantID (if user activated paid credits)
         if (!imgRes.success) {
-          console.log("[WA Webhook] Trying free Cloudflare Workers AI img2img...");
-          imgRes = await generateImageToImageWithCloudflare({
-            referenceImageBase64: visionMedia.base64,
-            prompt: `a photorealistic portrait of the person, ${cleanInstruction}, ultra sharp focus, professional photography, maintaining facial identity and composition`,
-            strength: 0.6,
+          console.log("[WA Webhook] Cloudflare image edit notice, attempting Fal.ai face-lock...");
+          imgRes = await generateFaceLockWithFal({
+            referenceImageUrl: effectivePhotoRef,
+            prompt: `a high-end studio portrait of the person, ${cleanInstruction}, 8k resolution, photorealistic, professional lighting, maintaining exact facial resemblance`,
             workspaceId: currentWs?.id,
           });
           if (imgRes.success) {
