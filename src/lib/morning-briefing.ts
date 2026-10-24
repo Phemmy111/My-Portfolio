@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { sendWhatsAppAudio, sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { generateSpeechAudio } from "@/lib/tts-engine";
 import { getNigerianTime } from "@/lib/utils";
 
 /**
@@ -112,34 +113,18 @@ DO NOT use markdown, emojis, asterisks, or bullet points in the spoken script. W
 
     const spokenScript = aiRes.text.replace(/[*_#`~]/g, "").trim();
 
-    // 5. Generate Voice Note Audio via OpenAI TTS or high-fidelity synthesis
+    // 5. Generate Voice Note Audio via high-fidelity Gemini Neural TTS
     let audioBase64: string | null = null;
-    const openAiKey = process.env.OPENAI_API_KEY;
-
-    if (openAiKey) {
-      try {
-        const ttsRes = await fetch("https://api.openai.com/v1/audio/speech", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiKey}`,
-          },
-          body: JSON.stringify({
-            model: "tts-1",
-            voice: "onyx", // Deep, charismatic, executive male voice
-            input: spokenScript,
-          }),
-        });
-
-        if (ttsRes.ok) {
-          const arrayBuffer = await ttsRes.arrayBuffer();
-          audioBase64 = Buffer.from(arrayBuffer).toString("base64");
-        } else {
-          console.warn("[Morning Briefing] OpenAI TTS error:", await ttsRes.text());
-        }
-      } catch (ttsErr) {
-        console.warn("[Morning Briefing] TTS generation exception:", ttsErr);
+    try {
+      const speech = await generateSpeechAudio({
+        text: spokenScript,
+        personality: "nigerian_pidgin",
+      });
+      if (speech?.base64) {
+        audioBase64 = speech.base64;
       }
+    } catch (ttsErr) {
+      console.warn("[Morning Briefing] TTS generation exception:", ttsErr);
     }
 
     // 6. Deliver Voice Note Audio to WhatsApp
