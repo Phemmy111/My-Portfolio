@@ -39,7 +39,11 @@ import {
   generateAIImage,
   saveUserImageMemory,
   isImageRevisionRequest,
+  generateFaceLockWithFal,
+  generateFaceSwapWithSegmind,
+  isFaceSwapRequest,
 } from "@/lib/image-generator";
+import { v2 as cloudinary } from "cloudinary";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
 import {
   sendWhatsAppMessage,
@@ -1333,9 +1337,41 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
       // If the user attached an image AND gave an explicit command to edit/modify/transform it:
       if (isImageEditIntent) {
         console.log(`[WA Webhook] Image edit request detected on user photo: "${cleanInstruction}"`);
-        await reply("🎨 *On it, Boss!* Analyzing your photo and generating your revised artwork now... ⚡");
+        await reply("🎨 *On it, Boss!* Locking facial identity and applying your requested styling... ⚡");
 
-        const visionPrompt = `You are an elite creative director and prompt engineer specialized in hyper-realistic subject continuity for FLUX image diffusion.
+        // Convert image base64 to dataUri or upload to Cloudinary for Fal.ai / Segmind
+        let photoUrl = "";
+        const cleanB64 = visionMedia.base64.replace(/^data:[^;]+;base64,/, "").trim();
+        const mime = visionMedia.mimetype || "image/jpeg";
+        const dataUri = `data:${mime};base64,${cleanB64}`;
+
+        if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+          try {
+            const cloudUpload = await cloudinary.uploader.upload(dataUri, {
+              folder: "obey-user-uploads",
+              resource_type: "image",
+            });
+            photoUrl = cloudUpload.secure_url || "";
+          } catch (uploadErr) {
+            console.warn("[WA Webhook] Cloudinary upload error for photo edit:", uploadErr);
+          }
+        }
+        const effectivePhotoRef = photoUrl || dataUri;
+
+        // 1. Text-guided manipulation: Fal.ai FLUX PuLID / InstantID locks 100% facial features
+        console.log("[WA Webhook] Attempting text-guided face-lock via Fal.ai...");
+        let imgRes = await generateFaceLockWithFal({
+          referenceImageUrl: effectivePhotoRef,
+          prompt: `a high-end studio portrait of the person, ${cleanInstruction}, 8k resolution, photorealistic, professional lighting, maintaining exact facial resemblance`,
+          workspaceId: currentWs?.id,
+        });
+
+        let isFaceLocked = imgRes.success;
+
+        // 2. Fallback to Vision prompt synthesis + FLUX if Fal.ai is not configured or failed
+        if (!imgRes.success) {
+          console.log("[WA Webhook] Fal.ai not available or failed, falling back to vision prompt synthesis...");
+          const visionPrompt = `You are an elite creative director and prompt engineer specialized in hyper-realistic subject continuity for FLUX image diffusion.
 The user provided a photo of a real person and requested this modification: "${cleanInstruction}".
 TASK:
 Analyze the person's exact physical identity with forensic detail:
@@ -1347,27 +1383,28 @@ Analyze the person's exact physical identity with forensic detail:
 Compose a prompt that maximizes subject resemblance while applying the modification.
 Return ONLY the raw descriptive prompt (maximum 90 words). No commentary, no quotes.`;
 
-        const aiRes = await executeAICompletionWithMedia({
-          systemPrompt:
-            "You are an elite visual prompt engineer specialized in photographic subject resemblance. Return ONLY the concise descriptive prompt string for image generation.",
-          userPrompt: visionPrompt,
-          mediaBase64: visionMedia.base64,
-          mimeType: visionMedia.mimetype || "image/jpeg",
-          temperature: 0.2,
-        });
+          const aiRes = await executeAICompletionWithMedia({
+            systemPrompt:
+              "You are an elite visual prompt engineer specialized in photographic subject resemblance. Return ONLY the concise descriptive prompt string for image generation.",
+            userPrompt: visionPrompt,
+            mediaBase64: visionMedia.base64,
+            mimeType: visionMedia.mimetype || "image/jpeg",
+            temperature: 0.2,
+          });
 
-        const synthesizedPrompt =
-          aiRes.text.trim().replace(/^["']|["']$/g, "") || cleanInstruction;
-        console.log(`[WA Webhook] Synthesized image edit prompt: "${synthesizedPrompt}"`);
+          const synthesizedPrompt =
+            aiRes.text.trim().replace(/^["']|["']$/g, "") || cleanInstruction;
+          console.log(`[WA Webhook] Synthesized image edit prompt: "${synthesizedPrompt}"`);
 
-        const seed = Math.floor(Math.random() * 1000000);
-        const imgRes = await generateAIImage(synthesizedPrompt, {
-          seed,
-          workspaceId: currentWs?.id,
-        });
+          const seed = Math.floor(Math.random() * 1000000);
+          imgRes = await generateAIImage(synthesizedPrompt, {
+            seed,
+            workspaceId: currentWs?.id,
+          });
+        }
 
         if (imgRes.success && imgRes.imageUrl) {
-          await saveUserImageMemory(replyTo, synthesizedPrompt, imgRes.imageUrl, seed);
+          await saveUserImageMemory(replyTo, cleanInstruction, imgRes.imageUrl, imgRes.seed);
           await sendWhatsAppImage(
             imgRes.imageUrl,
             replyTo,
@@ -1375,7 +1412,9 @@ Return ONLY the raw descriptive prompt (maximum 90 words). No commentary, no quo
             currentWs?.whatsapp_instance_name || instanceName || "obey"
           );
           await reply(
-            `🎨 *Here is your revised artwork, Boss!* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo's facial features and styling. If you want me to fine-tune the outfit, beret style, or lighting, just let me know!`
+            isFaceLocked
+              ? `🎨 *Here is your revised artwork, Boss!* \n\n🔒 *Face-Lock Active (Fal.ai):* Facial geometry and identity were preserved while applying your requested styling: "${cleanInstruction}".`
+              : `🎨 *Here is your revised artwork, Boss!* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo. To lock her exact facial features with 100% precision, activate your Fal.ai key in Settings!`
           );
           return;
         } else {

@@ -158,6 +158,10 @@ export const KNOWN_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
   "CLOUDFLARE_ACCOUNT_IDS",
   "OPENAI_API_KEYS",
+  "FAL_KEY",
+  "FAL_AI_API_KEYS",
+  "SEGMIND_API_KEY",
+  "SEGMIND_API_KEYS",
 ] as const;
 
 export type KnownKey = typeof KNOWN_KEYS[number];

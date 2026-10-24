@@ -265,7 +265,7 @@ export function getKeyPool(envVarNames: string[]): string[] {
 // Database-aware key pool: checks environment variables, agent_settings, and PostgreSQL workspace_settings
 export async function getKeyPoolAsync(
   envVarNames: string[],
-  dbColumn?: "gemini_api_keys" | "huggingface_api_keys" | "cloudflare_api_tokens" | "cloudflare_account_id" | "openai_api_keys",
+  dbColumn?: "gemini_api_keys" | "huggingface_api_keys" | "cloudflare_api_tokens" | "cloudflare_account_id" | "openai_api_keys" | "fal_ai_api_keys" | "segmind_api_keys" | string,
   workspaceId?: string
 ): Promise<string[]> {
   const keys: string[] = getKeyPool(envVarNames);
@@ -685,5 +685,226 @@ export async function generateAIImage(
       error: err.message,
     };
   }
+}
+
+/**
+ * Detects if user specifically wants a direct photo face swap (swapping Face A onto Body B).
+ */
+export function isFaceSwapRequest(userText: string): boolean {
+  const lower = (userText || "").toLowerCase();
+  return /\b(face\s*swap|swap\s*(?:the|her|his|my|their)?\s*face|put\s*my\s*face|put\s*(?:his|her)\s*face\s*on|change\s*the\s*face)\b/i.test(lower);
+}
+
+/**
+ * Text-guided Face-Lock Image Modification via Fal.ai (FLUX PuLID / InstantID)
+ * Maintains 100% facial features from reference image while synthesizing the requested text modifications.
+ */
+export async function generateFaceLockWithFal(params: {
+  referenceImageUrl: string;
+  prompt: string;
+  seed?: number;
+  workspaceId?: string;
+}): Promise<GeneratedImageResult> {
+  const falKeys = await getKeyPoolAsync(
+    ["FAL_KEY", "FAL_AI_API_KEYS", "FAL_API_KEY"],
+    undefined,
+    params.workspaceId
+  );
+
+  if (falKeys.length === 0) {
+    return {
+      success: false,
+      imageUrl: "",
+      revisedPrompt: params.prompt,
+      seed: params.seed || 0,
+      error: "No Fal.ai API key configured. Add your free key in AI Settings to enable face-locking.",
+    };
+  }
+
+  const seed = params.seed !== undefined ? params.seed : Math.floor(Math.random() * 1000000);
+
+  for (let i = 0; i < falKeys.length; i++) {
+    const key = falKeys[i];
+    try {
+      console.log(`[Face Lock] Trying Fal.ai FLUX PuLID with key ${i + 1}/${falKeys.length}...`);
+      // 1. Primary Model: FLUX PuLID on Fal.ai
+      const res = await fetch("https://fal.run/fal-ai/flux-pulid", {
+        method: "POST",
+        headers: {
+          Authorization: `Key ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: params.prompt,
+          reference_image_url: params.referenceImageUrl,
+          id_weight: 1.0,
+          guidance_scale: 4.0,
+          num_inference_steps: 20,
+          seed,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const rawUrl = data.images?.[0]?.url || data.image?.url;
+        if (rawUrl) {
+          let finalUrl = rawUrl;
+          if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+            try {
+              const uploadRes = await cloudinary.uploader.upload(rawUrl, {
+                folder: "obey-facelock",
+                resource_type: "image",
+              });
+              finalUrl = uploadRes.secure_url || rawUrl;
+            } catch (cloudErr) {
+              console.warn("[Face Lock] Cloudinary upload fallback:", cloudErr);
+            }
+          }
+          return {
+            success: true,
+            imageUrl: finalUrl,
+            revisedPrompt: params.prompt,
+            seed,
+          };
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`[Face Lock] Fal.ai FLUX PuLID failed (${res.status}): ${errText.slice(0, 200)}`);
+
+        // 2. Fallback Model: InstantID on Fal.ai
+        console.log(`[Face Lock] Trying fallback to InstantID on Fal.ai...`);
+        const instantRes = await fetch("https://fal.run/fal-ai/instant-id", {
+          method: "POST",
+          headers: {
+            Authorization: `Key ${key}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: params.prompt,
+            face_image_url: params.referenceImageUrl,
+            seed,
+          }),
+        });
+
+        if (instantRes.ok) {
+          const instantData = await instantRes.json();
+          const rawUrl = instantData.images?.[0]?.url || instantData.image?.url;
+          if (rawUrl) {
+            return {
+              success: true,
+              imageUrl: rawUrl,
+              revisedPrompt: params.prompt,
+              seed,
+            };
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Face Lock] Fal.ai exception on key ${i + 1}:`, err);
+    }
+  }
+
+  return {
+    success: false,
+    imageUrl: "",
+    revisedPrompt: params.prompt,
+    seed,
+    error: "Fal.ai face-lock generation failed.",
+  };
+}
+
+/**
+ * Direct Photo-to-Photo Face Swap via Segmind (100 free requests/day)
+ */
+export async function generateFaceSwapWithSegmind(params: {
+  inputImageUrl: string;
+  faceImageUrl: string;
+  workspaceId?: string;
+}): Promise<GeneratedImageResult> {
+  const segmindKeys = await getKeyPoolAsync(
+    ["SEGMIND_API_KEY", "SEGMIND_API_KEYS"],
+    undefined,
+    params.workspaceId
+  );
+
+  if (segmindKeys.length === 0) {
+    return {
+      success: false,
+      imageUrl: "",
+      revisedPrompt: "Face Swap",
+      seed: 0,
+      error: "No Segmind API key configured. Add your free key in AI Settings to enable instant face swapping.",
+    };
+  }
+
+  for (let i = 0; i < segmindKeys.length; i++) {
+    const key = segmindKeys[i];
+    try {
+      console.log(`[Face Swap] Trying Segmind Face Swap with key ${i + 1}/${segmindKeys.length}...`);
+      const res = await fetch("https://api.segmind.com/v1/faceswap-v4", {
+        method: "POST",
+        headers: {
+          "x-api-key": key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input_image: params.inputImageUrl,
+          face_image: params.faceImageUrl,
+          output_format: "jpeg",
+        }),
+      });
+
+      if (res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        let dataUri = "";
+
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data.image) {
+            dataUri = `data:image/jpeg;base64,${data.image}`;
+          } else if (data.image_url) {
+            dataUri = data.image_url;
+          }
+        } else {
+          const buffer = await res.arrayBuffer();
+          dataUri = `data:image/jpeg;base64,${Buffer.from(buffer).toString("base64")}`;
+        }
+
+        if (dataUri) {
+          let finalUrl = dataUri;
+          if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+            try {
+              const uploadRes = await cloudinary.uploader.upload(dataUri, {
+                folder: "obey-faceswap",
+                resource_type: "image",
+              });
+              finalUrl = uploadRes.secure_url || dataUri;
+            } catch (cloudErr) {
+              console.warn("[Face Swap] Cloudinary upload fallback:", cloudErr);
+            }
+          }
+          return {
+            success: true,
+            imageUrl: finalUrl,
+            revisedPrompt: "Face Swap",
+            seed: 0,
+          };
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`[Face Swap] Segmind error (${res.status}): ${errText.slice(0, 200)}`);
+      }
+    } catch (err: any) {
+      console.warn(`[Face Swap] Segmind exception on key ${i + 1}:`, err);
+    }
+  }
+
+  return {
+    success: false,
+    imageUrl: "",
+    revisedPrompt: "Face Swap",
+    seed: 0,
+    error: "Segmind face swap failed.",
+  };
 }
 

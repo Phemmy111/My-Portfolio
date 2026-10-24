@@ -98,6 +98,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     CLOUDFLARE_API_TOKENS: "",
     CLOUDFLARE_ACCOUNT_ID: "",
     OPENAI_API_KEYS: "",
+    FAL_AI_API_KEYS: "",
+    SEGMIND_API_KEYS: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -118,6 +120,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   const [cfKeyPool, setCfKeyPool] = useState<string[]>([""]);
   const [cfAccountPool, setCfAccountPool] = useState<string[]>([""]);
   const [openaiKeyPool, setOpenaiKeyPool] = useState<string[]>([""]);
+  const [falKeyPool, setFalKeyPool] = useState<string[]>([""]);
+  const [segmindKeyPool, setSegmindKeyPool] = useState<string[]>([""]);
 
   // Cloudflare paired account helpers
   const addCfAccount = () => {
@@ -164,6 +168,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           cfTokens: poolToString(cfKeyPool),
           cfAccountId: poolToString(cfAccountPool),
           openaiKeys: poolToString(openaiKeyPool),
+          falKeys: poolToString(falKeyPool),
+          segmindKeys: poolToString(segmindKeyPool),
         }),
       });
       const data = await res.json();
@@ -186,12 +192,14 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
     (imageKeyVerificationResults || []).filter((r: any) => r.provider === prov);
 
   // Image key pool helpers
-  type PoolKey = "gemini" | "hf" | "cf" | "openai";
+  type PoolKey = "gemini" | "hf" | "cf" | "openai" | "fal" | "segmind";
   const poolSetters: Record<PoolKey, React.Dispatch<React.SetStateAction<string[]>>> = {
     gemini: setGeminiKeyPool,
     hf: setHfKeyPool,
     cf: setCfKeyPool,
     openai: setOpenaiKeyPool,
+    fal: setFalKeyPool,
+    segmind: setSegmindKeyPool,
   };
 
   const addKeyToPool = (pool: PoolKey) =>
@@ -208,7 +216,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
 
   // Test a single image key
   const handleTestSingleKey = async (
-    provider: "google" | "huggingface" | "cloudflare" | "openai",
+    provider: "google" | "huggingface" | "cloudflare" | "openai" | "fal" | "segmind",
     keyValue: string,
     keyIndex: number,
     cfAccountId?: string
@@ -224,6 +232,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         body.cfTokens = keyValue.trim();
         body.cfAccountId = cfAccountId || generalKeys.CLOUDFLARE_ACCOUNT_ID || "";
       } else if (provider === "openai") body.openaiKeys = keyValue.trim();
+      else if (provider === "fal") body.falKeys = keyValue.trim();
+      else if (provider === "segmind") body.segmindKeys = keyValue.trim();
 
       const res = await fetch("/api/obey/verify-image-keys", {
         method: "POST",
@@ -422,6 +432,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         const loadedHF = data.settings.HUGGINGFACE_API_KEYS?.value || "";
         const loadedCF = data.settings.CLOUDFLARE_API_TOKENS?.value || "";
         const loadedOAI = data.settings.OPENAI_API_KEYS?.value || poolOpenAI || "";
+        const loadedFal = data.settings.FAL_AI_API_KEYS?.value || data.settings.FAL_KEY?.value || "";
+        const loadedSegmind = data.settings.SEGMIND_API_KEYS?.value || data.settings.SEGMIND_API_KEY?.value || "";
 
         setGeneralKeys({
           OBEY_BRAIN_KNOWLEDGE: data.settings.OBEY_BRAIN_KNOWLEDGE?.value || "",
@@ -443,6 +455,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
           CLOUDFLARE_ACCOUNT_ID: data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
           CLOUDFLARE_ACCOUNT_IDS: data.settings.CLOUDFLARE_ACCOUNT_IDS?.value || data.settings.CLOUDFLARE_ACCOUNT_ID?.value || "",
           OPENAI_API_KEYS: loadedOAI,
+          FAL_AI_API_KEYS: loadedFal,
+          SEGMIND_API_KEYS: loadedSegmind,
         });
 
         // Populate card pool arrays
@@ -462,6 +476,8 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
         setCfKeyPool(initialTokens);
         setCfAccountPool(initialAccounts);
         setOpenaiKeyPool(splitKeys(loadedOAI).length > 0 ? splitKeys(loadedOAI) : [""]);
+        setFalKeyPool(splitKeys(loadedFal).length > 0 ? splitKeys(loadedFal) : [""]);
+        setSegmindKeyPool(splitKeys(loadedSegmind).length > 0 ? splitKeys(loadedSegmind) : [""]);
       }
 
     } catch (err) {
@@ -705,6 +721,10 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
       CLOUDFLARE_ACCOUNT_ID: cfAccountPool[0] || generalKeys.CLOUDFLARE_ACCOUNT_ID || "",
       CLOUDFLARE_ACCOUNT_IDS: poolToString(cfAccountPool),
       OPENAI_API_KEYS: poolToString(openaiKeyPool),
+      FAL_AI_API_KEYS: poolToString(falKeyPool),
+      FAL_KEY: falKeyPool[0] || "",
+      SEGMIND_API_KEYS: poolToString(segmindKeyPool),
+      SEGMIND_API_KEY: segmindKeyPool[0] || "",
     };
 
     try {
@@ -1858,6 +1878,214 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                     className="w-full py-2 rounded-xl border border-dashed border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
                   >
                     <Plus size={12} /> Add OpenAI Key
+                  </button>
+                </div>
+
+                {/* 5. Fal.ai (FLUX PuLID & InstantID - Identity & Face Locking) */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        5. Fal.ai (FLUX PuLID - Face-Locking & Text Edits)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                        Active for Text-based Photo Edits
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("fal")}
+                        disabled={verifyingImageSection === "fal" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test Fal.ai keys live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "fal" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "fal" ? "Testing..." : "🧪 Test Fal.ai"}
+                      </button>
+                      <a
+                        href="https://fal.ai/dashboard/keys"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-violet-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        Fal.ai Dashboard <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Powers text-based image manipulation with 100% facial identity locking (e.g. &quot;Change her beret to white&quot;, &quot;Put a business suit on him&quot; using FLUX PuLID).
+                  </p>
+
+                  {/* Card-based key rows */}
+                  <div className="space-y-2">
+                    {falKeyPool.map((key, idx) => {
+                      const rk = `fal-${idx}`;
+                      const result = keyTestResults[rk];
+                      const isTesting = testingKey === rk;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 w-5 shrink-0">#{idx + 1}</span>
+                            <input
+                              type="password"
+                              value={key}
+                              onChange={(e) => updateKeyInPool("fal", idx, e.target.value)}
+                              placeholder="fal_key_... or key_id:secret"
+                              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleTestSingleKey("fal", key, idx)}
+                              disabled={isTesting || !key.trim()}
+                              className="px-2.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                            >
+                              <RefreshCw size={10} className={isTesting ? "animate-spin" : ""} />
+                              {isTesting ? "…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeKeyFromPool("fal", idx)}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition shrink-0"
+                              title="Remove key"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          {result && (
+                            <div className={`ml-7 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                              result.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{result.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {result.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{result.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  result.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}>
+                                  {result.status === "active" ? "Active ✅" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addKeyToPool("fal")}
+                    className="w-full py-2 rounded-xl border border-dashed border-violet-500/40 text-violet-500 hover:bg-violet-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add Fal.ai Key
+                  </button>
+                </div>
+
+                {/* 6. Segmind (FaceSwap v4 & Inpainting - Direct Swaps) */}
+                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-[#0c0c0e] space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
+                      <span className="font-bold text-xs text-zinc-950 dark:text-white">
+                        6. Segmind (FaceSwap v4 & Direct Photo Swapping)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                        Active for Direct Face Swaps
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyImageKeys("segmind")}
+                        disabled={verifyingImageSection === "segmind" || verifyingImageKeys}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                        title="Test Segmind keys live"
+                      >
+                        <RefreshCw size={11} className={verifyingImageSection === "segmind" ? "animate-spin" : ""} />
+                        {verifyingImageSection === "segmind" ? "Testing..." : "🧪 Test Segmind"}
+                      </button>
+                      <a
+                        href="https://www.segmind.com/api-keys"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-cyan-500 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        Segmind API Keys <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Powers direct photo-to-photo face swapping (FaceSwap v4) and high-accuracy object inpainting.
+                  </p>
+
+                  {/* Card-based key rows */}
+                  <div className="space-y-2">
+                    {segmindKeyPool.map((key, idx) => {
+                      const rk = `segmind-${idx}`;
+                      const result = keyTestResults[rk];
+                      const isTesting = testingKey === rk;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 w-5 shrink-0">#{idx + 1}</span>
+                            <input
+                              type="password"
+                              value={key}
+                              onChange={(e) => updateKeyInPool("segmind", idx, e.target.value)}
+                              placeholder="SG_..."
+                              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleTestSingleKey("segmind", key, idx)}
+                              disabled={isTesting || !key.trim()}
+                              className="px-2.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-40 shrink-0"
+                            >
+                              <RefreshCw size={10} className={isTesting ? "animate-spin" : ""} />
+                              {isTesting ? "…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeKeyFromPool("segmind", idx)}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition shrink-0"
+                              title="Remove key"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          {result && (
+                            <div className={`ml-7 p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                              result.status === "active"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300"
+                            }`}>
+                              <span className="leading-snug">{result.message}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {result.latencyMs !== undefined && (
+                                  <span className="text-[10px] font-mono opacity-60">{result.latencyMs}ms</span>
+                                )}
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  result.status === "active" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                                }`}>
+                                  {result.status === "active" ? "Active ✅" : "Invalid ❌"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addKeyToPool("segmind")}
+                    className="w-full py-2 rounded-xl border border-dashed border-cyan-500/40 text-cyan-500 hover:bg-cyan-500/10 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Plus size={12} /> Add Segmind Key
                   </button>
                 </div>
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getKeyPoolAsync } from "@/lib/image-generator";
 
 export interface KeyCheckResult {
-  provider: "google" | "huggingface" | "cloudflare" | "openai";
+  provider: "google" | "huggingface" | "cloudflare" | "openai" | "fal" | "segmind";
   keyMasked: string;
   status: "active" | "invalid" | "invalid_format" | "rate_limited" | "image_quota_zero" | "error";
   message: string;
@@ -270,6 +270,93 @@ export async function verifyOpenAIKey(key: string): Promise<KeyCheckResult> {
   }
 }
 
+export async function verifyFalKey(key: string): Promise<KeyCheckResult> {
+  const start = Date.now();
+  const trimmed = key.trim();
+  const masked = trimmed.length > 8 ? `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}` : trimmed;
+
+  try {
+    const res = await fetch("https://queue.fal.run/fal-ai/fast-sdxl", {
+      method: "POST",
+      headers: {
+        "Authorization": `Key ${trimmed}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt: "ping" }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const latency = Date.now() - start;
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        provider: "fal",
+        keyMasked: masked,
+        status: "invalid",
+        message: "Fal.ai rejected this key (401/403 Unauthorized). Check your API key at fal.ai/dashboard/keys.",
+        latencyMs: latency,
+      };
+    }
+
+    return {
+      provider: "fal",
+      keyMasked: masked,
+      status: "active",
+      message: "Fal.ai Key is valid & active for FLUX PuLID face-locking & image edits!",
+      latencyMs: latency,
+    };
+  } catch (err: any) {
+    return {
+      provider: "fal",
+      keyMasked: masked,
+      status: "error",
+      message: `Error connecting to Fal.ai: ${err.message}`,
+      latencyMs: Date.now() - start,
+    };
+  }
+}
+
+export async function verifySegmindKey(key: string): Promise<KeyCheckResult> {
+  const start = Date.now();
+  const trimmed = key.trim();
+  const masked = trimmed.length > 8 ? `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}` : trimmed;
+
+  try {
+    const res = await fetch("https://api.segmind.com/v1/models", {
+      headers: {
+        "x-api-key": trimmed,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    const latency = Date.now() - start;
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        provider: "segmind",
+        keyMasked: masked,
+        status: "invalid",
+        message: "Segmind rejected this key (401/403 Unauthorized). Check your API key at segmind.com/api-keys.",
+        latencyMs: latency,
+      };
+    }
+
+    return {
+      provider: "segmind",
+      keyMasked: masked,
+      status: "active",
+      message: "Segmind Key is valid & active for FaceSwap v4 & inpainting!",
+      latencyMs: latency,
+    };
+  } catch (err: any) {
+    return {
+      provider: "segmind",
+      keyMasked: masked,
+      status: "error",
+      message: `Error connecting to Segmind: ${err.message}`,
+      latencyMs: Date.now() - start,
+    };
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -284,7 +371,11 @@ export async function POST(req: NextRequest) {
       cfAccountId,
       openai_api_keys,
       openaiKeys,
-      provider, // optional: "google" | "huggingface" | "cloudflare" | "openai"
+      fal_api_keys,
+      falKeys,
+      segmind_api_keys,
+      segmindKeys,
+      provider, // optional: "google" | "huggingface" | "cloudflare" | "openai" | "fal" | "segmind"
       workspace_id,
     } = body;
 
@@ -302,6 +393,8 @@ export async function POST(req: NextRequest) {
     const rawCf = cloudflare_api_tokens ?? cfTokens;
     const rawCfAcc = cloudflare_account_id ?? cfAccountId;
     const rawOpenAI = openai_api_keys ?? openaiKeys;
+    const rawFal = fal_api_keys ?? falKeys;
+    const rawSegmind = segmind_api_keys ?? segmindKeys;
 
     let gKeys = parseList(rawGoogle);
     if (gKeys.length === 0 && (!provider || provider === "google")) {
@@ -321,6 +414,16 @@ export async function POST(req: NextRequest) {
     let oKeys = parseList(rawOpenAI);
     if (oKeys.length === 0 && (!provider || provider === "openai")) {
       oKeys = await getKeyPoolAsync(["OPENAI_API_KEYS", "OPENAI_API_KEY"], "openai_api_keys", workspace_id);
+    }
+
+    let falList = parseList(rawFal);
+    if (falList.length === 0 && (!provider || provider === "fal")) {
+      falList = await getKeyPoolAsync(["FAL_KEY", "FAL_AI_API_KEYS", "FAL_API_KEY"], "fal_ai_api_keys", workspace_id);
+    }
+
+    let segmindList = parseList(rawSegmind);
+    if (segmindList.length === 0 && (!provider || provider === "segmind")) {
+      segmindList = await getKeyPoolAsync(["SEGMIND_API_KEY", "SEGMIND_API_KEYS"], "segmind_api_keys", workspace_id);
     }
 
     const results: KeyCheckResult[] = [];
@@ -357,6 +460,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!provider || provider === "fal") {
+      for (const k of falList) {
+        checks.push(verifyFalKey(k).then((r) => results.push(r)));
+      }
+    }
+
+    if (!provider || provider === "segmind") {
+      for (const k of segmindList) {
+        checks.push(verifySegmindKey(k).then((r) => results.push(r)));
+      }
+    }
+
     await Promise.allSettled(checks);
 
     return NextResponse.json({
@@ -375,6 +490,8 @@ export async function GET() {
   const hfKeys = await getKeyPoolAsync(["HUGGINGFACE_API_KEYS", "HUGGINGFACE_API_KEY", "HF_TOKEN"], "huggingface_api_keys");
   const cfKeys = await getKeyPoolAsync(["CLOUDFLARE_API_TOKENS", "CLOUDFLARE_API_TOKEN"], "cloudflare_api_tokens");
   const oKeys = await getKeyPoolAsync(["OPENAI_API_KEYS", "OPENAI_API_KEY"], "openai_api_keys");
+  const falKeys = await getKeyPoolAsync(["FAL_KEY", "FAL_AI_API_KEYS", "FAL_API_KEY"], "fal_ai_api_keys");
+  const segmindKeys = await getKeyPoolAsync(["SEGMIND_API_KEY", "SEGMIND_API_KEYS"], "segmind_api_keys");
 
   const results: KeyCheckResult[] = [];
   const checks: Promise<any>[] = [
@@ -382,6 +499,8 @@ export async function GET() {
     ...hfKeys.map((k) => verifyHuggingFaceKey(k).then((r) => results.push(r))),
     ...cfKeys.map((k) => verifyCloudflareKey(k).then((r) => results.push(r))),
     ...oKeys.map((k) => verifyOpenAIKey(k).then((r) => results.push(r))),
+    ...falKeys.map((k) => verifyFalKey(k).then((r) => results.push(r))),
+    ...segmindKeys.map((k) => verifySegmindKey(k).then((r) => results.push(r))),
   ];
 
   await Promise.allSettled(checks);

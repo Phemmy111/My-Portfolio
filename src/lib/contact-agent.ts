@@ -323,15 +323,18 @@ export async function handleOwnerContactOrBucketTurn(params: {
   // -------------------------------------------------------------
   // 5. Contact Name Search & Actual Messaging ("help me message Femi", "message Olajide: Good morning")
   // -------------------------------------------------------------
-  // Strict guard: if the user is discussing automations, workflows, integrations, creative assets, prompts, code, images, video, n8n, or asking for plain text, DO NOT treat as contact outreach!
+  // Strict guard: if the user is discussing content generation, automations, workflows, integrations, creative assets, prompts, code, images, video, n8n, or asking for written text, DO NOT treat as contact outreach!
   const isCreativeOrTechnical =
+    /\b(give\s+me|write\s+me|send\s+me|show\s+me|generate|draft|compose|prepare|create|suggest|copy|paste|copy\s+and\s+paste|intro|introduction|pitch|template|sample|marketing|sales\s+pitch|script|explanation)\b/i.test(userText) ||
+    /\b(a|the|some|any|this|that|my|your|clean|short|quick|simple)\s+(?:text|message)\b/i.test(userText) ||
     /\b(automation|pipeline|workflow|n8n|bot|chatbot|webhook|integration|paystack|airtable|supabase|sheets|google\s+sheets|stripe|crm|database|api|endpoint|auto-responder|invoice|prompt|image|video|clip|script|code|json|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
     /\b(i want an automation|build an automation|create an automation|automate|when someone pays|when a user|records the transaction)\b/i.test(userText) ||
-    /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text)\b/i.test(userText);
+    /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text|text\s+that\s+i\s+can)\b/i.test(userText);
 
+  // Command must be an intentional action to message/text someone, not a random occurrence of "text" or "message"
   const messageContactTrigger = !isCreativeOrTechnical
     ? userText.match(
-        /(?:^|\b)(?:help\s+me\s+(?:message|text)|(?:send|deliver)\s+(?:a\s+)?(?:message|text)\s+to|\bmessage\s+|\btext\s+)\s*([^:.]+)/i
+        /^(?:please\s+|kindly\s+)?(?:help\s+me\s+(?:message|text)|(?:send|deliver)\s+(?:a\s+)?(?:whatsapp\s+|sms\s+)?(?:message|text)\s+to|(?:message|text)\s+)\s*([^:.]+)/i
       )
     : null;
 
@@ -344,10 +347,10 @@ export async function handleOwnerContactOrBucketTurn(params: {
     // Remove auxiliary/filler phrases like "you won't", "will you", "can you", "please"
     rawTargetsStr = rawTargetsStr.replace(/\b(you won't|you wont|will you|can you|would you|could you|please|now|first|later)\b/gi, "").trim();
 
-    // Check if the user is asking about status, broadcast, general pronouns, or business entities
+    // Check if the user is asking about status, broadcast, general pronouns, prepositions, or generative words
     if (
       !rawTargetsStr ||
-      /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|group|now|later|first)/i.test(rawTargetsStr) ||
+      /^(status|broadcast|everyone|all|bucket|me|you|him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|group|now|later|first|that|which|what|who|where|how|when|why|if|because|so|can|could|would|will|should|give|write|draft|copy|paste|intro|introduce|pitch|template|something|anything|everything)/i.test(rawTargetsStr) ||
       isCreativeOrTechnical
     ) {
       return { handled: false, reply: "" };
@@ -368,7 +371,7 @@ export async function handleOwnerContactOrBucketTurn(params: {
         (n) =>
           n.length > 1 &&
           n.length <= 25 &&
-          !/^(him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|invoice|won't|wont)$/i.test(n)
+          !/^(him|her|them|their|his|our|its|someone|person|people|number|customer|customers|client|clients|user|users|lead|leads|whatsapp|email|sms|invoice|won't|wont|that|which|what|who|where|how|when|why|if|can|could|copy|paste|intro|pitch)$/i.test(n)
       );
 
     if (names.length === 0) {
@@ -377,6 +380,7 @@ export async function handleOwnerContactOrBucketTurn(params: {
 
     const reportLines: string[] = [];
     const singleMatches: Array<{ name: string; phone: string; formattedPhone: string }> = [];
+    let totalMatchesCount = 0;
 
     for (const nameQuery of names) {
       const matches = await dbFindContactsByNameOrPhone({
@@ -390,11 +394,13 @@ export async function handleOwnerContactOrBucketTurn(params: {
           `🔍 *${nameQuery}:* No contacts found matching this name in your phone or CRM.`
         );
       } else if (matches.length === 1) {
+        totalMatchesCount++;
         singleMatches.push(matches[0]);
         reportLines.push(
           `👤 *${matches[0].name}* (${matches[0].formattedPhone})`
         );
       } else {
+        totalMatchesCount += matches.length;
         const formattedList = matches
           .slice(0, 5)
           .map((m, i) => `   ${i + 1}. *${m.name}* (${m.formattedPhone})`)
@@ -403,6 +409,12 @@ export async function handleOwnerContactOrBucketTurn(params: {
           `🔍 Found *${matches.length}* contacts matching "*${nameQuery}*":\n${formattedList}`
         );
       }
+    }
+
+    // If no contacts were found at all and user did not use explicit colon syntax,
+    // do NOT hijack the conversation with an error — pass through to general AI!
+    if (totalMatchesCount === 0 && !explicitMessage) {
+      return { handled: false, reply: "" };
     }
 
     // If single match found and message already provided
@@ -425,7 +437,7 @@ export async function handleOwnerContactOrBucketTurn(params: {
     }
 
     // If matches found, prompt the user to pick or specify what to deliver
-    if (reportLines.length > 0) {
+    if (reportLines.length > 0 && totalMatchesCount > 0) {
       const followUp = explicitMessage
         ? `\nPlease specify which number above to deliver your message to:`
         : `\nWhich one would you like me to message, and what should I deliver?`;
