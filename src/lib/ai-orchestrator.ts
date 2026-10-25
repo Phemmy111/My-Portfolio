@@ -402,7 +402,8 @@ async function transcribeWithCloudflareWhisper(cleanBase64: string): Promise<str
 }
 
 /**
- * Transcribes voice notes and audio recordings using Cloudflare Whisper with Multimodal Gemini fallback
+ * Transcribes voice notes and audio recordings using Multimodal Gemini with Cloudflare Whisper fallback.
+ * Native multilingual support for Nigerian English, Nigerian Pidgin, Yoruba, and conversational audio.
  */
 export async function transcribeAudio(
   audioBase64: string,
@@ -414,38 +415,51 @@ export async function transcribeAudio(
       return { text: "", success: false, error: "Empty audio buffer" };
     }
 
-    // 1. Primary: Lightning-fast Cloudflare Workers AI Whisper (@cf/openai/whisper)
-    // Runs in <2s, free, zero daily quota limit, accurately handles Nigerian accent & English
-    const cfText = await transcribeWithCloudflareWhisper(cleanBase64);
-    if (cfText) {
-      return { text: cfText, success: true };
-    }
-
-    // 2. Multimodal Gemini Fallback
     const cleanMime = (mimeType || "audio/ogg").split(";")[0].trim();
 
-    const res = await executeAICompletion({
-      systemPrompt: "You are an expert audio transcription engine. Listen carefully to this voice note and transcribe the exact words spoken in English or Nigerian Pidgin. Output ONLY the raw spoken words. Do not add quotes, greetings, or explanations. If the audio is completely silent or unrecognizable, output [unclear audio].",
-      userPrompt: "Transcribe the attached voice note accurately.",
-      mediaBase64: cleanBase64,
-      mimeType: cleanMime,
-      temperature: 0.1,
-      maxTokens: 1024,
-    });
+    // 1. Primary: Multimodal Gemini 2.5 Flash (Superb accuracy with Nigerian accents, Pidgin, short clips & English)
+    try {
+      const res = await executeAICompletion({
+        systemPrompt:
+          "You are an expert native audio transcription engine specializing in Nigerian English, Nigerian Pidgin, Yoruba, and West African speech. " +
+          "Listen carefully to this voice note and transcribe the exact words spoken by the user. " +
+          "Output ONLY the raw spoken words as plain text. Do not add quotes, commentary, greetings, explanations, or timestamps. " +
+          "If the user asks 'Can you hear me?', transcribe 'Can you hear me?'. " +
+          "If the audio is completely silent with zero voice, output: [silence].",
+        userPrompt: "Transcribe the attached voice note accurately.",
+        mediaBase64: cleanBase64,
+        mimeType: cleanMime,
+        temperature: 0.1,
+        maxTokens: 1024,
+      });
 
-    const transcript = res.text.trim().replace(/^["']|["']$/g, "");
-    // Guard: deterministic fallback or busy messages must NEVER masquerade as user voice transcript
-    if (
-      res.provider?.includes("Deterministic") ||
-      transcript.includes("Please, I am busy right now") ||
-      transcript.includes("Check back with me later") ||
-      !transcript ||
-      transcript.toLowerCase().includes("[unclear audio]")
-    ) {
-      return { text: "", success: false, error: "Audio was unclear, silent, or transcription engine unavailable" };
+      const transcript = res.text.trim().replace(/^["']|["']$/g, "");
+      const isInvalid =
+        res.provider?.includes("Deterministic") ||
+        transcript.includes("Please, I am busy right now") ||
+        transcript.includes("Check back with me later") ||
+        !transcript ||
+        transcript.toLowerCase().includes("[silence]") ||
+        transcript.toLowerCase().includes("[unclear audio]");
+
+      if (!isInvalid && transcript.length > 0) {
+        return { text: transcript, success: true };
+      }
+    } catch (geminiAudioErr) {
+      console.warn("[Transcribe] Gemini audio transcription notice, trying Cloudflare Whisper:", geminiAudioErr);
     }
 
-    return { text: transcript, success: true };
+    // 2. Secondary Fallback: Cloudflare Workers AI Whisper (@cf/openai/whisper)
+    try {
+      const cfText = await transcribeWithCloudflareWhisper(cleanBase64);
+      if (cfText && cfText.length > 0 && !cfText.toLowerCase().includes("thank you for watching")) {
+        return { text: cfText, success: true };
+      }
+    } catch (cfErr) {
+      console.warn("[Transcribe] Cloudflare Whisper fallback notice:", cfErr);
+    }
+
+    return { text: "", success: false, error: "Voice note audio was silent or transcription unavailable" };
   } catch (err: any) {
     console.error("[Transcribe] Audio transcription error:", err);
     return { text: "", success: false, error: err.message };

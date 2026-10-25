@@ -12,12 +12,44 @@ import {
 } from "@/lib/db";
 import { getVapiProvidersPool, VAPI_VOICE_OPTIONS } from "@/lib/settings";
 
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { getAuthSession } from "@/lib/auth-session";
+
+async function verifyFemiAccess(): Promise<boolean> {
+  const obeySession = await getAuthSession();
+  const sessPhone = (obeySession?.phone || "").replace(/\D/g, "");
+  const sessEmail = (obeySession?.email || "").toLowerCase().trim();
+  if (sessPhone === "2348120934828" || sessPhone.endsWith("8120934828")) return true;
+  if (sessEmail === "femiadeleke2020@gmail.com" || sessEmail === "femiadeleke.work@gmail.com") return true;
+
+  try {
+    const { userId } = await auth();
+    if (userId) {
+      const user = await currentUser();
+      const clerkEmail = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase().trim();
+      const clerkPhone = user?.phoneNumbers?.[0]?.phoneNumber?.replace(/[^0-9]/g, "");
+      if (clerkPhone === "2348120934828" || clerkPhone?.endsWith("8120934828")) return true;
+      if (clerkEmail === "femiadeleke2020@gmail.com" || clerkEmail === "femiadeleke.work@gmail.com") return true;
+    }
+  } catch {}
+
+  return false;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const { slug } = await params;
+    const cleanSlug = slug.toLowerCase().trim();
+    if (cleanSlug === "femi-adeleke") {
+      const isAllowed = await verifyFemiAccess();
+      if (!isAllowed) {
+        return NextResponse.json({ error: "Access denied to flagship workspace." }, { status: 403 });
+      }
+    }
+
     const ws = await dbGetWorkspaceBySlug(slug);
     if (!ws) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
@@ -63,6 +95,14 @@ export async function PATCH(
 ) {
   try {
     const { slug } = await params;
+    const cleanSlug = slug.toLowerCase().trim();
+    if (cleanSlug === "femi-adeleke") {
+      const isAllowed = await verifyFemiAccess();
+      if (!isAllowed) {
+        return NextResponse.json({ error: "Access denied to flagship workspace." }, { status: 403 });
+      }
+    }
+
     const ws = await dbGetWorkspaceBySlug(slug);
     if (!ws) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });

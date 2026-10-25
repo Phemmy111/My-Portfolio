@@ -20,12 +20,36 @@ export async function GET(req: NextRequest) {
     const { userId } = await auth();
     const obeySession = await getAuthSession();
 
+    const isFemiCaller = (email?: string, phone?: string) => {
+      const sessPhone = (phone || obeySession?.phone || "").replace(/\D/g, "");
+      const sessEmail = (email || obeySession?.email || "").toLowerCase().trim();
+      return (
+        sessPhone === "2348120934828" ||
+        sessPhone.endsWith("8120934828") ||
+        sessEmail === "femiadeleke2020@gmail.com" ||
+        sessEmail === "femiadeleke.work@gmail.com"
+      );
+    };
+
     if (slug) {
+      const cleanSlug = slug.toLowerCase().trim();
+      let clerkEmail: string | undefined;
+      let clerkPhone: string | undefined;
+
       if (userId) {
         const user = await currentUser();
-        const primaryEmail = user?.emailAddresses?.[0]?.emailAddress;
-        await dbClaimWorkspaceForClerkUser(slug, userId, primaryEmail);
+        clerkEmail = user?.emailAddresses?.[0]?.emailAddress;
+        clerkPhone = user?.phoneNumbers?.[0]?.phoneNumber?.replace(/[^0-9]/g, "");
+        if (cleanSlug !== "femi-adeleke" || isFemiCaller(clerkEmail, clerkPhone)) {
+          await dbClaimWorkspaceForClerkUser(slug, userId, clerkEmail);
+        }
       }
+
+      // STRICT SECURITY: Restrict femi-adeleke strictly to Femi
+      if (cleanSlug === "femi-adeleke" && !isFemiCaller(clerkEmail, clerkPhone)) {
+        return NextResponse.json({ error: "Access denied to flagship workspace." }, { status: 403 });
+      }
+
       const ws = await dbGetWorkspaceBySlug(slug);
       if (!ws) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
@@ -38,6 +62,9 @@ export async function GET(req: NextRequest) {
       if (!ws) {
         return NextResponse.json({ error: "Workspace not found for this phone" }, { status: 404 });
       }
+      if (ws.slug === "femi-adeleke" && !isFemiCaller(undefined, phone)) {
+        return NextResponse.json({ error: "Access denied to flagship workspace." }, { status: 403 });
+      }
       return NextResponse.json({ workspace: ws });
     }
 
@@ -47,7 +74,9 @@ export async function GET(req: NextRequest) {
       const primaryEmail = user?.emailAddresses?.[0]?.emailAddress;
       const primaryPhone = user?.phoneNumbers?.[0]?.phoneNumber?.replace(/[^0-9]/g, "");
 
-      const workspaces = await dbGetWorkspacesByOwnerClerkId(userId, primaryEmail, primaryPhone);
+      let workspaces = await dbGetWorkspacesByOwnerClerkId(userId, primaryEmail, primaryPhone);
+      const isFemi = isFemiCaller(primaryEmail, primaryPhone);
+      workspaces = workspaces.filter((w) => w.slug !== "femi-adeleke" || isFemi);
       return NextResponse.json({ workspaces });
     }
 
@@ -57,26 +86,28 @@ export async function GET(req: NextRequest) {
       const primaryPhone = obeySession.phone;
       const userKey = "session_" + (primaryPhone || primaryEmail);
       let workspaces = await dbGetWorkspacesByOwnerClerkId(userKey, primaryEmail, primaryPhone);
+      const isFemi = isFemiCaller(primaryEmail, primaryPhone);
 
       // If session specifically points to a workspace slug, ensure it is in the list
       if (obeySession.workspaceSlug) {
-        const sessionWs = await dbGetWorkspaceBySlug(obeySession.workspaceSlug);
-        if (sessionWs && !workspaces.some((w) => w.id === sessionWs.id)) {
-          workspaces = [sessionWs, ...workspaces];
+        if (obeySession.workspaceSlug === "femi-adeleke" && !isFemi) {
+          // Block non-Femi from inheriting femi-adeleke
+        } else {
+          const sessionWs = await dbGetWorkspaceBySlug(obeySession.workspaceSlug);
+          if (sessionWs && !workspaces.some((w) => w.id === sessionWs.id)) {
+            workspaces = [sessionWs, ...workspaces];
+          }
         }
       }
 
       // If Femi's flagship account
-      if (
-        workspaces.length === 0 &&
-        (obeySession.workspaceSlug === "femi-adeleke" ||
-          primaryPhone === "2348120934828" ||
-          primaryEmail?.includes("femiadeleke"))
-      ) {
+      if (workspaces.length === 0 && isFemi) {
         const flagship = await dbGetWorkspaceBySlug("femi-adeleke");
         if (flagship) return NextResponse.json({ workspaces: [flagship] });
       }
 
+      // Final air-tight filter
+      workspaces = workspaces.filter((w) => w.slug !== "femi-adeleke" || isFemi);
       return NextResponse.json({ workspaces });
     }
 

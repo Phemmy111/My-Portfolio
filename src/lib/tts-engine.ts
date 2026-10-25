@@ -116,24 +116,7 @@ export async function generateSpeechAudio(
     return null;
   }
 
-  // 1. Primary: Lightning-fast Cloudflare Workers AI Deepgram Aura 2 (@cf/deepgram/aura-2-en)
-  // Deep, authoritative executive male voice (zeus / orion), 100% free
-  try {
-    const selectedSpeaker =
-      options.gender === "female" ? "luna" : (options.speaker || "zeus");
-    const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText, selectedSpeaker);
-    if (cfBuffer && cfBuffer.length > 0) {
-      return {
-        buffer: cfBuffer,
-        base64: cfBuffer.toString("base64"),
-        mimeType: "audio/mp3",
-      };
-    }
-  } catch (cfErr) {
-    console.warn("[TTS Engine] Cloudflare TTS notice, falling back:", cfErr);
-  }
-
-  // 2. Secondary Voice: Microsoft Edge Neural TTS with Sec-MS-GEC v2 (en-NG-AbeoNeural for Obey)
+  // 1. Primary: Microsoft Edge Neural TTS with Sec-MS-GEC v2 (en-NG-AbeoNeural for pure authentic Nigerian male vibe)
   try {
     const selectedVoice =
       options.voice || resolveVoiceName(options.personality, options.gender);
@@ -149,7 +132,23 @@ export async function generateSpeechAudio(
       };
     }
   } catch (edgeErr) {
-    console.warn("[TTS Engine] Native Edge TTS synthesis error, attempting fallbacks:", edgeErr);
+    console.warn("[TTS Engine] Native Edge TTS synthesis notice, attempting fallbacks:", edgeErr);
+  }
+
+  // 2. Secondary Fallback: Lightning-fast Cloudflare Workers AI Deepgram Aura 2 (@cf/deepgram/aura-2-en)
+  try {
+    const selectedSpeaker =
+      options.gender === "female" ? "luna" : (options.speaker || "zeus");
+    const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText, selectedSpeaker);
+    if (cfBuffer && cfBuffer.length > 0) {
+      return {
+        buffer: cfBuffer,
+        base64: cfBuffer.toString("base64"),
+        mimeType: "audio/mp3",
+      };
+    }
+  } catch (cfErr) {
+    console.warn("[TTS Engine] Cloudflare TTS notice, falling back:", cfErr);
   }
 
   // 2. Secondary Fallback: ElevenLabs (Only if explicit male/custom voice ID configured)

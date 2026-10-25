@@ -55,26 +55,37 @@ export async function POST(req: Request) {
     `;
 
     // Look up associated workspace in Neon DB
-    let workspaceSlug = "femi-adeleke";
+    let workspaceSlug: string | null = null;
     let ownerName = "Business Owner";
     let plan = "starter";
 
     const cleanDigits = cleanIdentifier.replace(/\D/g, "");
+    const cleanLowerIdentifier = cleanIdentifier.toLowerCase();
+    const isFemi =
+      cleanDigits === "2348120934828" ||
+      cleanDigits.endsWith("8120934828") ||
+      cleanLowerIdentifier === "femiadeleke2020@gmail.com" ||
+      cleanLowerIdentifier === "femiadeleke.work@gmail.com";
 
     const workspaces = await sql`
       SELECT * FROM workspaces
       WHERE (owner_phone IS NOT NULL AND REGEXP_REPLACE(owner_phone, '\\D', '', 'g') = ${cleanDigits})
-         OR (owner_email IS NOT NULL AND LOWER(owner_email) = ${cleanIdentifier.toLowerCase()})
+         OR (owner_email IS NOT NULL AND LOWER(owner_email) = ${cleanLowerIdentifier})
       ORDER BY created_at ASC
       LIMIT 1
     `;
 
     if (workspaces && workspaces.length > 0) {
       const ws = workspaces[0];
-      workspaceSlug = ws.slug;
-      ownerName = ws.owner_name || ws.name;
-      plan = ws.plan || "starter";
-    } else if (cleanIdentifier.includes("femi") || cleanIdentifier.includes("8120934828")) {
+      // STRICT SECURITY: Never allow non-Femi user to enter femi-adeleke workspace
+      if (ws.slug === "femi-adeleke" && !isFemi) {
+        workspaceSlug = null;
+      } else {
+        workspaceSlug = ws.slug;
+        ownerName = ws.owner_name || ws.name;
+        plan = ws.plan || "starter";
+      }
+    } else if (isFemi) {
       workspaceSlug = "femi-adeleke";
       ownerName = "Femi Adeleke";
       plan = "founder";
@@ -83,8 +94,7 @@ export async function POST(req: Request) {
     // Set signed HTTP-only auth session cookie
     await setAuthSession({
       phone: matchedRecord.phone || (cleanIdentifier.includes("@") ? undefined : cleanIdentifier),
-      email: matchedRecord.email || (cleanIdentifier.includes("@") ? cleanIdentifier : undefined),
-      workspaceSlug,
+      workspaceSlug: workspaceSlug || undefined,
       ownerName,
       plan,
       createdAt: Date.now(),

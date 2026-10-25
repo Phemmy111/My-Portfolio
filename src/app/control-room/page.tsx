@@ -96,11 +96,11 @@ const WHATSAPP_STATUS_TEXT_COLORS = [
 ];
 
 const WHATSAPP_STATUS_FONTS = [
-  { id: 1, name: "Sans", fontClass: "font-sans", label: "Sans" },
-  { id: 2, name: "Serif", fontClass: "font-serif", label: "Serif" },
-  { id: 3, name: "Cursive", fontClass: "italic font-serif", label: "Cursive" },
-  { id: 4, name: "Marker", fontClass: "font-black tracking-wide", label: "Marker" },
-  { id: 5, name: "Mono", fontClass: "font-mono tracking-tight", label: "Mono" },
+  { id: 0, name: "Sans", fontClass: "font-sans", label: "Sans" },
+  { id: 1, name: "Serif", fontClass: "font-serif italic", label: "Serif" },
+  { id: 2, name: "Cursive", fontClass: "italic font-serif", label: "Cursive" },
+  { id: 3, name: "Marker", fontClass: "font-black tracking-wide", label: "Marker" },
+  { id: 4, name: "Mono", fontClass: "font-mono tracking-tight", label: "Mono" },
 ];
 
 const COUNTRY_CODES = [
@@ -316,7 +316,7 @@ function ControlRoomContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStatusColor, setSelectedStatusColor] = useState("#075E54");
   const [selectedStatusTextColor, setSelectedStatusTextColor] = useState("#FFFFFF");
-  const [selectedStatusFont, setSelectedStatusFont] = useState(1);
+  const [selectedStatusFont, setSelectedStatusFont] = useState(0);
   const [statusPostMode, setStatusPostMode] = useState<"post_now" | "schedule">("post_now");
   const [statusScheduledAt, setStatusScheduledAt] = useState("");
   const [scheduledCount, setScheduledCount] = useState(0);

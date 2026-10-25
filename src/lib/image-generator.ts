@@ -999,4 +999,168 @@ export async function generateImageToImageWithCloudflare(params: {
   return { success: false, imageUrl: "", revisedPrompt: prompt, seed: 0, error: "Cloudflare image manipulation failed on all tokens" };
 }
 
+/**
+ * 100% Free Instruction-Based Photo Manipulation via Hugging Face Space Gradio Client (InstructPix2Pix).
+ * Modifies an existing reference photograph based on natural language instructions
+ * (e.g. "make her wear a white beret", "change hair to blonde", "put sunglasses on him")
+ * while strictly preserving the person's face, body, and overall photo identity.
+ */
+export async function editImageWithInstructPix2Pix(params: {
+  referenceImageBase64?: string;
+  referenceImageUrl?: string;
+  instruction: string;
+  steps?: number;
+  imageGuidanceScale?: number;
+  textGuidanceScale?: number;
+  workspaceId?: string;
+}): Promise<GeneratedImageResult> {
+  const {
+    referenceImageBase64,
+    referenceImageUrl,
+    instruction,
+    steps = 25,
+    imageGuidanceScale = 1.5,
+    textGuidanceScale = 7.5,
+    workspaceId,
+  } = params;
+
+  try {
+    let imgBuffer: Buffer | null = null;
+    let mimeType = "image/jpeg";
+
+    if (referenceImageBase64) {
+      const cleanB64 = referenceImageBase64.replace(/^data:[^;]+;base64,/, "").trim();
+      imgBuffer = Buffer.from(cleanB64, "base64");
+      const mimeMatch = referenceImageBase64.match(/^data:([^;]+);base64,/);
+      if (mimeMatch) mimeType = mimeMatch[1];
+    } else if (referenceImageUrl) {
+      const fetchRes = await fetch(referenceImageUrl);
+      if (fetchRes.ok) {
+        const ab = await fetchRes.arrayBuffer();
+        imgBuffer = Buffer.from(ab);
+        mimeType = fetchRes.headers.get("content-type") || "image/jpeg";
+      }
+    }
+
+    if (!imgBuffer || imgBuffer.length === 0) {
+      return {
+        success: false,
+        imageUrl: "",
+        revisedPrompt: instruction,
+        seed: 0,
+        error: "No valid image buffer found for editing",
+      };
+    }
+
+    const blob = new Blob([new Uint8Array(imgBuffer)], { type: mimeType });
+
+    const hfTokens = await getKeyPoolAsync(
+      ["HUGGINGFACE_API_KEY", "HUGGINGFACE_API_TOKENS", "HF_TOKEN"],
+      undefined,
+      workspaceId
+    );
+    const hfToken = hfTokens[0];
+
+    const spaces = [
+      "timbrooks/instruct-pix2pix",
+      "diffusers/instruct-pix2pix",
+      "hysts/instruct-pix2pix",
+    ];
+
+    const { Client } = await import("@gradio/client");
+
+    for (const spaceName of spaces) {
+      try {
+        console.log(`[Image Editor] Connecting to free Hugging Face Space: ${spaceName}...`);
+        const client = await Client.connect(spaceName, {
+          headers: hfToken ? { Authorization: `Bearer ${hfToken}` } : undefined,
+        });
+
+        const seed = Math.floor(Math.random() * 1000000);
+        console.log(`[Image Editor] Submitting instruction: "${instruction}" to ${spaceName}...`);
+
+        const result: any = await client.predict("/generate", [
+          blob,
+          instruction,
+          steps,
+          "Randomize Seed",
+          seed,
+          "Fix CFG",
+          textGuidanceScale,
+          imageGuidanceScale,
+        ]);
+
+        let outputUrl = "";
+        if (result?.data && Array.isArray(result.data)) {
+          for (const item of result.data) {
+            if (item && typeof item === "object" && item.url) {
+              outputUrl = item.url;
+              break;
+            }
+          }
+        }
+
+        if (outputUrl) {
+          console.log(`[Image Editor] Edited image generated from ${spaceName}: ${outputUrl}`);
+
+          try {
+            const imgRes = await fetch(outputUrl);
+            if (imgRes.ok) {
+              const arrayBuf = await imgRes.arrayBuffer();
+              const base64Out = Buffer.from(arrayBuf).toString("base64");
+              const contentType = imgRes.headers.get("content-type") || "image/webp";
+              const dataUri = `data:${contentType};base64,${base64Out}`;
+
+              if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+                try {
+                  const cloudRes = await cloudinary.uploader.upload(dataUri, {
+                    folder: "obey-user-edits",
+                    resource_type: "image",
+                  });
+                  return {
+                    success: true,
+                    imageUrl: cloudRes.secure_url || dataUri,
+                    revisedPrompt: instruction,
+                    seed,
+                  };
+                } catch (cloudErr) {
+                  console.warn("[Image Editor] Cloudinary upload notice, using dataUri:", cloudErr);
+                }
+              }
+
+              return {
+                success: true,
+                imageUrl: dataUri,
+                revisedPrompt: instruction,
+                seed,
+              };
+            }
+          } catch (dlErr) {
+            console.warn("[Image Editor] Direct download notice, using outputUrl:", dlErr);
+            return {
+              success: true,
+              imageUrl: outputUrl,
+              revisedPrompt: instruction,
+              seed,
+            };
+          }
+        }
+      } catch (spaceErr: any) {
+        console.warn(`[Image Editor] Space ${spaceName} notice:`, spaceErr?.message || spaceErr);
+      }
+    }
+  } catch (err: any) {
+    console.warn("[Image Editor] Error in editImageWithInstructPix2Pix:", err?.message || err);
+  }
+
+  return {
+    success: false,
+    imageUrl: "",
+    revisedPrompt: params.instruction,
+    seed: 0,
+    error: "Free instruction-based image editing failed across all available community spaces",
+  };
+}
+
+
 

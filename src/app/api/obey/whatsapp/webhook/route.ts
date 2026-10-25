@@ -43,6 +43,7 @@ import {
   generateFaceSwapWithSegmind,
   isFaceSwapRequest,
   generateImageToImageWithCloudflare,
+  editImageWithInstructPix2Pix,
 } from "@/lib/image-generator";
 import { v2 as cloudinary } from "cloudinary";
 import { autoLearnUserMemory } from "@/lib/memory-learner";
@@ -176,20 +177,31 @@ function extractStatusPostText(input: string): string | null {
   if (!input) return null;
   const trimmed = input.trim();
 
-  // 1. Prefix with colon or hyphen: "Post: ...", "Post status: ...", "Status: ...", etc.
-  const colonMatch = trimmed.match(
-    /^(?:post\s+status|status\s+update|status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|post\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status|publish\s+status|share\s+(?:to|on)\s+status|post)\s*[:\-]\s*(.+)$/i
+  // Strip friendly conversational prefixes (e.g. "Obey, ", "Please ", "Help me ")
+  const clean = trimmed.replace(
+    /^(?:obey(?:\s+(?:ai|business|bot))?|please|kindly|help\s+me|can\s+you(?:\s+please)?)\s*[,:]?\s*/i,
+    ""
   );
-  if (colonMatch && colonMatch[1]) {
-    return colonMatch[1].trim();
+
+  // 1. Prefix with colon or hyphen: "Post: ...", "Post status: ...", "Status: ...", "Put on status: ..."
+  const colonMatch = clean.match(
+    /^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|status\s+update|status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:to|on)\s+(?:my\s+)?status|post)\s*[:\-]\s*(.*)$/i
+  );
+  if (colonMatch) {
+    return colonMatch[1]?.trim() || "";
   }
 
   // 2. Explicit phrase commands without colon: "Post status Hello", "Put on status Hello", "Post to status Hello"
-  const phraseMatch = trimmed.match(
-    /^(?:post\s+status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|post\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status|publish\s+status|share\s+(?:to|on)\s+status)\s+(.+)$/i
+  const phraseMatch = clean.match(
+    /^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:to|on)\s+(?:my\s+)?status)\s+(.*)$/i
   );
-  if (phraseMatch && phraseMatch[1]) {
-    return phraseMatch[1].trim();
+  if (phraseMatch) {
+    return phraseMatch[1]?.trim() || "";
+  }
+
+  // 3. Exact commands like "post status" or "post:" alone with no text
+  if (/^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|status|post\s*[:\-])$/i.test(clean)) {
+    return "";
   }
 
   return null;
@@ -284,9 +296,10 @@ async function handleObeyBusinessOwnerTurn(params: {
       return;
     }
 
+    const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
     const res = await sendWhatsAppStatusPost({
       text: extractedStatus,
-      instanceName,
+      instanceName: targetInst,
     });
 
     if (res.success) {
@@ -389,10 +402,11 @@ async function handleObeyBusinessOwnerTurn(params: {
   const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
 You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
 
-CURRENT TIME & DATE IN NIGERIA (WAT / UTC+1):
+CURRENT TIME & DATE IN NIGERIA (WAT / UTC+1 - INTERNAL CONTEXT ONLY):
 • Current Local Time: ${currentWatTime} (West Africa Time, Africa/Lagos)
 • Current Date: ${currentWatDate}
-• Whenever Boss asks for the time, date, or day, ALWAYS provide the exact current time (${currentWatTime} WAT) and date accurately. NEVER guess, estimate, or hallucinate the time!
+• Whenever Boss asks for the time, date, or day, ALWAYS provide the exact current time (${currentWatTime} WAT) and date accurately.
+• CRITICAL: Do NOT state or mention the current time or date unless Boss explicitly asks for the time. NEVER append timestamps or "Nigeria Time:" to normal business replies.
 
 Business Knowledge:
 ${businessBio}
@@ -832,7 +846,7 @@ async function processMessage(params: ProcessMessageParams) {
     const cleanCompanion = stripAudioStageDirections(companionText || spokenText);
 
     // Broadcast WhatsApp "recording audio..." status live so user sees the recording badge!
-    sendWhatsAppPresence(sendInstance, replyTo, "recording", 6000).catch(() => {});
+    sendWhatsAppPresence(sendInstance, replyTo, "recording", 12000).catch(() => {});
 
     try {
       const speech = await generateSpeechAudio({
@@ -1364,64 +1378,51 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
         }
         const effectivePhotoRef = photoUrl || dataUri;
 
-        // 1. 100% Free Primary: Cloudflare Workers AI Image Inpainting / Reference Manipulation
-        // Preserves exact composition, face, lighting, clothing, and geometry of the uploaded photo
-        console.log("[WA Webhook] Running Cloudflare Workers AI reference image manipulation...");
-        let imgRes = await generateImageToImageWithCloudflare({
+        // 1. 100% Free Primary: Hugging Face Space InstructPix2Pix (Modifies exact reference photo based on instructions)
+        console.log("[WA Webhook] Running Free Hugging Face InstructPix2Pix image manipulation...");
+        let imgRes = await editImageWithInstructPix2Pix({
           referenceImageBase64: visionMedia.base64,
-          prompt: `a photorealistic portrait of the exact same person, ${cleanInstruction}, ultra sharp focus, professional photography, maintaining facial identity and composition`,
-          strength: 0.6,
+          instruction: cleanInstruction,
+          steps: 25,
+          imageGuidanceScale: 1.5,
+          textGuidanceScale: 7.5,
           workspaceId: currentWs?.id,
         });
 
         let isFaceLocked = imgRes.success;
 
-        // 2. Fallback: Fal.ai FLUX PuLID / InstantID (if user activated paid credits)
+        // 2. Secondary: Cloudflare Workers AI Inpainting
         if (!imgRes.success) {
-          console.log("[WA Webhook] Cloudflare image edit notice, attempting Fal.ai face-lock...");
+          console.log("[WA Webhook] InstructPix2Pix notice, attempting Cloudflare inpainting...");
+          imgRes = await generateImageToImageWithCloudflare({
+            referenceImageBase64: visionMedia.base64,
+            prompt: `a photorealistic portrait of the exact same person, ${cleanInstruction}, ultra sharp focus, professional photography, maintaining facial identity and composition`,
+            strength: 0.6,
+            workspaceId: currentWs?.id,
+          });
+          if (imgRes.success) isFaceLocked = true;
+        }
+
+        // 3. Tertiary: Fal.ai FLUX PuLID / InstantID (if user activated paid credits)
+        if (!imgRes.success) {
+          console.log("[WA Webhook] Attempting Fal.ai face-lock...");
           imgRes = await generateFaceLockWithFal({
             referenceImageUrl: effectivePhotoRef,
             prompt: `a high-end studio portrait of the person, ${cleanInstruction}, 8k resolution, photorealistic, professional lighting, maintaining exact facial resemblance`,
             workspaceId: currentWs?.id,
           });
-          if (imgRes.success) {
-            isFaceLocked = true;
-          }
+          if (imgRes.success) isFaceLocked = true;
         }
 
-        // 3. Fallback to Vision prompt synthesis + FLUX if both failed
+        // 4. Strict Identity Guardrail: If photo editing could not be completed, NEVER generate a random stranger!
         if (!imgRes.success) {
-          console.log("[WA Webhook] img2img not available or failed, falling back to vision prompt synthesis...");
-          const visionPrompt = `You are an elite creative director and prompt engineer specialized in hyper-realistic subject continuity for FLUX image diffusion.
-The user provided a photo of a real person and requested this modification: "${cleanInstruction}".
-TASK:
-Analyze the person's exact physical identity with forensic detail:
-1. Exact age range, precise skin tone and undertone (e.g. rich warm mahogany, deep espresso, golden caramel, olive).
-2. Precise facial architecture: face shape (oval, heart, square, soft jaw), cheekbone structure, eye shape and color, eyebrow arch/thickness, nose bridge width and nostril shape, mouth and lip fullness.
-3. Hair texture, color, length, parting, hairline.
-4. Camera angle, lighting direction, focal length (e.g. 85mm portrait, soft rim light).
-5. Apply the user's requested edit ("${cleanInstruction}") seamlessly (e.g. wearing a white beret, changing outfit).
-Compose a prompt that maximizes subject resemblance while applying the modification.
-Return ONLY the raw descriptive prompt (maximum 90 words). No commentary, no quotes.`;
-
-          const aiRes = await executeAICompletionWithMedia({
-            systemPrompt:
-              "You are an elite visual prompt engineer specialized in photographic subject resemblance. Return ONLY the concise descriptive prompt string for image generation.",
-            userPrompt: visionPrompt,
-            mediaBase64: visionMedia.base64,
-            mimeType: visionMedia.mimetype || "image/jpeg",
-            temperature: 0.2,
-          });
-
-          const synthesizedPrompt =
-            aiRes.text.trim().replace(/^["']|["']$/g, "") || cleanInstruction;
-          console.log(`[WA Webhook] Synthesized image edit prompt: "${synthesizedPrompt}"`);
-
-          const seed = Math.floor(Math.random() * 1000000);
-          imgRes = await generateAIImage(synthesizedPrompt, {
-            seed,
-            workspaceId: currentWs?.id,
-          });
+          console.warn("[WA Webhook] Photo editing could not be processed on reference photo.");
+          await reply(
+            "⚠️ *Photo Edit Notice:*\n\n" +
+            "I couldn't modify your exact photo right now because the free image-editing GPU queue is currently busy. To keep your original photo and face 100% accurate, I did not generate a completely random different person for you.\n\n" +
+            "Please try your edit again in a moment, or re-send the photo with a clear instruction like *'add a white beret'*."
+          );
+          return;
         }
 
         if (imgRes.success && imgRes.imageUrl) {
@@ -1624,8 +1625,8 @@ How can I help you today?`;
     }
   }
 
-  // 5. Special Femi Admin Commands
-  if (isOwner && isDefaultFemi) {
+  // 5. Special Owner Admin Commands
+  if (isOwner) {
     // 5.0 WhatsApp Status Publishing Command: "Post: ...", "Post status: ...", "Status: ...", "Put on status: ..."
     const femiStatusText = extractStatusPostText(userText);
     if (femiStatusText !== null) {
@@ -1634,9 +1635,10 @@ How can I help you today?`;
         return;
       }
 
+      const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
       const res = await sendWhatsAppStatusPost({
         text: femiStatusText,
-        instanceName: "obey",
+        instanceName: targetInst,
       });
 
       if (res.success) {
@@ -2295,9 +2297,15 @@ Output ONLY the comment text.`,
 
   let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
 
-  // 2. Trigger typing indicator presence
+  const isIncomingAudio = Boolean(msgObj.message?.audioMessage);
+  // 2. Trigger typing or recording indicator presence
   if (senderNumber) {
-    sendWhatsAppPresence(instanceName, senderNumber, "composing", 1500).catch(() => {});
+    sendWhatsAppPresence(
+      instanceName,
+      senderNumber,
+      isIncomingAudio ? "recording" : "composing",
+      isIncomingAudio ? 12000 : 1500
+    ).catch(() => {});
   }
 
   // In WhatsApp multi-device, messages to linked accounts can arrive with @lid.

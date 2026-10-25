@@ -3,9 +3,10 @@ import WebSocket from "ws";
 import crypto from "crypto";
 
 const TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-const WIN_EPOCH = 11644473600;
-const S_TO_NS = 1e9;
+const WIN_EPOCH = 11644473600n;
+const S_TO_NS = 1000000000n;
 const CHROMIUM_FULL_VERSION = "143.0.3650.75";
+const CHROMIUM_MAJOR_VERSION = "143";
 const SEC_MS_GEC_VERSION = `2-${CHROMIUM_FULL_VERSION}`;
 const WSS_URL = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}`;
 
@@ -55,7 +56,7 @@ const _SHA256_BLOCK_CONSTANTS = [
 const _SHA256_SIGMA0_ADJUSTMENT = 0x059C0B80;
 const _SHA256_SIGMA1_ADJUSTMENT = 0x000B92C0;
 
-const _CS64_COEFFICIENTS = [
+const _CS64_COEFFICIENTS: [number, number][] = [
   [0xE82E91B1, 0xB32700D0],
   [0x44DE24C6, 0x88DFF51D],
   [0x3BEB65BC, 0x29514038],
@@ -82,9 +83,9 @@ function _rol16(value: number): number {
 }
 
 function _words_le4_even(data: Buffer): number[] {
-  const words: number[] = [];
   const padLen = (4 - (data.length % 4)) % 4;
   const padded = padLen > 0 ? Buffer.concat([data, Buffer.alloc(padLen)]) : data;
+  const words: number[] = [];
   for (let i = 0; i < padded.length; i += 4) {
     words.push(padded.readUInt32LE(i));
   }
@@ -95,115 +96,257 @@ function _words_le4_even(data: Buffer): number[] {
 }
 
 function _sigma0(v: number): number {
-  return (((v >>> 7) | (v << 25)) ^ ((v >>> 18) | (v << 14)) ^ (v >>> 3)) >>> 0;
+  const val = BigInt(v >>> 0);
+  const rot = (val >> 7n) ^ (val << 25n) ^ (val >> 18n) ^ (val << 14n) ^ (val >> 3n);
+  return Number(rot & 0xFFFFFFFFn);
 }
 
 function _sigma1(v: number): number {
-  return (((v >>> 17) | (v << 15)) ^ ((v >>> 19) | (v << 13)) ^ (v >>> 10)) >>> 0;
+  const val = BigInt(v >>> 0);
+  const rot = (val >> 17n) ^ (val << 15n) ^ (val >> 19n) ^ (val << 13n) ^ (val >> 10n);
+  return Number(rot & 0xFFFFFFFFn);
 }
 
 function _sha256_rounds(state: number[], words: number[], first_round: number = 0): number[] {
-  let [a, b, c, d, e, f, g, h] = state;
-  const constants = first_round === 14 ? _SHA256_BLOCK_CONSTANTS : _SHA256_ROUND_CONSTANTS;
+  let [a, b, c, d, e, f, g, h] = state.map(x => BigInt(x >>> 0));
+  const constants = (first_round === 14 ? _SHA256_BLOCK_CONSTANTS : _SHA256_ROUND_CONSTANTS).map(x => BigInt(x >>> 0));
+  const w = words.map(x => BigInt(x >>> 0));
+  const mask = 0xFFFFFFFFn;
 
-  for (let i = 0; i < words.length; i++) {
-    const k = constants[first_round + i];
-    const w = words[i];
+  const aligned = Math.min(64, Math.floor((first_round + 7) / 8) * 8);
 
-    const s1 = (((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7))) >>> 0;
-    const ch = ((e & f) ^ (~e & g)) >>> 0;
-    const temp1 = (h + s1 + ch + k + w) >>> 0;
-
-    const s0 = (((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))) >>> 0;
-    const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
-    const temp2 = (s0 + maj) >>> 0;
-
+  for (let index = first_round; index < aligned; index++) {
+    const rot_e = (e * 0x100000001n);
+    const rot_a = (a * 0x100000001n);
+    const t1 = (
+      h +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (g ^ (e & (f ^ g))) +
+      constants[index] +
+      w[index]
+    );
+    const t2 = ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) + ((a & b) | (c & (a | b)));
+    const next_a = (t1 + t2) & mask;
+    const next_e = (d + t1) & mask;
     h = g;
     g = f;
     f = e;
-    e = (d + temp1) >>> 0;
+    e = next_e;
     d = c;
     c = b;
     b = a;
-    a = (temp1 + temp2) >>> 0;
+    a = next_a;
   }
 
-  return [a, b, c, d, e, f, g, h];
-}
+  for (let index = aligned; index < 64; index += 8) {
+    let rot_e = (e * 0x100000001n);
+    let rot_a = (a * 0x100000001n);
+    let t1 = (
+      h +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (g ^ (e & (f ^ g))) +
+      constants[index] +
+      w[index]
+    );
+    d = (d + t1) & mask;
+    h = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((a & b) | (c & (a | b)))
+    ) & mask;
 
-function _sha256_schedule(schedule: number[], words: number[], is_adjusted: boolean = false): number[] {
-  const w = [...words];
-  let s0_adj = is_adjusted ? _SHA256_SIGMA0_ADJUSTMENT : 0;
-  let s1_adj = is_adjusted ? _SHA256_SIGMA1_ADJUSTMENT : 0;
+    rot_e = (d * 0x100000001n);
+    rot_a = (h * 0x100000001n);
+    t1 = (
+      g +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (f ^ (d & (e ^ f))) +
+      constants[index + 1] +
+      w[index + 1]
+    );
+    c = (c + t1) & mask;
+    g = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((h & a) | (b & (h | a)))
+    ) & mask;
 
-  for (let i = 0; i < schedule.length; i++) {
-    const s0 = (_sigma0(w[i + 1]) + s0_adj) >>> 0;
-    const s1 = (_sigma1(schedule[i]) + s1_adj) >>> 0;
-    s0_adj = 0;
-    s1_adj = 0;
+    rot_e = (c * 0x100000001n);
+    rot_a = (g * 0x100000001n);
+    t1 = (
+      f +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (e ^ (c & (d ^ e))) +
+      constants[index + 2] +
+      w[index + 2]
+    );
+    b = (b + t1) & mask;
+    f = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((g & h) | (a & (g | h)))
+    ) & mask;
 
-    const new_w = (w[i] + s0 + w[i + 9] + s1) >>> 0;
-    w.push(new_w);
+    rot_e = (b * 0x100000001n);
+    rot_a = (f * 0x100000001n);
+    t1 = (
+      e +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (d ^ (b & (c ^ d))) +
+      constants[index + 3] +
+      w[index + 3]
+    );
+    a = (a + t1) & mask;
+    e = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((f & g) | (h & (f | g)))
+    ) & mask;
+
+    rot_e = (a * 0x100000001n);
+    rot_a = (e * 0x100000001n);
+    t1 = (
+      d +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (c ^ (a & (b ^ c))) +
+      constants[index + 4] +
+      w[index + 4]
+    );
+    h = (h + t1) & mask;
+    d = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((e & f) | (g & (e | f)))
+    ) & mask;
+
+    rot_e = (h * 0x100000001n);
+    rot_a = (d * 0x100000001n);
+    t1 = (
+      c +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (b ^ (h & (a ^ b))) +
+      constants[index + 5] +
+      w[index + 5]
+    );
+    g = (g + t1) & mask;
+    c = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((d & e) | (f & (d | e)))
+    ) & mask;
+
+    rot_e = (g * 0x100000001n);
+    rot_a = (c * 0x100000001n);
+    t1 = (
+      b +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (a ^ (g & (h ^ a))) +
+      constants[index + 6] +
+      w[index + 6]
+    );
+    f = (f + t1) & mask;
+    b = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((c & d) | (e & (c | d)))
+    ) & mask;
+
+    rot_e = (f * 0x100000001n);
+    rot_a = (b * 0x100000001n);
+    t1 = (
+      a +
+      ((rot_e >> 6n) ^ (rot_e >> 11n) ^ (rot_e >> 25n)) +
+      (h ^ (f & (g ^ h))) +
+      constants[index + 7] +
+      w[index + 7]
+    );
+    e = (e + t1) & mask;
+    a = (
+      t1 +
+      ((rot_a >> 2n) ^ (rot_a >> 13n) ^ (rot_a >> 22n)) +
+      ((b & c) | (d & (b | c)))
+    ) & mask;
   }
-
-  return w;
-}
-
-function _sha256_block(state: number[], words: number[], is_adjusted: boolean = false): number[] {
-  const schedule = words.slice(0, 14);
-  const w = _sha256_schedule(schedule, words, is_adjusted);
-  const words_b = schedule.slice(0, 2);
-
-  const state1 = _sha256_rounds(state, w.slice(0, 14), is_adjusted ? 14 : 0);
-  const state2 = _sha256_rounds(state1, schedule.slice(2), 0);
-  const state3 = _sha256_rounds(state2, words_b, 12);
-  const state4 = _sha256_rounds(state3, w.slice(14), 14);
 
   return [
-    (state[0] + state4[0]) >>> 0,
-    (state[1] + state4[1]) >>> 0,
-    (state[2] + state4[2]) >>> 0,
-    (state[3] + state4[3]) >>> 0,
-    (state[4] + state4[4]) >>> 0,
-    (state[5] + state4[5]) >>> 0,
-    (state[6] + state4[6]) >>> 0,
-    (state[7] + state4[7]) >>> 0,
+    Number(a), Number(b), Number(c), Number(d),
+    Number(e), Number(f), Number(g), Number(h),
   ];
+}
+
+function _expand_sha256_schedule(words: number[], first_word: number = 16): void {
+  const mask = 0xFFFFFFFFn;
+  for (let index = first_word; index < 64; index++) {
+    const x = BigInt(words[index - 2] >>> 0);
+    const y = BigInt(words[index - 15] >>> 0);
+    const s1 = (x >> 17n) ^ (x << 15n) ^ (x >> 19n) ^ (x << 13n) ^ (x >> 10n);
+    const s0 = (y >> 7n) ^ (y << 25n) ^ (y >> 18n) ^ (y << 14n) ^ (y >> 3n);
+    const sum = (s1 + BigInt(words[index - 7] >>> 0) + s0 + BigInt(words[index - 16] >>> 0)) & mask;
+    words.push(Number(sum));
+  }
+}
+
+function _sha256_init(data: Buffer): number[] {
+  const mask = 0xFFFFFFFF;
+  const words: number[] = new Array(14).fill(0);
+  words.push(data.readUIntBE(0, 3));
+  words.push(data.readUInt32BE(3));
+
+  for (let index = 16; index < 30; index++) {
+    let value = _SHA256_SCHEDULE[index - 16];
+    if (index - 2 >= 14) {
+      value += (index === 16 ? (_sigma1(words[index - 2]) ^ _SHA256_SIGMA1_ADJUSTMENT) : _sigma1(words[index - 2]));
+    }
+    if (index - 7 >= 14) {
+      value += words[index - 7];
+    }
+    if (index - 15 >= 14) {
+      value += (index === 29 ? (_sigma0(words[index - 15]) ^ _SHA256_SIGMA0_ADJUSTMENT) : _sigma0(words[index - 15]));
+    }
+    words.push((value & mask) >>> 0);
+  }
+
+  const w28_sig1 = _sigma1(words[28]);
+  const w15_sig0 = _sigma0(words[15]);
+  const val30 = (
+    w28_sig1 + words[23] + w15_sig0 + words[14] + _SHA256_ADJUSTMENT - _SHA256_ROUND_CONSTANTS[14]
+  ) & mask;
+  words.push(val30 >>> 0);
+
+  _expand_sha256_schedule(words, 31);
+  const working = _sha256_rounds(_SHA256_STATE, words, 14);
+  return _SHA256_INITIAL.map((x, i) => ((x + working[i]) & mask) >>> 0);
 }
 
 function _sha256_digest(data: Buffer): Buffer {
-  let state = _sha256_block(_SHA256_INITIAL, _SHA256_SCHEDULE, true);
-  const words = _words_le4_even(data);
+  if (data.length < 7) {
+    throw new Error("Token salt must contain at least seven bytes");
+  }
+  const mask = 0xFFFFFFFF;
+  const length = 57 + data.length;
+  const padZeroCount = ((55 - length) % 64 + 64) % 64;
 
-  let current_block: number[] = [];
-  for (let i = 0; i < words.length; i += 2) {
-    current_block.push(words[i], words[i + 1]);
-    if (current_block.length === 14) {
-      state = _sha256_block(state, current_block, false);
-      current_block = [];
+  const lenBuf = Buffer.alloc(8);
+  lenBuf.writeBigUInt64BE(BigInt(length * 8));
+
+  const padded = Buffer.concat([
+    data.subarray(7),
+    Buffer.from([0x80]),
+    Buffer.alloc(padZeroCount),
+    lenBuf,
+  ]);
+
+  let state = _sha256_init(data.subarray(0, 7));
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    const chunk = padded.subarray(offset, offset + 64);
+    const words: number[] = [];
+    for (let i = 0; i < 64; i += 4) {
+      words.push(chunk.readUInt32BE(i));
     }
+    _expand_sha256_schedule(words);
+    const working = _sha256_rounds(state, words);
+    state = state.map((x, i) => ((x + working[i]) & mask) >>> 0);
   }
-
-  current_block.push(0x80);
-  while (current_block.length < 14) {
-    current_block.push(0);
-  }
-  state = _sha256_block(state, current_block, false);
-
-  const len_block = new Array(14).fill(0);
-  len_block[13] = (data.length * 8) >>> 0;
-  state = _sha256_block(state, len_block, false);
-
-  state = [
-    (state[0] + _SHA256_STATE[0]) >>> 0,
-    (state[1] + _SHA256_STATE[1]) >>> 0,
-    (state[2] + _SHA256_STATE[2]) >>> 0,
-    (state[3] + _SHA256_STATE[3]) >>> 0,
-    (state[4] + _SHA256_STATE[4]) >>> 0,
-    (state[5] + _SHA256_STATE[5]) >>> 0,
-    (state[6] + _SHA256_STATE[6]) >>> 0,
-    (state[7] + _SHA256_STATE[7]) >>> 0,
-  ];
 
   const out = Buffer.alloc(32);
   for (let i = 0; i < 8; i++) {
@@ -213,122 +356,84 @@ function _sha256_digest(data: Buffer): Buffer {
 }
 
 function _cs64_digest(data: Buffer, digest: Buffer): [number, number] {
-  const digestWords: number[] = [];
-  for (let i = 0; i < 32; i += 4) {
-    digestWords.push(digest.readUInt32LE(i));
+  const mask = 0xFFFFFFFFn;
+  let key_a = BigInt(digest.readUInt32LE(0)) | 1n;
+  let key_b = BigInt(digest.readUInt32LE(4)) | 1n;
+  const factor = BigInt(_CS64_FACTOR);
+
+  const factors = [
+    (key_a * factor) & mask,
+    (key_b * factor) & mask,
+  ];
+
+  const terms: bigint[] = [];
+  const offsets: bigint[] = [];
+
+  for (let i = 0; i < _CS64_COEFFICIENTS.length; i++) {
+    const [coef, off] = _CS64_COEFFICIENTS[i];
+    terms.push((BigInt(coef) * factors[i % 2]) & mask);
+    offsets.push(BigInt(off) & mask);
   }
 
-  let state = 0;
-  let acc = 0;
+  const paddedData = Buffer.concat([Buffer.from([0x00]), data]);
+  const words = _words_le4_even(paddedData);
 
-  for (let i = 0; i < 7; i++) {
-    const key_a = digestWords[i];
-    const key_b = digestWords[i + 1];
+  for (let index = 0; index < words.length; index++) {
+    const word = BigInt(words[index] >>> 0);
+    const isEven = (index % 2 === 0);
+    let term = word * (isEven ? key_a : key_b);
+    let offset = BigInt(_rol16(Number(word))) * (isEven ? 0xEF0569FBn : 0xC31713DBn);
 
-    let t = (state ^ key_a) >>> 0;
-    t = Math.imul(t, _CS64_COEFFICIENTS[i][0]) >>> 0;
-    t = (t + acc) >>> 0;
-    t = _rol16(t);
-    t = (Math.imul(t, _CS64_COEFFICIENTS[i][1]) + _CS64_FACTOR) >>> 0;
-    acc = (acc + t) >>> 0;
-
-    state = (t + key_b) >>> 0;
-    state = Math.imul(_rol16(state), _CS64_COEFFICIENTS[i][0]) >>> 0;
-    state = (state + acc) >>> 0;
-    state = _rol16(state);
-    state = Math.imul(state, _CS64_COEFFICIENTS[i][1]) >>> 0;
-    acc = (acc + state) >>> 0;
-  }
-
-  const swap_last = state;
-  const swap_acc = acc;
-  const words = _words_le4_even(data);
-
-  let c_idx = 0;
-  for (let i = 0; i < words.length; i += 2) {
-    const [coeff_a, coeff_b] = _CS64_COEFFICIENTS[c_idx];
-    c_idx = (c_idx + 1) % _CS64_COEFFICIENTS.length;
-
-    const x = words[i];
-    const y = words[i + 1];
-
-    let t = (state ^ x) >>> 0;
-    t = Math.imul(t, coeff_a) >>> 0;
-    t = (t + acc) >>> 0;
-    t = _rol16(t);
-    t = (Math.imul(t, coeff_b) + _CS64_FACTOR) >>> 0;
-    acc = (acc + t) >>> 0;
-
-    state = (t + y) >>> 0;
-    state = Math.imul(_rol16(state), coeff_a) >>> 0;
-    state = (state + acc) >>> 0;
-    state = _rol16(state);
-    state = Math.imul(state, coeff_b) >>> 0;
-    acc = (acc + state) >>> 0;
-  }
-
-  for (let i = 7; i < 14; i++) {
-    const key_a = digestWords[i - 7];
-    const key_b = digestWords[i - 6];
-    let [coeff_a, coeff_b] = _CS64_COEFFICIENTS[i];
-
-    let adj0 = 0;
-    let adj1 = 0;
-    if (i === 13) {
-      adj0 = _CS64_ADJUSTMENT0;
-      adj1 = _CS64_ADJUSTMENT1;
+    if (index === 0) {
+      term += BigInt(_CS64_ADJUSTMENT0) * factors[0];
+      offset += BigInt(_CS64_ADJUSTMENT1);
     }
-
-    const x = ((key_a ^ adj0) + adj1) >>> 0;
-    const y = key_b;
-
-    let t = (state ^ x) >>> 0;
-    t = Math.imul(t, coeff_a) >>> 0;
-    t = (t + acc) >>> 0;
-    t = _rol16(t);
-    t = (Math.imul(t, coeff_b) + _CS64_FACTOR) >>> 0;
-    acc = (acc + t) >>> 0;
-
-    state = (t + y) >>> 0;
-    state = Math.imul(_rol16(state), coeff_a) >>> 0;
-    state = (state + acc) >>> 0;
-    state = _rol16(state);
-    state = Math.imul(state, coeff_b) >>> 0;
-    acc = (acc + state) >>> 0;
+    terms.push(term & mask);
+    offsets.push(offset & mask);
   }
 
-  for (let i = 0; i < 7; i++) {
-    const key_a = digestWords[i];
-    const key_b = digestWords[i + 1];
-    const x = key_a;
-    const y = key_b;
+  let swap_acc = 0n;
+  let swap_last = 0n;
+  let state = 0n;
+  let acc = 0n;
 
-    let t = (state ^ x) >>> 0;
-    t = Math.imul(_rol16(t), 0x7E2596CD) >>> 0;
-    t = (t + acc) >>> 0;
-    t = Math.imul(_rol16(t), 0x96CDF7F5) >>> 0;
-    state = Math.imul(_rol16(state), 0x87085B9F) >>> 0;
-    state = Math.imul(_rol16(state), 0x12CEB96D) >>> 0;
-    state = Math.imul(_rol16(state), 0x257E1D83) >>> 0;
-    acc = (acc + state) >>> 0;
+  for (let index = 0; index < terms.length; index += 2) {
+    const x = terms[index];
+    const y = terms[index + 1];
 
-    t = (Math.imul(state, key_b) + y) >>> 0;
-    t = Math.imul(_rol16(t), 0xA27416F5) >>> 0;
-    t = Math.imul(_rol16(t), 0xD38396FF) >>> 0;
-    state = Math.imul(_rol16(Math.imul(_rol16(t), 0x7C932B89) >>> 0), 0xBFA49F69) >>> 0;
-    acc = (acc + state) >>> 0;
+    let t = BigInt(_rol16(Number((offsets[index] + x) & mask)));
+    let q = (t * 0x76F50F34n) & mask;
+    swap_acc = (swap_acc + BigInt(_rol16(Number(q))) * 0xC3EFEA97n + q) & mask;
+
+    t = BigInt(_rol16(Number((offsets[index + 1] + y) & mask)));
+    q = (t * 0x1881CE3Cn) & mask;
+    swap_last = (BigInt(_rol16(Number(q))) * 0x35BD1EC9n + q) & mask;
+    swap_acc = (swap_acc + swap_last) & mask;
+
+    state = (state * key_a + x) & mask;
+    state = (BigInt(_rol16(Number(state))) * 0xCF98B111n) & mask;
+    state = (BigInt(_rol16(Number(state))) * 0x87085B9Fn) & mask;
+    state = (BigInt(_rol16(Number(state))) * 0x12CEB96Dn) & mask;
+    state = (BigInt(_rol16(Number(state))) * 0x257E1D83n) & mask;
+    acc = (acc + state) & mask;
+
+    t = (state * key_b + y) & mask;
+    t = (BigInt(_rol16(Number(t))) * 0xA27416F5n) & mask;
+    t = (BigInt(_rol16(Number(t))) * 0xD38396FFn) & mask;
+    state = (BigInt(_rol16(Number((BigInt(_rol16(Number(t))) * 0x7C932B89n) & mask))) * 0xBFA49F69n) & mask;
+    acc = (acc + state) & mask;
   }
 
-  return [(swap_last ^ state) >>> 0, (swap_acc ^ acc) >>> 0];
+  return [Number((swap_last ^ state) & mask), Number((swap_acc ^ acc) & mask)];
 }
 
 export function generateSecMsGecV2(unixTimestamp?: number): string {
-  let ticks = unixTimestamp !== undefined ? unixTimestamp : (Date.now() / 1000);
-  ticks += WIN_EPOCH;
-  ticks -= ticks % 300;
-  ticks *= S_TO_NS / 100;
+  const ts = unixTimestamp !== undefined ? unixTimestamp : (Date.now() / 1000);
+  let ticks = BigInt(Math.floor(ts)) + WIN_EPOCH;
+  ticks -= ticks % 300n;
+  ticks *= 10000000n;
 
-  const strToHash = Buffer.from(`${Math.floor(ticks)}${TRUSTED_CLIENT_TOKEN}`, "ascii");
+  const strToHash = Buffer.from(`${ticks.toString()}${TRUSTED_CLIENT_TOKEN}`, "ascii");
   const digest = _sha256_digest(strToHash);
   const [cs0, cs1] = _cs64_digest(strToHash, digest);
 
@@ -336,18 +441,12 @@ export function generateSecMsGecV2(unixTimestamp?: number): string {
   csBuf.writeUInt32LE(cs0, 0);
   csBuf.writeUInt32LE(cs1, 4);
 
-  const cs64 = csBuf.toString("hex").toUpperCase();
-  const sha256 = digest.toString("hex").toUpperCase();
-
-  return `${cs64}-${sha256}`;
-}
-
-function connectId(): string {
-  return crypto.randomUUID().replace(/-/g, "");
+  return `${csBuf.toString("hex").toUpperCase()}-${digest.toString("hex").toUpperCase()}`;
 }
 
 function dateToString(): string {
-  return new Date().toISOString();
+  const d = new Date();
+  return d.toUTCString();
 }
 
 function escapeXml(text: string): string {
@@ -359,30 +458,29 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/**
- * High-performance, zero-config native Edge TTS Synthesizer using official Microsoft Sec-MS-GEC v2.
- * Supports Nigerian English (en-NG-AbeoNeural, en-NG-EzinneNeural) and global voices.
- */
 export async function synthesizeEdgeTTS(
   text: string,
   voice: string = "en-NG-AbeoNeural",
   timeoutMs: number = 15000
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const connectionId = connectId();
-    const requestId = connectId();
+    const connectionId = crypto.randomUUID().replace(/-/g, "");
+    const requestId = crypto.randomUUID().replace(/-/g, "");
     const secMsGec = generateSecMsGecV2();
 
     const url = `${WSS_URL}&ConnectionId=${connectionId}&Sec-MS-GEC=${secMsGec}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`;
 
+    const muid = crypto.randomBytes(16).toString("hex").toUpperCase();
     const headers = {
       Pragma: "no-cache",
       "Cache-Control": "no-cache",
       Origin: "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
+      "Sec-WebSocket-Version": "13",
       "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+        `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_MAJOR_VERSION}.0.0.0 Safari/537.36 Edg/${CHROMIUM_MAJOR_VERSION}.0.0.0`,
       "Accept-Encoding": "gzip, deflate, br, zstd",
       "Accept-Language": "en-US,en;q=0.9",
+      Cookie: `muid=${muid};`,
     };
 
     const ws = new WebSocket(url, { headers });
@@ -411,8 +509,9 @@ export async function synthesizeEdgeTTS(
         }
 
         const escaped = escapeXml(text);
+        const lang = voice.startsWith("en-NG") ? "en-NG" : "en-US";
         const ssml =
-          `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
+          `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${lang}'>` +
           `<voice name='${voice}'>` +
           `<prosody pitch='+0Hz' rate='+0%' volume='+0%'>${escaped}</prosody>` +
           `</voice>` +

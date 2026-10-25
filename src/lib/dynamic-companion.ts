@@ -1252,13 +1252,28 @@ INSTRUCTIONS:
     }
   }
 
-  // Tool: Modify Existing Image (With Seed Continuity)
+  // Tool: Modify Existing Image (With Seed Continuity and Reference Image Preservation)
   if (decision.action === "modify_existing_image") {
     const editInstruction = decision.action_params?.image_modification || userText;
     const basePrompt = userImageMemory?.last_image_prompt || userText;
-    const revisedPrompt = await synthesizeImageRevisionPrompt(basePrompt, editInstruction);
-    const seed = userImageMemory?.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
-    const imgRes = await generateAIImage(revisedPrompt, { seed });
+    const lastUrl = userImageMemory?.last_image_url;
+
+    let imgRes;
+    if (lastUrl) {
+      console.log(`[Companion] Attempting InstructPix2Pix on existing image URL: ${lastUrl.slice(0, 50)}...`);
+      const { editImageWithInstructPix2Pix } = await import("./image-generator");
+      imgRes = await editImageWithInstructPix2Pix({
+        referenceImageUrl: lastUrl,
+        instruction: editInstruction,
+        workspaceId,
+      });
+    }
+
+    if (!imgRes?.success) {
+      const revisedPrompt = await synthesizeImageRevisionPrompt(basePrompt, editInstruction);
+      const seed = userImageMemory?.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
+      imgRes = await generateAIImage(revisedPrompt, { seed, workspaceId });
+    }
     if (imgRes.success) {
       await saveUserImageMemory(userIdentifier, imgRes.revisedPrompt, imgRes.imageUrl, imgRes.seed);
       if (channel === "whatsapp") {
@@ -2194,7 +2209,7 @@ ${getObeyBusinessManualKnowledge(platformPricing)}
 8. FORMATTING:
    - Use clean bullet points (•) and numbers.
    - Use single asterisks (*like this*) for bolding on WhatsApp/Telegram.
-   - Nigeria Time: ${watTime} (${watDate}).
+   - CRITICAL PROHIBITION ON STATING TIME: Do NOT mention or state the current time, date, or day of the week in your responses UNLESS the user explicitly asks you what time or date it is (e.g. "what time is it?"). Never append or prepend timestamps or "Nigeria Time:" to your messages.
 
 9. VOICE NOTES & LIVE VOICE CALL DIRECTIVES:
    - YOU HAVE FULL NATIVE WHATSAPP VOICE NOTE (AUDIO NOTE) CAPABILITY!
