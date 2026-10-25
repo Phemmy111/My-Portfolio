@@ -123,15 +123,7 @@ Return ONLY the single transformed reported speech sentence without quotes or in
 
   return `${greeting}!
 
-${reportedSpeech}
-
-—
-*I am Obey, ${senderLabel}'s personal AI executive companion.* If you don't have me yet or would like my assistance, you can access me directly:
-• *WhatsApp:* https://wa.me/2349161488564
-• *Telegram:* https://t.me/ObeyAssistantBot
-• *Website:* https://obeyai.vercel.app
-
-Looking forward to assisting you too!`;
+${reportedSpeech}`;
 }
 
 /**
