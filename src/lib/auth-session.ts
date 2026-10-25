@@ -2,7 +2,9 @@ import crypto from "crypto";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE_NAME = "obey_auth_session";
-const SESSION_SECRET = process.env.CLERK_SECRET_KEY || process.env.ADMIN_SECRET || "obey_super_secret_session_key_2026";
+const SESSION_SECRET =
+  (process.env.CLERK_SECRET_KEY || process.env.ADMIN_SECRET || "obey_super_secret_session_key_2026") +
+  "_v2_security_isolated";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 export interface AuthSessionData {
@@ -44,6 +46,21 @@ export function verifySession(token: string): AuthSessionData | null {
       if (Date.now() - data.createdAt > SESSION_MAX_AGE * 1000) {
         return null;
       }
+
+      // STRICT ISOLATION GUARD: If session claims "femi-adeleke", verify that user is genuinely Femi
+      if (data.workspaceSlug === "femi-adeleke") {
+        const cleanPhone = (data.phone || "").replace(/\D/g, "");
+        const cleanEmail = (data.email || "").toLowerCase().trim();
+        const isFemi =
+          cleanPhone === "2348120934828" ||
+          cleanPhone.endsWith("8120934828") ||
+          cleanEmail === "femiadeleke2020@gmail.com" ||
+          cleanEmail === "femiadeleke.work@gmail.com";
+        if (!isFemi) {
+          return null; // Instantly revoked & logged out!
+        }
+      }
+
       return data;
     }
     return null;
