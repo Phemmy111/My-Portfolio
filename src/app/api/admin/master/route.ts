@@ -6,7 +6,9 @@ import {
   dbUpdateWorkspacePlan,
   dbDeleteWorkspace,
   dbGetGlobalActivityFeed,
+  dbUpdateWorkspaceWhatsAppStatus,
 } from "@/lib/db";
+import { getEvolutionConnectionState } from "@/lib/whatsapp-gateway";
 
 function isAuthorized(req: NextRequest): boolean {
   const session = req.cookies.get("femi_admin_session");
@@ -24,6 +26,22 @@ export async function GET(req: NextRequest) {
       dbGetPlatformPricing(),
       dbGetGlobalActivityFeed(40),
     ]);
+
+    // Live sync connection state from Evolution API for real-time accuracy
+    await Promise.allSettled(
+      workspaces.map(async (w) => {
+        try {
+          const inst = w.whatsapp_instance_name || (w.slug === "femi-adeleke" || w.slug === "default" ? "obey" : `obey-${w.slug}`);
+          const stateData = await getEvolutionConnectionState(inst);
+          const state = stateData?.instance?.state;
+          const liveStatus = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+          if (liveStatus !== w.whatsapp_status) {
+            w.whatsapp_status = liveStatus;
+            dbUpdateWorkspaceWhatsAppStatus(w.id, inst, liveStatus).catch(() => {});
+          }
+        } catch {}
+      })
+    );
 
     const totalWorkspaces = workspaces.length;
     const activePaid = workspaces.filter((w) => w.subscription_status === "active").length;
