@@ -2046,6 +2046,10 @@ export async function dbUpsertWorkspaceLead(params: {
   try {
     await createWorkspaceTables();
     const cleanPhone = params.phone.replace(/\D/g, "");
+    // Strict telephone validation: never insert WhatsApp internal LIDs (14-16 digits) into CRM leads!
+    if (!cleanPhone || cleanPhone.length < 9 || cleanPhone.length > 13) {
+      return null;
+    }
     const id = `lead_${cleanPhone}_${params.workspace_id}`;
     const [row] = await db`
       INSERT INTO workspace_leads (
@@ -2088,6 +2092,29 @@ export async function dbUpsertWorkspaceLead(params: {
     console.error("dbUpsertWorkspaceLead error:", err);
     return null;
   }
+}
+
+export async function dbGetRealPhoneByLid(lid: string): Promise<string | null> {
+  const db = getSql();
+  if (!db) return null;
+  const cleanLid = lid.replace(/\D/g, "");
+  if (!cleanLid) return null;
+  try {
+    const rows = await db`
+      SELECT key->>'remoteJidAlt' as real_jid
+      FROM "Message"
+      WHERE (key->>'participant' LIKE ${`%${cleanLid}%`} OR key->>'remoteJid' LIKE ${`%${cleanLid}%`})
+        AND key->>'remoteJidAlt' IS NOT NULL
+      LIMIT 1
+    `;
+    if (rows.length > 0 && rows[0].real_jid) {
+      const clean = rows[0].real_jid.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+      if (clean.length >= 9 && clean.length <= 13) return clean;
+    }
+  } catch (err) {
+    console.warn("dbGetRealPhoneByLid error:", err);
+  }
+  return null;
 }
 
 export async function dbMarkLeadsSaved(

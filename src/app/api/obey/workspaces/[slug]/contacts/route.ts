@@ -29,8 +29,17 @@ function sanitizePhone(raw: string): string {
   return beforeAt.replace(/\D/g, "");
 }
 
+function isValidPhoneNumber(phone: string): boolean {
+  if (!phone) return false;
+  const clean = sanitizePhone(phone);
+  // Real international E.164 telephone numbers are 9 to 13 digits (e.g. 2348012345678, US 10 digits).
+  // Internal WhatsApp multi-device LIDs are 14 to 16 digits and cannot be phoned, texted, or saved as telephone contacts.
+  return clean.length >= 9 && clean.length <= 13;
+}
+
 function generateVCard(contacts: ContactItem[], businessName: string): string {
-  const cards = contacts.map((c) => {
+  const validContacts = contacts.filter((c) => isValidPhoneNumber(c.phone));
+  const cards = validContacts.map((c) => {
     const cleanPhone = sanitizePhone(c.phone);
     const phoneWithPlus = cleanPhone.startsWith("+") ? cleanPhone : `+${cleanPhone}`;
     const rawName = (c.name || `Contact ${cleanPhone.slice(-4)}`).replace(/[\r\n;,]/g, " ").trim();
@@ -41,6 +50,7 @@ function generateVCard(contacts: ContactItem[], businessName: string): string {
       "VERSION:3.0",
       `FN:${displayName}`,
       `N:${rawName};;;;`,
+      `ORG:${businessName}`,
       `TEL;TYPE=CELL,VOICE:${phoneWithPlus}`,
       `NOTE:Obey Auto-Saved Contact for ${businessName}. Status views enabled.`,
       "END:VCARD",
@@ -52,7 +62,8 @@ function generateVCard(contacts: ContactItem[], businessName: string): string {
 
 function generateCSV(contacts: ContactItem[]): string {
   const header = "Name,Phone Number,Saved In Phone,Auto-Save Enabled,Last Message,Source";
-  const rows = contacts.map((c) => {
+  const validContacts = contacts.filter((c) => isValidPhoneNumber(c.phone));
+  const rows = validContacts.map((c) => {
     const name = `"${(c.name || "").replace(/"/g, '""')}"`;
     const phone = `"+${sanitizePhone(c.phone)}"`;
     const saved = c.is_saved ? "Saved (Status Views ON)" : "Unsaved (No Views Yet)";
@@ -122,7 +133,10 @@ export async function GET(
             }
 
             const phone = sanitizePhone(rawJid);
-            if (!phone || phone.length < 8) continue;
+            // Strict telephone validation: filter out internal WhatsApp LIDs or short codes
+            if (rawJid.includes("@lid") || !isValidPhoneNumber(phone)) {
+              continue;
+            }
 
             const dbLead = leadsMap.get(phone);
             const isSaved = item.isSaved !== undefined ? Boolean(item.isSaved) : Boolean(dbLead?.is_saved);
@@ -166,6 +180,7 @@ export async function GET(
 
     // 3. Include any database leads that weren't in Evolution API list
     for (const [phone, dbLead] of leadsMap.entries()) {
+      if (!isValidPhoneNumber(phone)) continue;
       if (!contactsMap.has(phone)) {
         contactsMap.set(phone, {
           id: dbLead.id,
@@ -282,10 +297,13 @@ export async function POST(
     const pushContactCards = async (contactItems: Array<{ phone: string; name?: string | null }>) => {
       if (!ownerNumber || !contactItems || contactItems.length === 0) return;
       const cleanOwner = sanitizePhone(ownerNumber);
-      const cards = contactItems.map((c) => {
+      const validItems = contactItems.filter((c) => isValidPhoneNumber(c.phone));
+      if (validItems.length === 0) return;
+
+      const cards = validItems.map((c) => {
         const clean = sanitizePhone(c.phone);
         return {
-          fullName: c.name || `Contact ${clean.slice(-4)}`,
+          fullName: `${c.name || `Contact ${clean.slice(-4)}`} (${ws.name})`,
           wuid: `${clean}@s.whatsapp.net`,
           phoneNumber: clean,
         };
@@ -314,7 +332,7 @@ export async function POST(
     // 1. Save all unsaved contacts in 1-click
     if (action === "save_all_unsaved") {
       const dbLeads = await dbGetWorkspaceLeads(ws.id);
-      const unsavedLeads = dbLeads.filter((l) => !l.is_saved);
+      const unsavedLeads = dbLeads.filter((l) => !l.is_saved && isValidPhoneNumber(l.phone));
       const updated = await dbMarkAllUnsavedLeads(ws.id, true);
 
       // Asynchronously push all contact cards to owner WhatsApp
@@ -352,7 +370,31 @@ export async function POST(
       });
     }
 
-    // 3. Toggle single contact auto-save setting
+    // 3. Push contact cards directly to owner's WhatsApp
+    if (action === "push_to_whatsapp") {
+      const scope = body.scope || "unsaved"; // unsaved | all
+      const dbLeads = await dbGetWorkspaceLeads(ws.id);
+      const validLeads = dbLeads.filter((l) => isValidPhoneNumber(l.phone));
+      const targetLeads = scope === "unsaved" ? validLeads.filter((l) => !l.is_saved) : validLeads;
+
+      if (targetLeads.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: "All contacts are already saved! No pending contacts to push.",
+          sentCount: 0,
+        });
+      }
+
+      await pushContactCards(targetLeads.map((l) => ({ phone: l.phone, name: l.name })));
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully dispatched ${targetLeads.length} contact cards to your WhatsApp! Tap 'Save Contact' on each card to add them to your phone.`,
+        sentCount: targetLeads.length,
+      });
+    }
+
+    // 4. Toggle single contact auto-save setting
     if (action === "toggle_auto_save") {
       if (!phone) {
         return NextResponse.json({ error: "Phone number required" }, { status: 400 });
@@ -366,7 +408,7 @@ export async function POST(
       });
     }
 
-    // 4. Toggle master auto-save setting for the entire workspace
+    // 5. Toggle master auto-save setting for the entire workspace
     if (action === "toggle_master_auto_save") {
       const targetEnabled = Boolean(enabled);
       await dbToggleWorkspaceAutoSave(ws.id, targetEnabled);

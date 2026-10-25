@@ -970,6 +970,82 @@ function ControlRoomContent() {
     }
   };
 
+  const handlePushToWhatsApp = async () => {
+    if (!currentWs) return;
+    setContactActionLoading("push_whatsapp");
+    setContactBannerMsg(null);
+    try {
+      const res = await fetch(`/api/obey/workspaces/${currentWs.slug}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "push_to_whatsapp",
+          scope: contactTab === "unsaved" ? "unsaved" : "all",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setContactBannerMsg({
+          type: "success",
+          text: `📲 ${data.message}`,
+        });
+      } else {
+        setContactBannerMsg({
+          type: "error",
+          text: data.error || "Failed to push contacts to WhatsApp.",
+        });
+      }
+    } catch (err: any) {
+      setContactBannerMsg({
+        type: "error",
+        text: err.message || "Failed to push contacts.",
+      });
+    } finally {
+      setContactActionLoading(null);
+    }
+  };
+
+  const handleSaveToPhoneVCF = async () => {
+    if (!currentWs) return;
+    const url = `/api/obey/workspaces/${currentWs.slug}/contacts?format=vcf&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.canShare) {
+        const res = await fetch(url);
+        if (res.ok) {
+          const vcfText = await res.text();
+          const blob = new Blob([vcfText], { type: "text/vcard;charset=utf-8" });
+          const file = new File([blob], `${currentWs.slug}-contacts.vcf`, { type: "text/vcard" });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: `${currentWs.name} Contacts`,
+              text: `Save contacts directly to your phone address book`,
+              files: [file],
+            });
+            setContactBannerMsg({
+              type: "success",
+              text: "📱 Contacts prompted on your phone! Tap 'Save All' or 'Add to Contacts' to finalize.",
+            });
+            return;
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+    }
+
+    // Standard download fallback
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${currentWs.slug}-${contactTab}-contacts.vcf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setContactBannerMsg({
+      type: "success",
+      text: "📥 .VCF Contact file downloaded! Open it to add all contacts to your phone address book.",
+    });
+  };
+
   const handleToggleContactAutoSave = async (phone: string, currentAutoSave: boolean) => {
     if (!currentWs) return;
     const target = !currentAutoSave;
@@ -6290,15 +6366,24 @@ async function handleRequest(request) {
                       <span>{contactActionLoading === "save_all" ? "Saving All..." : `Save All Unsaved (${contactsStats.unsaved})`}</span>
                     </button>
 
-                    <a
-                      href={`/api/obey/workspaces/${currentWs.slug}/contacts?format=vcf&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}
-                      download
+                    <button
+                      onClick={handlePushToWhatsApp}
+                      disabled={contactActionLoading === "push_whatsapp" || contactsStats.unsaved === 0}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs sm:text-sm font-bold border border-emerald-500/30 transition cursor-pointer shadow-sm"
+                      title="Send WhatsApp contact cards directly to your phone WhatsApp with a 1-tap 'Save Contact' button"
+                    >
+                      <MessageSquare className="w-4 h-4 text-emerald-400" />
+                      <span>{contactActionLoading === "push_whatsapp" ? "Pushing to WhatsApp..." : "Push to My WhatsApp"}</span>
+                    </button>
+
+                    <button
+                      onClick={handleSaveToPhoneVCF}
                       className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 text-xs sm:text-sm font-semibold border border-teal-500/30 transition cursor-pointer"
-                      title="Download .VCF file for 1-tap import directly into your Android, iPhone, or Google Contacts address book"
+                      title="Save directly to phone address book via mobile native prompt or download .VCF file"
                     >
                       <Phone className="w-4 h-4 text-teal-400" />
-                      <span>Save to Phone (VCF)</span>
-                    </a>
+                      <span>Save to Phone</span>
+                    </button>
 
                     <a
                       href={`/api/obey/workspaces/${currentWs.slug}/contacts?format=csv&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}

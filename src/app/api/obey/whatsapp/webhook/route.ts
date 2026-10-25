@@ -14,6 +14,7 @@ import {
   dbUpdateUserActionStatus,
   dbGetWorkspaceRules,
   dbUpsertWorkspaceLead,
+  dbGetRealPhoneByLid,
   dbGetWorkspaceLeads,
   dbGetWorkspaceBySlug,
   dbGetWorkspaceById,
@@ -1065,11 +1066,11 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Auto-capture non-owner incoming contact into workspace_leads (for auto-saving & status view boost)
-  if (!isOwner && currentWs) {
+  if (!isOwner && currentWs && replyTo && replyTo.length >= 9 && replyTo.length <= 13) {
     try {
       const isAutoSave = currentWs.auto_save_contacts !== false;
       const contactName = pushName || `WhatsApp User ${replyTo.slice(-4)}`;
-      await dbUpsertWorkspaceLead({
+      const savedLead = await dbUpsertWorkspaceLead({
         workspace_id: currentWs.id,
         phone: replyTo,
         name: contactName,
@@ -1081,7 +1082,31 @@ async function processMessage(params: ProcessMessageParams) {
         is_saved: isAutoSave,
       });
 
+      // Automatically dispatch native WhatsApp Contact Card to the business owner on WhatsApp
+      // This gives the owner a 1-tap "Save Contact" button directly inside their WhatsApp app!
+      if (isAutoSave && ownerClean && ownerClean !== replyTo && savedLead) {
+        const evoApiUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
+        const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
+        const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
 
+        fetch(`${evoApiUrl}/message/sendContact/${encodeURIComponent(sendInstance)}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoApiKey,
+          },
+          body: JSON.stringify({
+            number: ownerClean,
+            contact: [
+              {
+                fullName: `${contactName} (${currentWs.name})`,
+                wuid: `${replyTo}@s.whatsapp.net`,
+                phoneNumber: replyTo,
+              },
+            ],
+          }),
+        }).catch((cardErr) => console.warn("[WA Auto-Save] Contact card push warning:", cardErr));
+      }
     } catch (leadErr) {
       console.warn("[WA] Auto-save contact lead capture error:", leadErr);
     }
@@ -2352,8 +2377,41 @@ Output ONLY the comment text.`,
   }
 
   // 2. Direct Messages & Chat routing
-  // remoteJidAlt provides the actual phone JID (e.g. 2348120934828@s.whatsapp.net) when remoteJid is an LID
-  const senderJid = msgObj.key?.remoteJidAlt || msgObj.key?.remoteJid || "";
+  const extractCleanPhone = (jid: string | undefined | null): string => {
+    if (!jid) return "";
+    if (jid.endsWith("@lid") || jid.includes("@g.us") || jid.includes("@broadcast")) return "";
+    const clean = jid.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+    return clean.length >= 9 && clean.length <= 13 ? clean : "";
+  };
+
+  // Check all candidate fields for the real E.164 phone number
+  let senderNumber =
+    extractCleanPhone(msgObj.key?.remoteJidAlt) ||
+    extractCleanPhone((msgObj as any).remoteJidAlt) ||
+    extractCleanPhone(msgObj.key?.participantPn) ||
+    extractCleanPhone((msgObj as any).participantPn) ||
+    extractCleanPhone(msgObj.key?.remoteJid) ||
+    extractCleanPhone(msgObj.key?.participant);
+
+  // If still not resolved and key has an internal WhatsApp LID, query DB Baileys mapping
+  if (!senderNumber) {
+    const rawLid = (msgObj.key?.remoteJid || msgObj.key?.participant || "").replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+    if (rawLid && rawLid.length > 13) {
+      try {
+        const resolved = await dbGetRealPhoneByLid(rawLid);
+        if (resolved) senderNumber = resolved;
+      } catch {}
+    }
+  }
+
+  // Fallback for Main Obey instance when Femi's linked phone sends with an unrecognized LID
+  if (!senderNumber) {
+    if (instanceName === "obey" || instanceName === "default") {
+      senderNumber = FEMI_PERSONAL_NUMBER;
+    }
+  }
+
+  const senderJid = senderNumber ? `${senderNumber}@s.whatsapp.net` : (msgObj.key?.remoteJid || "");
 
   // Ignore regular group chats
   if (senderJid.endsWith("@g.us")) {
@@ -2365,8 +2423,6 @@ Output ONLY the comment text.`,
     markWhatsAppMessageRead(instanceName, senderJid, msgObj.key.id).catch(() => {});
   }
 
-  let senderNumber = senderJid.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
-
   const isIncomingAudio = Boolean(msgObj.message?.audioMessage);
   // 2. Trigger typing or recording indicator presence
   if (senderNumber) {
@@ -2376,21 +2432,6 @@ Output ONLY the comment text.`,
       isIncomingAudio ? "recording" : "composing",
       isIncomingAudio ? 12000 : 1500
     ).catch(() => {});
-  }
-
-  // In WhatsApp multi-device, messages to linked accounts can arrive with @lid.
-  // For Main Obey (instance 'obey'), route unrecognized LIDs to Femi's verified number.
-  if (instanceName === "obey" || instanceName === "default") {
-    if (senderJid.endsWith("@lid") || !senderNumber || senderNumber.length > 13 || senderNumber.length < 10) {
-      senderNumber = FEMI_PERSONAL_NUMBER;
-    }
-  } else {
-    // For business workspaces, check alternate participant fields first
-    const alt = msgObj.key?.remoteJidAlt || msgObj.key?.participantPn || msgObj.key?.participant || "";
-    const cleanAlt = alt.replace(/@s\.whatsapp\.net|@g\.us|@lid/g, "").replace(/\D/g, "");
-    if (cleanAlt && cleanAlt.length >= 10 && cleanAlt.length <= 13) {
-      senderNumber = cleanAlt;
-    }
   }
 
   // Extract text, button clicks, and list selections
