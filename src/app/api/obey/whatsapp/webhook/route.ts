@@ -2343,6 +2343,11 @@ Output ONLY the comment text.`,
   ).trim();
 
 
+  const asksVoiceNote = /\b(voice note|send vn|send audio|voice message|talk to me|record audio|record a vn|send voice|speak to me)\b/i.test(userText);
+  if (senderNumber && asksVoiceNote) {
+    sendWhatsAppPresence(instanceName, senderNumber, "recording", 12000).catch(() => {});
+  }
+
   // Extract shared WhatsApp contact cards (e.g. vCard attachments)
   const contactCard = extractContactCardInfo(msgObj.message);
   if (contactCard) {

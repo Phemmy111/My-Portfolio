@@ -1247,21 +1247,31 @@ INSTRUCTIONS:
   // Tool: Modify Existing Image (With Seed Continuity and Reference Image Preservation)
   if (decision.action === "modify_existing_image") {
     const editInstruction = decision.action_params?.image_modification || userText;
+    const currentBase64 = mediaBase64;
     const basePrompt = userImageMemory?.last_image_prompt || userText;
     const lastUrl = userImageMemory?.last_image_url;
 
     let imgRes;
-    if (lastUrl) {
-      console.log(`[Companion] Attempting InstructPix2Pix on existing image URL: ${lastUrl.slice(0, 50)}...`);
+    if (currentBase64 || lastUrl) {
+      console.log(`[Companion] Attempting InstructPix2Pix on ${currentBase64 ? 'attached image' : 'stored image URL'}...`);
       const { editImageWithInstructPix2Pix } = await import("./image-generator");
       imgRes = await editImageWithInstructPix2Pix({
-        referenceImageUrl: lastUrl,
+        referenceImageBase64: currentBase64,
+        referenceImageUrl: currentBase64 ? undefined : lastUrl,
         instruction: editInstruction,
         workspaceId,
       });
     }
 
     if (!imgRes?.success) {
+      // If user provided a reference photograph, NEVER generate a completely different random person from scratch!
+      if (currentBase64 || lastUrl) {
+        return {
+          reply: cleanWhatsApp(
+            `⚠️ I could not alter the uploaded photograph directly without altering the facial identity. To protect your likeness, I have preserved your original image.`
+          ),
+        };
+      }
       const revisedPrompt = await synthesizeImageRevisionPrompt(basePrompt, editInstruction);
       const seed = userImageMemory?.last_image_seed !== undefined ? userImageMemory.last_image_seed : Math.floor(Math.random() * 1000000);
       imgRes = await generateAIImage(revisedPrompt, { seed, workspaceId });

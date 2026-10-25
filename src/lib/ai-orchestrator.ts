@@ -417,7 +417,17 @@ export async function transcribeAudio(
 
     const cleanMime = (mimeType || "audio/ogg").split(";")[0].trim();
 
-    // 1. Primary: Multimodal Gemini 2.5 Flash (Superb accuracy with Nigerian accents, Pidgin, short clips & English)
+    // 1. Primary: Lightning-fast, free, unlimited Cloudflare Workers AI Whisper (@cf/openai/whisper)
+    try {
+      const cfText = await transcribeWithCloudflareWhisper(cleanBase64);
+      if (cfText && cfText.length > 0 && !cfText.toLowerCase().includes("thank you for watching")) {
+        return { text: cfText, success: true };
+      }
+    } catch (cfErr) {
+      console.warn("[Transcribe] Cloudflare Whisper notice, attempting Gemini fallback:", cfErr);
+    }
+
+    // 2. Secondary Fallback: Multimodal Gemini 2.5 Flash
     try {
       const res = await executeAICompletion({
         systemPrompt:
@@ -446,17 +456,7 @@ export async function transcribeAudio(
         return { text: transcript, success: true };
       }
     } catch (geminiAudioErr) {
-      console.warn("[Transcribe] Gemini audio transcription notice, trying Cloudflare Whisper:", geminiAudioErr);
-    }
-
-    // 2. Secondary Fallback: Cloudflare Workers AI Whisper (@cf/openai/whisper)
-    try {
-      const cfText = await transcribeWithCloudflareWhisper(cleanBase64);
-      if (cfText && cfText.length > 0 && !cfText.toLowerCase().includes("thank you for watching")) {
-        return { text: cfText, success: true };
-      }
-    } catch (cfErr) {
-      console.warn("[Transcribe] Cloudflare Whisper fallback notice:", cfErr);
+      console.warn("[Transcribe] Gemini audio transcription error:", geminiAudioErr);
     }
 
     return { text: "", success: false, error: "Voice note audio was silent or transcription unavailable" };
