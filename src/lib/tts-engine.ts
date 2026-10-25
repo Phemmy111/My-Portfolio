@@ -116,13 +116,18 @@ export async function generateSpeechAudio(
     return null;
   }
 
+  const selectedVoice =
+    options.voice || resolveVoiceName(options.personality, options.gender);
+  const isNigerian =
+    selectedVoice.startsWith("en-NG") ||
+    options.personality === "nigerian_pidgin" ||
+    options.personality === "nigerian" ||
+    !options.voice;
+
   // 1. Primary: Microsoft Edge Neural TTS with Sec-MS-GEC v2 (en-NG-AbeoNeural for pure authentic Nigerian male vibe)
   try {
-    const selectedVoice =
-      options.voice || resolveVoiceName(options.personality, options.gender);
-
     const { synthesizeEdgeTTS } = await import("./edge-tts-client");
-    const buffer = await synthesizeEdgeTTS(cleanedText, selectedVoice, 12000);
+    const buffer = await synthesizeEdgeTTS(cleanedText, selectedVoice, 16000);
 
     if (buffer && buffer.length > 0) {
       return {
@@ -132,23 +137,42 @@ export async function generateSpeechAudio(
       };
     }
   } catch (edgeErr) {
-    console.warn("[TTS Engine] Native Edge TTS synthesis notice, attempting fallbacks:", edgeErr);
+    console.warn("[TTS Engine] Native Edge TTS primary voice notice:", edgeErr);
+    // If Nigerian voice failed, try alternative Nigerian neural voice (Ezinne) before foreign models
+    if (isNigerian) {
+      try {
+        const altVoice = selectedVoice === "en-NG-AbeoNeural" ? "en-NG-EzinneNeural" : "en-NG-AbeoNeural";
+        const { synthesizeEdgeTTS } = await import("./edge-tts-client");
+        const altBuffer = await synthesizeEdgeTTS(cleanedText, altVoice, 14000);
+        if (altBuffer && altBuffer.length > 0) {
+          return {
+            buffer: altBuffer,
+            base64: altBuffer.toString("base64"),
+            mimeType: "audio/mp3",
+          };
+        }
+      } catch (altErr) {
+        console.warn("[TTS Engine] Edge TTS fallback Nigerian voice notice:", altErr);
+      }
+    }
   }
 
-  // 2. Secondary Fallback: Lightning-fast Cloudflare Workers AI Deepgram Aura 2 (@cf/deepgram/aura-2-en)
-  try {
-    const selectedSpeaker =
-      options.gender === "female" ? "luna" : (options.speaker || "zeus");
-    const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText, selectedSpeaker);
-    if (cfBuffer && cfBuffer.length > 0) {
-      return {
-        buffer: cfBuffer,
-        base64: cfBuffer.toString("base64"),
-        mimeType: "audio/mp3",
-      };
+  // 2. Secondary Fallback: Cloudflare Workers AI Deepgram Aura 2 (Only for non-Nigerian or emergency fallback)
+  if (!isNigerian) {
+    try {
+      const selectedSpeaker =
+        options.gender === "female" ? "luna" : (options.speaker || "zeus");
+      const cfBuffer = await synthesizeWithCloudflareTTS(cleanedText, selectedSpeaker);
+      if (cfBuffer && cfBuffer.length > 0) {
+        return {
+          buffer: cfBuffer,
+          base64: cfBuffer.toString("base64"),
+          mimeType: "audio/mp3",
+        };
+      }
+    } catch (cfErr) {
+      console.warn("[TTS Engine] Cloudflare TTS notice, falling back:", cfErr);
     }
-  } catch (cfErr) {
-    console.warn("[TTS Engine] Cloudflare TTS notice, falling back:", cfErr);
   }
 
   // 2. Secondary Fallback: ElevenLabs (Only if explicit male/custom voice ID configured)

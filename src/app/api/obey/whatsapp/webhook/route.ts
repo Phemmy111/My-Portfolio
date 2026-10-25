@@ -175,31 +175,44 @@ interface ProcessMessageParams {
  */
 function extractStatusPostText(input: string): string | null {
   if (!input) return null;
-  const trimmed = input.trim();
+  // 1. Strip code block backticks (``` or `), markdown blockquotes (>), and quotation marks
+  let clean = input.trim();
+  clean = clean.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "");
+  clean = clean.replace(/^`+|`+$/g, "").trim();
+  clean = clean.replace(/^>+\s*/g, "").trim();
+  clean = clean.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
 
-  // Strip friendly conversational prefixes (e.g. "Obey, ", "Please ", "Help me ")
-  const clean = trimmed.replace(
+  // 2. Strip friendly conversational prefixes (e.g. "Obey, ", "Please ", "Help me ")
+  clean = clean.replace(
     /^(?:obey(?:\s+(?:ai|business|bot))?|please|kindly|help\s+me|can\s+you(?:\s+please)?)\s*[,:]?\s*/i,
     ""
-  );
+  ).trim();
 
-  // 1. Prefix with colon or hyphen: "Post: ...", "Post status: ...", "Status: ...", "Put on status: ..."
+  // Strip backticks/quotes again if wrapped inside friendly prefix
+  clean = clean.replace(/^`+|`+$/g, "").trim();
+  clean = clean.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+
+  // 3. Prefix with colon or hyphen: "Post: ...", "Post status: ...", "Status: ...", "Put on status: ..."
   const colonMatch = clean.match(
-    /^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|status\s+update|status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:to|on)\s+(?:my\s+)?status|post)\s*[:\-]\s*(.*)$/i
+    /^(?:post\s+(?:this\s+)?(?:to\s+|on\s+)?(?:my\s+)?status|status\s+update|status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:this\s+)?(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status|post)\s*[:\-]\s*(.*)$/is
   );
   if (colonMatch) {
-    return colonMatch[1]?.trim() || "";
+    let extracted = (colonMatch[1] || "").trim();
+    extracted = extracted.replace(/^`+|`+$/g, "").replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+    return extracted;
   }
 
-  // 2. Explicit phrase commands without colon: "Post status Hello", "Put on status Hello", "Post to status Hello"
+  // 4. Explicit phrase commands without colon: "Post status Hello", "Put on status Hello", "Post to status Hello"
   const phraseMatch = clean.match(
-    /^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:to|on)\s+(?:my\s+)?status)\s+(.*)$/i
+    /^(?:post\s+(?:this\s+)?(?:to\s+|on\s+)?(?:my\s+)?status|put\s+(?:this\s+)?on\s+(?:my\s+)?status|publish\s+(?:this\s+)?(?:to\s+|on\s+)?(?:my\s+)?status|share\s+(?:this\s+)?(?:to|on)\s+(?:my\s+)?status)\s+(.*)$/is
   );
   if (phraseMatch) {
-    return phraseMatch[1]?.trim() || "";
+    let extracted = (phraseMatch[1] || "").trim();
+    extracted = extracted.replace(/^`+|`+$/g, "").replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+    return extracted;
   }
 
-  // 3. Exact commands like "post status" or "post:" alone with no text
+  // 5. Exact commands like "post status" or "post:" alone with no text
   if (/^(?:post\s+(?:to\s+|on\s+)?(?:my\s+)?status|status|post\s*[:\-])$/i.test(clean)) {
     return "";
   }
@@ -399,14 +412,17 @@ async function handleObeyBusinessOwnerTurn(params: {
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|can (?:we|i) call)\b/i.test(userText);
   const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
 
+  const cleanHistory = (historyText || "")
+    .replace(/\b(?:It'?s|It is|Currently|As of)\s+(?:currently\s+)?\*\*\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT\*\*.*?(?:\.|\n|$)/gi, "")
+    .replace(/\b(?:It'?s|It is|Currently|As of)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT.*?(?:\.|\n|$)/gi, "")
+    .replace(/\n{3,}/g, "\n\n");
+
   const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
 You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
 
-CURRENT TIME & DATE IN NIGERIA (WAT / UTC+1 - INTERNAL CONTEXT ONLY):
-• Current Local Time: ${currentWatTime} (West Africa Time, Africa/Lagos)
-• Current Date: ${currentWatDate}
-• Whenever Boss asks for the time, date, or day, ALWAYS provide the exact current time (${currentWatTime} WAT) and date accurately.
-• CRITICAL: Do NOT state or mention the current time or date unless Boss explicitly asks for the time. NEVER append timestamps or "Nigeria Time:" to normal business replies.
+INTERNAL CLOCK (FOR CONTEXT ONLY):
+• Current Local Time: ${currentWatTime} (WAT, Africa/Lagos) | Date: ${currentWatDate}
+• 🚨 STRICT PROHIBITION: NEVER state, announce, or append the current time, date, or "It's currently ... WAT" to any message UNLESS Boss explicitly asked "What time is it?" or "What is the date?". Stating the time when unprompted is strictly forbidden.
 
 Business Knowledge:
 ${businessBio}
@@ -424,10 +440,8 @@ Your role and personality:
 - You are their dedicated business manager and operations co-pilot for "${currentWs.name}".
 - Address them respectfully and warmly as "Boss".
 - WHATSAPP STATUS POSTING RULES:
-  • You CANNOT post to WhatsApp status stories conversationally.
-  • Status posting is triggered ONLY by the backend command system when Boss prefixes their message with "Post: [text]" or "Post status: [text]".
-  • NEVER, under any circumstance, tell Boss that you have posted, published, or broadcast their message to WhatsApp status stories.
-  • If Boss asks to post or publish something in conversational language (e.g. "put this on status", "can you post this?"), NEVER pretend it is done. Instead, present the suggested draft and explicitly instruct Boss:
+  • Status posting is triggered by the command system when Boss prefixes their message with "Post: [text]" or "Post status: [text]".
+  • If Boss asks to post or publish something in conversational language (e.g. "put this on status", "can you post this?"), present the suggested draft and instruct Boss:
     "To post this live to your WhatsApp status story, simply reply with:
     Post: [Your text here]"
   You have the complete Obey Manual memorized. Guide Boss on how to use every feature: connecting WhatsApp with Plan B pairing code, saving leads with 1-click VCF export, creating Contact Buckets, running status broadcasts, and setting up keyword triggers.
@@ -445,7 +459,7 @@ ${getMainObeyFlagshipKnowledge()}`;
   if (visionMedia?.base64) {
     aiRes = await executeAICompletionWithMedia({
       systemPrompt,
-      userPrompt: `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss sent this image with note: "${userText}". Review it in relation to ${currentWs.name} business operations and advise Boss directly:`,
+      userPrompt: `${cleanHistory ? `RECENT CHAT HISTORY:\n${cleanHistory}\n\n` : ""}Boss sent this image with note: "${userText}". Review it in relation to ${currentWs.name} business operations and advise Boss directly:`,
       mediaBase64: visionMedia.base64,
       mimeType: visionMedia.mimetype || "image/jpeg",
       temperature: 0.5,
@@ -453,13 +467,13 @@ ${getMainObeyFlagshipKnowledge()}`;
   } else if (docMedia?.base64) {
     aiRes = await executeAICompletionWithMedia({
       systemPrompt,
-      userPrompt: `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss sent this document (${documentFileName || "Document"}) with note: "${userText}". Review its contents in relation to ${currentWs.name} business operations and advise Boss directly:`,
+      userPrompt: `${cleanHistory ? `RECENT CHAT HISTORY:\n${cleanHistory}\n\n` : ""}Boss sent this document (${documentFileName || "Document"}) with note: "${userText}". Review its contents in relation to ${currentWs.name} business operations and advise Boss directly:`,
       mediaBase64: docMedia.base64,
       mimeType: docMedia.mimetype || "application/pdf",
       temperature: 0.3,
     });
   } else {
-    const userPrompt = `${historyText ? `RECENT CHAT HISTORY:\n${historyText}\n\n` : ""}Boss says: "${userText}"`;
+    const userPrompt = `${cleanHistory ? `RECENT CHAT HISTORY:\n${cleanHistory}\n\n` : ""}Boss says: "${userText}"`;
     aiRes = await executeAICompletion({
       systemPrompt,
       userPrompt,
@@ -468,6 +482,42 @@ ${getMainObeyFlagshipKnowledge()}`;
   }
 
   let replyText = aiRes.text;
+
+  // Scrub accidental unsolicited timestamps unless user explicitly asked for the time
+  if (!/\b(?:what(?:\s+is|\s+'s)?\s+(?:the\s+)?time|what\s+date|what\s+day)\b/i.test(userText)) {
+    replyText = replyText
+      .replace(/\b(?:It'?s|It is|Currently|As of)\s+(?:currently\s+)?\*\*\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT\*\*.*?(?:\.|\n|$)/gi, "")
+      .replace(/\b(?:It'?s|It is|Currently|As of)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT.*?(?:\.|\n|$)/gi, "")
+      .trim();
+  }
+
+  // Intercept hallucinated status publish claim and actually post it live to WhatsApp Status!
+  if (/\b(?:status\s+published|posted\s+live\s+to\s+your\s+whatsapp\s+status|published\s+to\s+your\s+status\s+story)\b/i.test(replyText)) {
+    const draftMatch = replyText.match(/>\s*["“](.+?)["”]/s) || replyText.match(/["“](.+?)["”]/s);
+    const textToPublish = draftMatch ? draftMatch[1].trim() : "";
+    if (textToPublish && textToPublish.length > 5) {
+      const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
+      const postRes = await sendWhatsAppStatusPost({
+        text: textToPublish,
+        instanceName: targetInst,
+        font: 4,
+      });
+      if (postRes.success) {
+        replyText = `🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${textToPublish}"`;
+        try {
+          if (sql) {
+            await sql`
+              INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at, font)
+              VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${textToPublish}, 'posted', ${postRes.messageId || null}, NOW(), 4)
+            `;
+          }
+        } catch {}
+      } else {
+        replyText = `⚠️ Could not post status: ${postRes.error || "Evolution broadcast error"}. Please check your connection in Control Room.`;
+      }
+    }
+  }
+
   if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
     replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
   }
@@ -588,10 +638,9 @@ async function handleObeyBusinessCustomerTurn(params: {
   const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".
 You are chatting with ${customerName}.
 
-CURRENT TIME & DATE (WAT / UTC+1):
-• Current Time: ${currentWatTime} (West Africa Time, Africa/Lagos)
-• Current Date: ${currentWatDate}
-• If asked for the time or date, state the current time accurately (${currentWatTime} WAT).
+INTERNAL REAL-TIME CLOCK (FOR CONTEXT ONLY):
+• Current Time: ${currentWatTime} WAT | Date: ${currentWatDate}
+• 🚨 STRICT RULE: NEVER state, announce, or append the current time, date, or timestamps to any message UNLESS the customer explicitly asked "what time is it?" or "what date is it?". Mentioning the time unprompted is strictly forbidden.
 
 About "${currentWs.name}":
 ${businessBio}
@@ -688,11 +737,16 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
     }
   }
 
+  const cleanCustomerHistory = (historyText || "")
+    .replace(/\b(?:It'?s|It is|Currently|As of)\s+(?:currently\s+)?\*\*\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT\*\*.*?(?:\.|\n|$)/gi, "")
+    .replace(/\b(?:It'?s|It is|Currently|As of)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT.*?(?:\.|\n|$)/gi, "")
+    .replace(/\n{3,}/g, "\n\n");
+
   let aiRes: any;
   if (visionMedia?.base64) {
     aiRes = await executeAICompletionWithMedia({
       systemPrompt,
-      userPrompt: `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer sent an image with note: "${userText}". Analyze this image in relation to our business products and services catalog, and answer them directly in 1-2 sentences:`,
+      userPrompt: `${cleanCustomerHistory ? `RECENT CONVERSATION HISTORY:\n${cleanCustomerHistory}\n\n` : ""}Customer sent an image with note: "${userText}". Analyze this image in relation to our business products and services catalog, and answer them directly in 1-2 sentences:`,
       mediaBase64: visionMedia.base64,
       mimeType: visionMedia.mimetype || "image/jpeg",
       temperature: 0.5,
@@ -700,13 +754,13 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
   } else if (docMedia?.base64) {
     aiRes = await executeAICompletionWithMedia({
       systemPrompt,
-      userPrompt: `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer sent a document (${documentFileName || "Document"}) with note: "${userText}". Review this document and answer them directly in 1-2 sentences:`,
+      userPrompt: `${cleanCustomerHistory ? `RECENT CONVERSATION HISTORY:\n${cleanCustomerHistory}\n\n` : ""}Customer sent a document (${documentFileName || "Document"}) with note: "${userText}". Review this document and answer them directly in 1-2 sentences:`,
       mediaBase64: docMedia.base64,
       mimeType: docMedia.mimetype || "application/pdf",
       temperature: 0.3,
     });
   } else {
-    const userPrompt = `${historyText ? `RECENT CONVERSATION HISTORY:\n${historyText}\n\n` : ""}Customer says: "${userText}"`;
+    const userPrompt = `${cleanCustomerHistory ? `RECENT CONVERSATION HISTORY:\n${cleanCustomerHistory}\n\n` : ""}Customer says: "${userText}"`;
     aiRes = await executeAICompletion({
       systemPrompt,
       userPrompt,
@@ -715,6 +769,15 @@ ${userFullMemory?.gender === 'female' ? 'CUSTOMER GENDER: Female / Lady. Refer t
   }
 
   let replyText = aiRes.text;
+
+  // Scrub accidental unsolicited timestamps unless user explicitly asked for the time
+  if (!/\b(?:what(?:\s+is|\s+'s)?\s+(?:the\s+)?time|what\s+date|what\s+day)\b/i.test(userText)) {
+    replyText = replyText
+      .replace(/\b(?:It'?s|It is|Currently|As of)\s+(?:currently\s+)?\*\*\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT\*\*.*?(?:\.|\n|$)/gi, "")
+      .replace(/\b(?:It'?s|It is|Currently|As of)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT.*?(?:\.|\n|$)/gi, "")
+      .trim();
+  }
+
   if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
     replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
   }
@@ -851,8 +914,8 @@ async function processMessage(params: ProcessMessageParams) {
     try {
       const speech = await generateSpeechAudio({
         text: cleanSpoken,
+        voice: isDefaultFemi ? "en-NG-AbeoNeural" : (currentWs?.voice_name || "en-NG-AbeoNeural"),
         gender: "male",
-        speaker: "zeus",
         personality: currentWs?.voice_personality || (isDefaultFemi ? "nigerian_pidgin" : "friendly"),
       });
 
@@ -2119,16 +2182,11 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
             return;
           }
 
-          // Guard: Never comment on the business owner or platform founder's status
           const ownerClean = (currentWs?.owner_phone || "").replace(/\D/g, "");
           const isOwnerOrFounder =
-            (ownerClean && (posterPhone.endsWith(ownerClean.slice(-10)) || posterPhone === ownerClean)) ||
+            Boolean(ownerClean && (posterPhone.endsWith(ownerClean.slice(-10)) || posterPhone === ownerClean)) ||
             posterPhone === FEMI_PERSONAL_NUMBER ||
             posterPhone.endsWith(FEMI_PERSONAL_NUMBER.slice(-10));
-          if (isOwnerOrFounder) {
-            console.log(`[WA Status] Skipping status comment: Poster is owner or platform founder (${posterPhone}).`);
-            return;
-          }
 
           // Guard: Don't comment if contact is in the status comment exclusion list
           const isExcluded = await dbIsPhoneExcludedFromStatusComments(currentWs?.id, posterPhone);
@@ -2236,14 +2294,26 @@ Output ONLY the comment text.`,
               const comment = aiRes.text.trim().replace(/^["']|["']$/g, "");
               if (comment && comment.length >= 2) {
                 // Construct quoted status story so comment appears directly attached under the status story in WhatsApp
-                const quotedStatus = {
+                const quotedStatus: any = {
                   key: {
                     remoteJid: "status@broadcast",
                     id: msgObj.key?.id,
-                    participant: phoneJid || readParticipant || `${posterPhone}@s.whatsapp.net`,
+                    fromMe: false,
+                    participant: `${posterPhone}@s.whatsapp.net`,
                   },
-                  message: msgObj.message,
+                  message:
+                    msgObj.message && Object.keys(msgObj.message).length > 0
+                      ? msgObj.message
+                      : { conversation: statusText || "Status Story" },
                 };
+                if (
+                  !quotedStatus.message.conversation &&
+                  !quotedStatus.message.extendedTextMessage &&
+                  !quotedStatus.message.imageMessage &&
+                  !quotedStatus.message.videoMessage
+                ) {
+                  quotedStatus.message = { conversation: statusText || "Status Story" };
+                }
 
                 await sendWhatsAppMessage(comment, posterPhone, instanceName, quotedStatus);
                 await dbRecordStatusComment({

@@ -912,7 +912,7 @@ export async function sendWhatsAppStatusPost(params: {
           content: cleanWhatsAppFormatting(params.text),
           backgroundColor: params.backgroundColor || "#075E54",
           textColor: params.textColor || "#FFFFFF",
-          font: typeof params.font === "number" ? params.font : 0,
+          font: typeof params.font === "number" && params.font >= 1 && params.font <= 5 ? params.font : 4,
           statusJidList: jidList,
         };
 

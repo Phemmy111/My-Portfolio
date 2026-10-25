@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       scheduled_time_ms,
       background_color = "#075E54",
       text_color = "#FFFFFF",
-      font = 0,
+      font = 4,
       auto_post_now = true,
       auto_status_enabled,
       auto_status_interval,
@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
           ${media_type || (hasMedia ? "image" : "text")},
           ${background_color || "#075E54"},
           ${text_color || "#FFFFFF"},
-          ${font || 1},
+          ${typeof font === "number" && font >= 1 && font <= 5 ? font : 4},
           NULL,
           ${initialStatus},
           NULL,
@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
           instanceName,
           backgroundColor: background_color || "#075E54",
           textColor: text_color || "#FFFFFF",
-          font: typeof font === "number" && font >= 1 ? font : 1,
+          font: typeof font === "number" && font >= 1 && font <= 5 ? font : 4,
         })
           .then(async (dispatchRes) => {
             if (dispatchRes.success && dispatchRes.messageId) {
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
         media_type: media_type || (hasMedia ? "image" : "text"),
         background_color: background_color || "#075E54",
         text_color: text_color || "#FFFFFF",
-        font: typeof font === "number" && font >= 1 ? font : 1,
+        font: typeof font === "number" && font >= 1 && font <= 5 ? font : 4,
         message_id: null,
         status: initialStatus,
         error_message: null,

@@ -458,7 +458,7 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
-export async function synthesizeEdgeTTS(
+async function executeSingleEdgeTTSSynthesis(
   text: string,
   voice: string = "en-NG-AbeoNeural",
   timeoutMs: number = 15000
@@ -582,4 +582,24 @@ export async function synthesizeEdgeTTS(
       }
     });
   });
+}
+
+export async function synthesizeEdgeTTS(
+  text: string,
+  voice: string = "en-NG-AbeoNeural",
+  timeoutMs: number = 16000
+): Promise<Buffer> {
+  let lastErr: any;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await executeSingleEdgeTTSSynthesis(text, voice, timeoutMs);
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[Edge TTS] Attempt ${attempt} failed (${err?.message || err}), retrying...`);
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+  }
+  throw lastErr;
 }
