@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
   sql,
   dbGetWorkspaceStatuses,
@@ -376,18 +376,20 @@ export async function POST(req: NextRequest) {
         )
       `;
 
-      // Dispatch to WhatsApp Status asynchronously so client returns in <50ms without 504 timeout
+      // Dispatch to WhatsApp Status in background via after() so client returns immediately and Vercel does not freeze
       if (!isScheduled && auto_post_now) {
-        sendWhatsAppStatusPost({
-          text: (content || "").trim(),
-          mediaUrl: media_url ? media_url.trim() : undefined,
-          mediaType: normalizedMediaType,
-          instanceName,
-          backgroundColor: background_color || "#075E54",
-          textColor: text_color || "#FFFFFF",
-          font: typeof font === "number" && font >= 1 && font <= 5 ? font : 4,
-        })
-          .then(async (dispatchRes) => {
+        after(async () => {
+          try {
+            const dispatchRes = await sendWhatsAppStatusPost({
+              text: (content || "").trim(),
+              mediaUrl: media_url ? media_url.trim() : undefined,
+              mediaType: normalizedMediaType,
+              instanceName,
+              backgroundColor: background_color || "#075E54",
+              textColor: text_color || "#FFFFFF",
+              font: typeof font === "number" && font >= 1 && font <= 5 ? font : 4,
+            });
+
             if (dispatchRes.success && dispatchRes.messageId) {
               await sql`
                 UPDATE workspace_statuses
@@ -398,17 +400,28 @@ export async function POST(req: NextRequest) {
                 WHERE id = ${statusId}
               `;
             } else if (!dispatchRes.success) {
+              console.warn(`[Status Broadcast] Broadcast failed for ${statusId}:`, dispatchRes.error);
               await sql`
                 UPDATE workspace_statuses
                 SET error_message = ${dispatchRes.error || "Evolution broadcast error"},
+                    status = 'failed',
                     updated_at = NOW()
                 WHERE id = ${statusId}
               `;
             }
-          })
-          .catch((err) => {
+          } catch (err: any) {
             console.error("[Status Broadcast Background] Error:", err);
-          });
+            try {
+              await sql`
+                UPDATE workspace_statuses
+                SET error_message = ${err.message || "Broadcast exception"},
+                    status = 'failed',
+                    updated_at = NOW()
+                WHERE id = ${statusId}
+              `;
+            } catch {}
+          }
+        });
       }
 
       const createdStatusObj = {

@@ -906,6 +906,7 @@ export async function sendWhatsAppStatusPost(params: {
           type: params.mediaType || "image",
           content: cleanMediaUrl,
           caption: cleanWhatsAppFormatting(params.text),
+          allContacts: false,
           statusJidList: jidList,
         }
       : {
@@ -914,6 +915,7 @@ export async function sendWhatsAppStatusPost(params: {
           backgroundColor: params.backgroundColor || "#075E54",
           textColor: params.textColor || "#FFFFFF",
           font: typeof params.font === "number" && params.font >= 1 && params.font <= 5 ? params.font : 4,
+          allContacts: false,
           statusJidList: jidList,
         };
 
