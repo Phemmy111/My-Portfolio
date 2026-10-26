@@ -49,11 +49,13 @@ This is your proactive 8:00 AM WAT Morning Briefing that you send directly to Fe
 
     const briefText = aiRes.text;
 
+    const bossPhone = process.env.BOSS_WHATSAPP_PHONE || "2348120934828";
+
     // 1. Dispatch to Telegram (phone)
     await sendTelegramMessage(briefText);
 
     // 2. Dispatch to WhatsApp (phone)
-    await sendWhatsAppMessage(briefText);
+    await sendWhatsAppMessage(briefText, bossPhone);
 
     // 3. Dispatch to Gmail SMTP (inbox)
     try {
@@ -109,11 +111,13 @@ This is your proactive 8:00 PM WAT Evening Check-In that you send directly to Fe
 
     const wrapupText = aiRes.text;
 
+    const bossPhone = process.env.BOSS_WHATSAPP_PHONE || "2348120934828";
+
     // 1. Dispatch to Telegram
     await sendTelegramMessage(wrapupText);
 
     // 2. Dispatch to WhatsApp
-    await sendWhatsAppMessage(wrapupText);
+    await sendWhatsAppMessage(wrapupText, bossPhone);
 
     // 3. Dispatch to Gmail SMTP
     try {

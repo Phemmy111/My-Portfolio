@@ -35,7 +35,7 @@ export async function sendWhatsAppMessage(
       customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
 
     if (!recipient) {
-      return { success: false, error: "Recipient phone number is required" };
+      recipient = process.env.BOSS_WHATSAPP_PHONE || "2348120934828";
     }
 
     let cleaned = recipient

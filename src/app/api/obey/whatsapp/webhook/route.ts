@@ -1787,7 +1787,11 @@ How can I help you today?`;
 
     if (lower.includes("morning brief") || lower.includes("morning report") || lower === "briefing") {
       try {
-        await dispatchMorningBriefing();
+        await reply("⚡ On it Boss! Generating your executive operational briefing and dispatching to your email & phone...");
+        const res = await dispatchMorningBriefing();
+        if (res.text) {
+          await reply(res.text);
+        }
         return;
       } catch (e: any) {
         await reply(`Boss, error running morning briefing: ${e.message}`);
@@ -1797,7 +1801,11 @@ How can I help you today?`;
 
     if (lower.includes("evening brief") || lower.includes("evening debrief") || lower.includes("wrap up") || lower.includes("wrapup")) {
       try {
-        await dispatchEveningWrapup();
+        await reply("🌙 On it Boss! Generating your evening check-in and wrap-up...");
+        const res = await dispatchEveningWrapup();
+        if (res.text) {
+          await reply(res.text);
+        }
         return;
       } catch (e: any) {
         await reply(`Boss, error running evening wrapup: ${e.message}`);
