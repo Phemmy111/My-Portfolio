@@ -75,8 +75,10 @@ export async function GET(
     const needQr = req.nextUrl.searchParams.get("qr") === "true";
     const qrData = needQr ? await getEvolutionInstanceQR(instanceName) : null;
 
+    const computedStatus = currentState === "open" ? "connected" : (currentState === "connecting" ? "connecting" : "disconnected");
+
     return NextResponse.json({
-      status: currentState === "open" ? "connected" : "disconnected",
+      status: computedStatus,
       instanceName,
       connectedNumber,
       profileName,
