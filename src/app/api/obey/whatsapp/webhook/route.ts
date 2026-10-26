@@ -1120,6 +1120,23 @@ async function processMessage(params: ProcessMessageParams) {
     return;
   }
 
+  // 1a-1. Strict Subscription & Trial Enforcement (Flagship 'femi-adeleke' is permanently active)
+  if (currentWs && currentWs.slug !== "femi-adeleke") {
+    const isTrial = currentWs.subscription_status === "trial";
+    const trialExpired = Boolean(isTrial && currentWs.trial_ends_at && new Date(currentWs.trial_ends_at).getTime() < Date.now());
+    const isSuspendedOrExpired = currentWs.subscription_status === "expired" || currentWs.subscription_status === "past_due" || trialExpired;
+
+    if (isSuspendedOrExpired) {
+      console.log(`[WA Trial Guard] Workspace ${currentWs.name} (${currentWs.slug}) trial/subscription expired. Auto-replies suppressed.`);
+      if (isOwner) {
+        await reply(
+          `⚠️ *[Obey Business Notice]*\n\nYour 14-day free trial for *${currentWs.name}* has expired.\n\nTo continue letting Obey autonomously reply to your customers, send voice notes, and close orders, please renew your subscription in your Control Room:\nhttps://femiadeleke.com/control-room`
+        );
+      }
+      return;
+    }
+  }
+
   // 1a-2. Sliding-Window Anti-Spam & Abuse Protection (Phase 3 Enterprise Scale)
   if (!isOwner && currentWs) {
     const spamCheck = checkCustomerSpamRateLimit({
@@ -2207,6 +2224,15 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
           // Guard: Don't comment on the bot's own posted status
           if (msgObj.key?.fromMe) {
             return;
+          }
+
+          // Guard: Don't comment if workspace subscription / trial has expired
+          if (currentWs && currentWs.slug !== "femi-adeleke") {
+            const isTrial = currentWs.subscription_status === "trial";
+            const trialExpired = Boolean(isTrial && currentWs.trial_ends_at && new Date(currentWs.trial_ends_at).getTime() < Date.now());
+            if (currentWs.subscription_status === "expired" || currentWs.subscription_status === "past_due" || trialExpired) {
+              return;
+            }
           }
 
           const ownerClean = (currentWs?.owner_phone || "").replace(/\D/g, "");

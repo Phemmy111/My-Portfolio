@@ -2724,12 +2724,24 @@ function ControlRoomContent() {
                     {currentWs.plan || "Starter"} Plan
                   </span>
                   {currentWs.subscription_status === "trial" ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                      <span>
-                        Trial ({currentWs.trial_ends_at ? `${Math.max(0, Math.ceil((new Date(currentWs.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d left` : "Active"})
-                      </span>
-                    </span>
+                    (() => {
+                      const daysLeft = currentWs.trial_ends_at
+                        ? Math.max(0, Math.ceil((new Date(currentWs.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                        : 14;
+                      const isExpired = daysLeft === 0;
+                      return (
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 border ${
+                            isExpired
+                              ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                              : "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                          }`}
+                        >
+                          <Sparkles className={`w-3 h-3 ${isExpired ? "text-rose-400" : "text-amber-400"}`} />
+                          <span>{isExpired ? "Trial Expired" : `14-Day Trial (${daysLeft}d left)`}</span>
+                        </span>
+                      );
+                    })()
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active

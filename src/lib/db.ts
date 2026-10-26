@@ -913,7 +913,7 @@ export async function createWorkspaceTables() {
     await db`CREATE INDEX IF NOT EXISTS idx_workspace_call_logs_ws ON workspace_call_logs(workspace_id)`;
 
     // Ensure trial_ends_at and owner_clerk_id columns exist
-    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '7 days'`;
+    await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '14 days'`;
     await db`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_clerk_id TEXT`;
     await db`CREATE INDEX IF NOT EXISTS idx_workspaces_owner_clerk_id ON workspaces(owner_clerk_id)`;
 
@@ -924,13 +924,13 @@ export async function createWorkspaceTables() {
         starter_price INTEGER DEFAULT 9500,
         pro_price INTEGER DEFAULT 22500,
         enterprise_price INTEGER DEFAULT 55000,
-        trial_days INTEGER DEFAULT 7,
+        trial_days INTEGER DEFAULT 14,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `;
     await db`
       INSERT INTO platform_pricing (id, starter_price, pro_price, enterprise_price, trial_days)
-      VALUES ('default', 9500, 22500, 55000, 7)
+      VALUES ('default', 9500, 22500, 55000, 14)
       ON CONFLICT (id) DO NOTHING
     `;
 
@@ -1646,7 +1646,7 @@ export async function dbCreateWorkspace(params: {
   try {
     await createWorkspaceTables();
     const pricing = await dbGetPlatformPricing();
-    const trialDays = pricing.trial_days || 7;
+    const trialDays = pricing.trial_days || 14;
     const id = `ws_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const selectedPlan = (params.plan === 'trial' || !params.plan) ? 'pro' : params.plan;
     const [created] = await db`
@@ -2335,12 +2335,12 @@ export async function dbGetPlatformPricing(): Promise<PlatformPricing> {
   } catch (e) {
     console.warn("dbGetPlatformPricing error:", e);
   }
-  return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+  return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 14 };
 }
 
 export async function dbUpdatePlatformPricing(pricing: Partial<PlatformPricing>): Promise<PlatformPricing> {
   const db = getSql();
-  if (!db) return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+  if (!db) return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 14 };
   try {
     await createWorkspaceTables();
     const current = await dbGetPlatformPricing();
@@ -2358,7 +2358,7 @@ export async function dbUpdatePlatformPricing(pricing: Partial<PlatformPricing>)
     return updated;
   } catch (e) {
     console.error("dbUpdatePlatformPricing error:", e);
-    return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 7 };
+    return { starter_price: 9500, pro_price: 22500, enterprise_price: 55000, trial_days: 14 };
   }
 }
 
