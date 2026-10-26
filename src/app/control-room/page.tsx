@@ -225,6 +225,7 @@ function ControlRoomContent() {
   // WhatsApp Plan B (Pairing Code) states
   const [waConnectMethod, setWaConnectMethod] = useState<"code" | "qr">("code");
   const [waPhoneNumber, setWaPhoneNumber] = useState<string>("");
+  const [waCountryCode, setWaCountryCode] = useState<string>("234");
   const [waPairingLoading, setWaPairingLoading] = useState<boolean>(false);
   const [waPairingError, setWaPairingError] = useState<string>("");
   const [waCopiedCode, setWaCopiedCode] = useState<boolean>(false);
@@ -1756,18 +1757,31 @@ function ControlRoomContent() {
     }
   };
 
-  useEffect(() => {
-    if (currentWs?.owner_phone && !waPhoneNumber) {
-      setWaPhoneNumber(currentWs.owner_phone);
-    }
-  }, [currentWs?.owner_phone, waPhoneNumber]);
-
   const handleGeneratePairingCode = async (phoneToUse?: string) => {
     if (!currentWs) return;
-    const targetPhone = (phoneToUse || waPhoneNumber || currentWs.owner_phone || "").replace(/\D/g, "");
-    if (!targetPhone || targetPhone.length < 9) {
-      setWaPairingError("Please enter a valid WhatsApp phone number with country code (e.g. 2348120934828).");
+
+    // Clean local input
+    let localDigits = (phoneToUse || waPhoneNumber || "").replace(/\D/g, "");
+    if (localDigits.startsWith("0")) {
+      localDigits = localDigits.replace(/^0+/, "");
+    }
+    if (localDigits.startsWith(waCountryCode) && localDigits.length > waCountryCode.length + 5) {
+      localDigits = localDigits.slice(waCountryCode.length);
+    }
+
+    const targetPhone = `${waCountryCode}${localDigits}`;
+
+    if (!localDigits || localDigits.length < 7 || targetPhone.length < 9) {
+      setWaPairingError("Please enter your 10-digit WhatsApp number (e.g. 812 093 4828).");
       return;
+    }
+
+    const cleanOwner = (currentWs.owner_phone || "").replace(/\D/g, "");
+    if (cleanOwner && targetPhone === cleanOwner) {
+      const confirmBoss = window.confirm(
+        `⚠️ WARNING: This number (${targetPhone}) is your Boss / Owner WhatsApp number.\n\nObey Bot needs its own separate WhatsApp SIM / number so it can chat with clients and take orders without conflicting with your personal phone.\n\nDo you still want to proceed with using your personal phone as the Bot?`
+      );
+      if (!confirmBoss) return;
     }
 
     setWaPairingLoading(true);
@@ -1843,7 +1857,7 @@ function ControlRoomContent() {
       setWaProfileName("");
       setWaConnectMethod(thenMode);
       if (thenMode === "code") {
-        setWaPhoneNumber(currentWs.owner_phone || "");
+        setWaPhoneNumber("");
       } else {
         handleInitWhatsApp();
       }
@@ -3431,43 +3445,99 @@ function ControlRoomContent() {
                       </div>
 
                       {/* Pairing Code Generator & Display Card */}
-                      <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-200 mb-1.5">
-                            Enter Your WhatsApp Phone Number
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <div className="relative flex-1">
+                      <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-5">
+                        <div className="space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-1.5">
+                            <label className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                              <span>Bot WhatsApp SIM Number</span>
+                              <span className="text-[10px] text-amber-400 font-normal">(Dedicated for Obey)</span>
+                            </label>
+                            {currentWs.owner_phone && (
+                              <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-700/60 flex items-center gap-1">
+                                <span>👑 Boss Phone:</span>
+                                <strong className="text-emerald-400">+{currentWs.owner_phone}</strong>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Mobile-Friendly Input + Country Code Group */}
+                          <div className="flex flex-col sm:flex-row gap-2.5">
+                            <div className="relative flex-1 flex rounded-xl border border-slate-700 bg-slate-950/80 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/40 transition overflow-hidden">
+                              {/* Constant Country Code Badge */}
+                              <div className="flex items-center gap-1.5 px-3.5 bg-slate-800/90 border-r border-slate-700/80 text-amber-300 font-bold font-mono text-xs sm:text-sm select-none shrink-0">
+                                <span>🇳🇬 +{waCountryCode}</span>
+                              </div>
                               <input
                                 type="tel"
+                                inputMode="numeric"
                                 value={waPhoneNumber}
-                                onChange={(e) => setWaPhoneNumber(e.target.value)}
-                                placeholder="e.g. 2348120934828"
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+                                onChange={(e) => {
+                                  let val = e.target.value.replace(/\D/g, "");
+                                  if (val.startsWith("0")) val = val.replace(/^0+/, "");
+                                  if (val.startsWith(waCountryCode) && val.length > waCountryCode.length + 5) {
+                                    val = val.slice(waCountryCode.length);
+                                  }
+                                  setWaPhoneNumber(val);
+                                }}
+                                placeholder="812 093 4828 (10 digits)"
+                                className="w-full bg-transparent px-3.5 py-3 text-sm sm:text-base text-white font-mono placeholder:text-slate-500 focus:outline-none"
                               />
+                              {waPhoneNumber && (
+                                <button
+                                  type="button"
+                                  onClick={() => setWaPhoneNumber("")}
+                                  className="px-3 text-slate-500 hover:text-slate-300 text-xs transition"
+                                >
+                                  ✕
+                                </button>
+                              )}
                             </div>
+
                             <button
                               onClick={() => handleGeneratePairingCode()}
                               disabled={waPairingLoading}
-                              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition disabled:opacity-50 shrink-0 shadow-lg shadow-amber-500/20"
+                              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shrink-0 shadow-lg shadow-amber-500/20 cursor-pointer"
                             >
                               {waPairingLoading ? (
                                 <>
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Generating...</span>
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  <span>Generating Code...</span>
                                 </>
                               ) : (
                                 <>
-                                  <Zap className="w-3.5 h-3.5" />
+                                  <Zap className="w-4 h-4" />
                                   <span>Get 8-Digit Code</span>
                                 </>
                               )}
                             </button>
                           </div>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            Include your country code without + or spaces (e.g. 234 for Nigeria, 44 for UK, 1 for US).
-                          </p>
+
+                          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-1 pt-0.5">
+                            <span>Country code (+234) is fixed in front. Just enter the local 10 digits.</span>
+                            {waPhoneNumber && (
+                              <span className="font-mono text-amber-400/90 text-[10px]">
+                                Bot Number: +{waCountryCode}{waPhoneNumber}
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Boss Phone Conflict Warning */}
+                        {Boolean(
+                          currentWs.owner_phone &&
+                          waPhoneNumber &&
+                          `${waCountryCode}${waPhoneNumber}` === (currentWs.owner_phone || "").replace(/\D/g, "")
+                        ) && (
+                          <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs text-amber-200 space-y-1 animate-fadeIn">
+                            <div className="flex items-center gap-2 font-bold text-amber-300">
+                              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                              <span>⚠️ This matches your Boss / Owner Phone (+{currentWs.owner_phone})</span>
+                            </div>
+                            <p className="text-[11px] leading-relaxed text-slate-300">
+                              Obey Bot needs its <strong>own separate WhatsApp SIM card</strong> so it can respond to clients and take orders without interfering with your personal phone.
+                            </p>
+                          </div>
+                        )}
 
                         {waPairingError && (
                           <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">

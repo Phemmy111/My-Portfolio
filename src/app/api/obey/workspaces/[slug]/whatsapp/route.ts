@@ -124,11 +124,11 @@ export async function POST(
 
     // PLAN B: Pairing Code flow (no QR code / single mobile phone)
     if (action === "pairing_code") {
-      const phoneNumber = body.phoneNumber || ws.owner_phone || "";
+      const phoneNumber = body.phoneNumber || "";
       const cleaned = phoneNumber.replace(/\D/g, "");
       if (!cleaned || cleaned.length < 9) {
         return NextResponse.json(
-          { error: "A valid phone number with country code is required for pairing code generation." },
+          { error: "A valid Bot WhatsApp phone number with country code is required." },
           { status: 400 }
         );
       }
