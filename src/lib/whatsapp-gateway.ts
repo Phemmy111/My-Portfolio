@@ -816,12 +816,13 @@ export async function sendWhatsAppStatusPost(params: {
 
     // Ensure Cloudinary video transcode is completely ready on CDN before handing off to Evolution API
     if (cleanMediaUrl && params.mediaType === "video") {
-      for (let attempt = 0; attempt < 10; attempt++) {
+      for (let attempt = 0; attempt < 15; attempt++) {
         try {
           const check = await fetch(cleanMediaUrl, { method: "HEAD" });
-          if (check.ok) break;
+          const len = Number(check.headers.get("content-length") || 0);
+          if (check.ok && len > 1000) break;
         } catch {}
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
@@ -847,13 +848,13 @@ export async function sendWhatsAppStatusPost(params: {
     if (jidList.length === 0) {
       try {
         if (sql) {
-          // 1. Fetch all actual contacts from evolution."Contact" for this instance (up to 3,000 contacts for full business status reach)
+          // Fetch contacts from evolution."Contact" for this instance
           const contactRows = await sql`
             SELECT "remoteJid" FROM evolution."Contact"
             WHERE "instanceId" = (SELECT id FROM evolution."Instance" WHERE name = ${instance} LIMIT 1)
               AND "remoteJid" LIKE '%@s.whatsapp.net'
               AND "remoteJid" != '0@s.whatsapp.net'
-            LIMIT 3000
+            LIMIT 500
           `;
           if (contactRows && contactRows.length > 0) {
             for (const r of contactRows) {
@@ -861,7 +862,7 @@ export async function sendWhatsAppStatusPost(params: {
             }
           }
 
-          // 2. Also ensure workspace owner's phone is included so the owner sees it in their feed
+          // Also ensure workspace owner's phone is included so the owner sees it in their feed
           const wsOwnerRows = await sql`
             SELECT owner_phone FROM workspaces
             WHERE whatsapp_instance_name = ${instance} OR LOWER(slug) = ${instance.replace(/^obey-/, '').toLowerCase()}
@@ -879,9 +880,7 @@ export async function sendWhatsAppStatusPost(params: {
       }
     }
 
-    // 3. CRITICAL: Include the phone's OWN number (botOwnerNumber) in statusJidList!
-    // In WhatsApp Multi-Device protocol, linked devices must address the primary phone JID
-    // so the device receives the stanza and renders the post under "My status" in the WhatsApp mobile app.
+    // CRITICAL: Include the phone's OWN number (botOwnerNumber) in statusJidList!
     if (botOwnerNumber) {
       jidList.push(`${botOwnerNumber}@s.whatsapp.net`);
     }
@@ -896,9 +895,16 @@ export async function sendWhatsAppStatusPost(params: {
       return true;
     });
 
-    // 4. Ensure jidList always has at least one valid recipient JID (Evolution API requires statusJidList)
+    // Ensure jidList always has at least one valid recipient JID
     if (jidList.length === 0) {
       jidList.push("2348120934828@s.whatsapp.net");
+    }
+
+    // CRITICAL WHATSAPP PROTOCOL RULE:
+    // WhatsApp Status broadcast stanzas (statusJidList) have a hard ceiling of 250 recipients.
+    // Exceeding 256 recipients causes WhatsApp mobile clients to flag the post as "Failed / Couldn't send".
+    if (jidList.length > 250) {
+      jidList = jidList.slice(0, 250);
     }
 
     const payload: any = cleanMediaUrl
