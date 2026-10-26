@@ -7,6 +7,7 @@ import {
   dbMarkAllUnsavedLeads,
   dbToggleLeadAutoSave,
   dbToggleWorkspaceAutoSave,
+  isValidE164Phone,
 } from "@/lib/db";
 
 interface ContactItem {
@@ -30,11 +31,7 @@ function sanitizePhone(raw: string): string {
 }
 
 function isValidPhoneNumber(phone: string): boolean {
-  if (!phone) return false;
-  const clean = sanitizePhone(phone);
-  // Real international E.164 telephone numbers are 9 to 13 digits (e.g. 2348012345678, US 10 digits).
-  // Internal WhatsApp multi-device LIDs are 14 to 16 digits and cannot be phoned, texted, or saved as telephone contacts.
-  return clean.length >= 9 && clean.length <= 13;
+  return isValidE164Phone(phone);
 }
 
 function generateVCard(contacts: ContactItem[], businessName: string): string {

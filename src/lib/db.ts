@@ -2027,6 +2027,46 @@ export async function dbDeleteWorkspaceRule(id: string, workspaceId: string): Pr
   }
 }
 
+export function isValidE164Phone(phone: string): boolean {
+  if (!phone) return false;
+  const clean = phone.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+  if (!clean || clean.length < 9 || clean.length > 15) return false;
+
+  // Nigeria (+234): 13 digits starting with 234 followed by valid mobile prefix (70, 71, 80, 81, 90, 91)
+  if (clean.startsWith("234")) {
+    const prefix = clean.slice(3, 5);
+    return clean.length === 13 && ["70", "71", "80", "81", "90", "91"].includes(prefix);
+  }
+
+  // Ghana (+233): 12 digits
+  if (clean.startsWith("233")) return clean.length === 12;
+
+  // Kenya (+254): 12 digits
+  if (clean.startsWith("254")) return clean.length === 12;
+
+  // South Africa (+27): 11 digits
+  if (clean.startsWith("27")) return clean.length === 11;
+
+  // UK (+44): 12 digits, mobile prefix 7
+  if (clean.startsWith("44")) return clean.length === 12 && clean[2] === "7";
+
+  // US/Canada (+1): 11 digits
+  if (clean.startsWith("1")) return clean.length === 11;
+
+  // Other West African & African countries
+  if (clean.startsWith("229") || clean.startsWith("228") || clean.startsWith("225") || clean.startsWith("237")) {
+    return clean.length >= 11 && clean.length <= 12;
+  }
+
+  // Reject internal WhatsApp LIDs with unassigned or fake prefixes
+  const invalidLidPrefixes = ["89", "326", "403", "902", "307", "448", "861", "496", "183", "407", "469", "616", "168", "847", "534"];
+  for (const p of invalidLidPrefixes) {
+    if (clean.startsWith(p)) return false;
+  }
+
+  return clean.length >= 10 && clean.length <= 13;
+}
+
 export async function dbUpsertWorkspaceLead(params: {
   workspace_id: string;
   phone: string;
@@ -2046,8 +2086,8 @@ export async function dbUpsertWorkspaceLead(params: {
   try {
     await createWorkspaceTables();
     const cleanPhone = params.phone.replace(/\D/g, "");
-    // Strict telephone validation: never insert WhatsApp internal LIDs (14-16 digits) into CRM leads!
-    if (!cleanPhone || cleanPhone.length < 9 || cleanPhone.length > 13) {
+    // Strict telephone validation: never insert WhatsApp internal LIDs into CRM leads!
+    if (!isValidE164Phone(cleanPhone)) {
       return null;
     }
     const id = `lead_${cleanPhone}_${params.workspace_id}`;

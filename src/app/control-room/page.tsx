@@ -6329,29 +6329,84 @@ async function handleRequest(request) {
         {activeTab === "leads" && (
           <div className="space-y-6">
             {/* Header & Feature Explanation */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                      <Users className="w-5 h-5 text-emerald-400" />
-                      WhatsApp Contacts &amp; Auto-Saver CRM
-                    </h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-emerald-400" />
-                      Status Views Booster 🚀
-                    </span>
+            {/* Header & Feature Explanation */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              {/* Header Title Row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                    <Users className="w-5 h-5" />
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                    Obey syncs all numbers from your phone&apos;s WhatsApp and automatically saves any new incoming customer number.
-                    <span className="text-emerald-300 font-medium ml-1">
-                      When both you and the customer save each other&apos;s number, WhatsApp unlocks 100% status story visibility for maximum reach!
-                    </span>
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-lg font-bold text-white tracking-tight">
+                        WhatsApp Contacts &amp; Auto-Saver CRM
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-emerald-400" />
+                        Status Views Booster 🚀
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Syncs live from your WhatsApp and auto-captures new customer leads 24/7.
+                    </p>
+                  </div>
                 </div>
 
+                {/* Quick Utility Tools */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      setBroadcastResult(null);
+                      setShowBroadcastModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold border border-emerald-500/20 transition cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Broadcast</span>
+                  </button>
+
+                  <a
+                    href={`/api/obey/workspaces/${currentWs?.slug}/contacts?format=csv&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}
+                    download
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
+                    title="Export contacts as Excel / CSV spreadsheet"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>CSV</span>
+                  </a>
+
+                  <button
+                    onClick={() => currentWs && fetchContacts(currentWs.slug, contactTab)}
+                    disabled={contactsLoading}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+                    title="Refresh contacts"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${contactsLoading ? "animate-spin text-emerald-400" : ""}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Reciprocal Policy Guide & Contact Saving Action Center */}
+              <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div className="text-xs space-y-0.5">
+                    <div className="text-slate-200 font-bold flex items-center gap-1.5">
+                      <span>WhatsApp Reciprocal Status Visibility</span>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">Official Rule</span>
+                    </div>
+                    <p className="text-slate-400 max-w-xl leading-relaxed">
+                      WhatsApp only displays your status updates to customers who have your number saved, and whose numbers you have saved. Saving pending contacts unlocks 100% mutual story reach!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Primary Action Buttons */}
                 {currentWs && (
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                     <button
                       onClick={handleSaveAllUnsaved}
                       disabled={contactActionLoading === "save_all" || contactsStats.unsaved === 0}
@@ -6373,7 +6428,7 @@ async function handleRequest(request) {
                       title="Send WhatsApp contact cards directly to your phone WhatsApp with a 1-tap 'Save Contact' button"
                     >
                       <MessageSquare className="w-4 h-4 text-emerald-400" />
-                      <span>{contactActionLoading === "push_whatsapp" ? "Pushing to WhatsApp..." : "Push to My WhatsApp"}</span>
+                      <span>{contactActionLoading === "push_whatsapp" ? "Pushing..." : "Push to My WhatsApp"}</span>
                     </button>
 
                     <button
@@ -6383,36 +6438,6 @@ async function handleRequest(request) {
                     >
                       <Phone className="w-4 h-4 text-teal-400" />
                       <span>Save to Phone</span>
-                    </button>
-
-                    <a
-                      href={`/api/obey/workspaces/${currentWs.slug}/contacts?format=csv&scope=${contactTab === "unsaved" ? "unsaved" : "all"}`}
-                      download
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition"
-                      title="Export contacts as Excel / CSV spreadsheet"
-                    >
-                      <Download className="w-4 h-4 text-emerald-400" />
-                      <span>CSV</span>
-                    </a>
-
-                    <button
-                      onClick={() => {
-                        setBroadcastResult(null);
-                        setShowBroadcastModal(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs sm:text-sm font-semibold border border-emerald-500/20 transition cursor-pointer"
-                    >
-                      <Send className="w-4 h-4" />
-                      <span>Broadcast</span>
-                    </button>
-
-                    <button
-                      onClick={() => fetchContacts(currentWs.slug, contactTab)}
-                      disabled={contactsLoading}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
-                      title="Refresh contacts"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${contactsLoading ? "animate-spin text-emerald-400" : ""}`} />
                     </button>
                   </div>
                 )}
