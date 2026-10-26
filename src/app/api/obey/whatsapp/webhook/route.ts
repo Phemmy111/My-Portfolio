@@ -371,24 +371,29 @@ async function handleObeyBusinessOwnerTurn(params: {
     }
 
     const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
-    const res = await sendWhatsAppStatusPost({
+    
+    // 1. Immediately confirm to Boss within 1s so they get instant acknowledgement without waiting
+    await reply(`🚀 *Status Publishing Initiated!*, Boss.\n\nBroadcasting your update to your entire audience now:\n\n"${extractedStatus}"`);
+
+    // 2. Broadcast to full audience (up to 3,000 contacts) asynchronously
+    sendWhatsAppStatusPost({
       text: extractedStatus,
       instanceName: targetInst,
-    });
-
-    if (res.success) {
-      await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${extractedStatus}"`);
-      try {
-        if (sql) {
+    }).then(async (res) => {
+      if (res.success && sql) {
+        try {
           await sql`
             INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at)
             VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${extractedStatus}, 'posted', ${res.messageId || null}, NOW())
           `;
+        } catch (dbErr) {
+          console.warn("[WA Status DB] Insert error:", dbErr);
         }
-      } catch {}
-    } else {
-      await reply(`⚠️ Could not post status: ${res.error || "Evolution broadcast error"}. Please make sure your WhatsApp session is connected in your Control Room.`);
-    }
+      } else if (!res.success) {
+        console.warn("[WA Status Post] Broadcast issue:", res.error);
+      }
+    }).catch((postErr) => console.warn("[WA Status Post] Broadcast exception:", postErr));
+
     return;
   }
 
@@ -1754,24 +1759,29 @@ How can I help you today?`;
       }
 
       const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
-      const res = await sendWhatsAppStatusPost({
+
+      // 1. Immediately confirm to Boss within 1s so they get instant acknowledgement without waiting
+      await reply(`🚀 *Status Publishing Initiated!*, Boss.\n\nBroadcasting your update to your entire audience now:\n\n"${femiStatusText}"`);
+
+      // 2. Broadcast to full audience (up to 3,000 contacts) asynchronously
+      sendWhatsAppStatusPost({
         text: femiStatusText,
         instanceName: targetInst,
-      });
-
-      if (res.success) {
-        await reply(`🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${femiStatusText}"`);
-        try {
-          if (sql) {
+      }).then(async (res) => {
+        if (res.success && sql) {
+          try {
             await sql`
               INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at)
               VALUES (${'stat_' + Date.now()}, ${currentWs?.id || 'femi-adeleke'}, ${femiStatusText}, 'posted', ${res.messageId || null}, NOW())
             `;
+          } catch (dbErr) {
+            console.warn("[Main Obey Status DB] Insert error:", dbErr);
           }
-        } catch {}
-      } else {
-        await reply(`⚠️ Could not post status: ${res.error || "Evolution broadcast error"}. Please make sure your WhatsApp session is connected in your Control Room.`);
-      }
+        } else if (!res.success) {
+          console.warn("[Main Obey Status Post] Broadcast issue:", res.error);
+        }
+      }).catch((postErr) => console.warn("[Main Obey Status Post] Broadcast exception:", postErr));
+
       return;
     }
 

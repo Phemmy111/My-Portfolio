@@ -847,13 +847,13 @@ export async function sendWhatsAppStatusPost(params: {
     if (jidList.length === 0) {
       try {
         if (sql) {
-          // 1. Fetch active contacts from evolution."Contact" for this instance (capped to 50 for ultra-fast 3-4s broadcast delivery)
+          // 1. Fetch all actual contacts from evolution."Contact" for this instance (up to 3,000 contacts for full business status reach)
           const contactRows = await sql`
             SELECT "remoteJid" FROM evolution."Contact"
             WHERE "instanceId" = (SELECT id FROM evolution."Instance" WHERE name = ${instance} LIMIT 1)
               AND "remoteJid" LIKE '%@s.whatsapp.net'
               AND "remoteJid" != '0@s.whatsapp.net'
-            LIMIT 50
+            LIMIT 3000
           `;
           if (contactRows && contactRows.length > 0) {
             for (const r of contactRows) {
@@ -929,7 +929,7 @@ export async function sendWhatsAppStatusPost(params: {
             apikey: evoKey,
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(35000),
+          signal: AbortSignal.timeout(90000),
         });
 
         if (statusRes.ok) {
