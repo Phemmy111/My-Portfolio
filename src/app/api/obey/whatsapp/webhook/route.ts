@@ -552,48 +552,10 @@ ${getMainObeyFlagshipKnowledge()}`;
       .trim();
   }
 
-  // Intercept hallucinated status publish claim and actually post it live to WhatsApp Status!
-  if (/\b(?:status\s+published|posted\s+live\s+to\s+your\s+whatsapp\s+status|published\s+to\s+your\s+status\s+story)\b/i.test(replyText)) {
-    const draftMatch = replyText.match(/>\s*["“](.+?)["”]/s) || replyText.match(/["“](.+?)["”]/s);
-    const textToPublish = draftMatch ? draftMatch[1].trim() : "";
-    if (textToPublish && textToPublish.length > 5) {
-      const targetInst = currentWs?.whatsapp_instance_name || instanceName || "obey";
-      const postRes = await sendWhatsAppStatusPost({
-        text: textToPublish,
-        instanceName: targetInst,
-        font: 4,
-      });
-      if (postRes.success) {
-        replyText = `🚀 *Status Published!*, Boss.\n\nYour post is now live on your WhatsApp Status Stories:\n\n"${textToPublish}"`;
-        try {
-          if (sql) {
-            await sql`
-              INSERT INTO workspace_statuses (id, workspace_id, content, status, message_id, posted_at, font)
-              VALUES (${'stat_' + Date.now()}, ${currentWs.id}, ${textToPublish}, 'posted', ${postRes.messageId || null}, NOW(), 4)
-            `;
-          }
-        } catch {}
-      } else {
-        replyText = `⚠️ Could not post status: ${postRes.error || "Evolution broadcast error"}. Please check your connection in Control Room.`;
-      }
-    }
-  }
-
   if (asksVoiceCall && !replyText.includes(currentWs.slug)) {
     replyText += `\n\n📞 *Start Live Voice Call with ${currentWs.name}:*\n${voiceCallLink}`;
   }
   await reply(replyText);
-
-  try {
-    await dbAddGuestMessage({
-      id: `guest-asst-${Date.now()}`,
-      phone_number: replyTo,
-      sender_name: currentWs.name,
-      role: "assistant",
-      content: replyText,
-      workspace_id: currentWs.id,
-    });
-  } catch {}
 }
 
 /**
