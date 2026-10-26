@@ -4138,8 +4138,37 @@ function ControlRoomContent() {
                                 )}
                               </div>
 
+                              {/* On-Device Compression Progress Feedback */}
+                              {compressingVideo && compressionProgress && (
+                                <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                      <span>⚡ Compressing on device ({compressionProgress.percent}%)...</span>
+                                    </span>
+                                    <span className="font-mono text-emerald-300 font-bold">
+                                      {compressionProgress.currentSecond}s / {compressionProgress.totalSeconds}s
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="bg-emerald-500 h-full transition-all duration-150"
+                                      style={{ width: `${compressionProgress.percent}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                    <span>0 KB Mobile Data used to compress</span>
+                                    {compressionProgress.savedPercent ? (
+                                      <span className="text-emerald-400 font-semibold">
+                                        Saved {compressionProgress.savedPercent}% data!
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Live Cloudinary Upload Progress Feedback */}
-                              {uploadingMedia && (
+                              {uploadingMedia && !compressingVideo && (
                                 <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="font-bold text-emerald-400 flex items-center gap-1.5">
@@ -4155,7 +4184,7 @@ function ControlRoomContent() {
                                     />
                                   </div>
                                   <p className="text-[11px] text-slate-400 font-mono">
-                                    Generating buttery-smooth 30fps H.264 video for WhatsApp Status...
+                                    Smooth 30fps H.264 video for WhatsApp Status...
                                   </p>
                                 </div>
                               )}

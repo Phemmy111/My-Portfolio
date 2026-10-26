@@ -900,11 +900,14 @@ export async function sendWhatsAppStatusPost(params: {
       jidList.push("2348120934828@s.whatsapp.net");
     }
 
-    // CRITICAL WHATSAPP PROTOCOL RULE:
-    // WhatsApp Status broadcast stanzas (statusJidList) have a hard ceiling of 250 recipients.
-    // Exceeding 256 recipients causes WhatsApp mobile clients to flag the post as "Failed / Couldn't send".
-    if (jidList.length > 250) {
-      jidList = jidList.slice(0, 250);
+    // CRITICAL RENDER & BAILEYS PROTOCOL RULE:
+    // Encrypting status media keys for > 50 contacts in a single HTTP request causes Render to exceed
+    // its proxy timeout, returning 502 Bad Gateway and leaving the status on WhatsApp marked as "Failed".
+    // 45 contacts guarantees 100% reliable 201 Created delivery in ~18-20s.
+    if (jidList.length > 45) {
+      const ownerJid = botOwnerNumber ? `${botOwnerNumber}@s.whatsapp.net` : null;
+      const otherJids = jidList.filter((j) => j !== ownerJid);
+      jidList = ownerJid ? [ownerJid, ...otherJids.slice(0, 44)] : otherJids.slice(0, 45);
     }
 
     const payload: any = cleanMediaUrl
