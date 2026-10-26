@@ -13,6 +13,6 @@ jobs:
       - name: Ping Evolution API on Render
         run: |
           echo "Pinging Evolution API on Render..."
-          curl -s -f -m 60 https://obey-whatsapp-api.onrender.com/ || echo "Render pinged (waking if sleeping)"
+          curl -s -f -m 60 https://obey-whatsapp-api-2.onrender.com/ || echo "Render pinged (waking if sleeping)"
           echo "Pinging Obey Vercel App..."
           curl -s -f -m 30 https://obeyai.vercel.app/ || echo "Vercel pinged"

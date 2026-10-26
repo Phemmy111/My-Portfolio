@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * 2. ALL Business client workspaces (e.g. 'obey-autolearn-spot', 'obey-moonvibez', etc.)
  */
 export async function GET(req: NextRequest) {
-  const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
+  const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api-2.onrender.com";
   const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
   const mainInstance = process.env.EVOLUTION_INSTANCE_NAME || "obey";
 

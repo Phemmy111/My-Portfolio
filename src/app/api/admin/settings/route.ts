@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
 
     // 7. Live WhatsApp QR Code & Pairing Status (Evolution API on Render)
     if (body.action === "whatsapp_qr" || body.action === "whatsapp_reconnect") {
-      const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
+      const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api-2.onrender.com";
       const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
       const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "obey";
       try {
