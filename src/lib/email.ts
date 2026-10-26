@@ -160,9 +160,12 @@ export async function sendProactiveBriefingEmail(params: {
     to: adminEmail,
     subject: params.subject,
     html: `
-      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; background: #070707; color: #e4e4e7; border-radius: 16px; border: 1px solid #27272a;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #18181b; padding-bottom: 16px;">
-          <h1 style="font-size: 20px; font-weight: 900; color: #10b981; margin: 0;">⚡ Agent Obey · Proactive Operational Briefing</h1>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid #18181b; padding-bottom: 16px;">
+          <img src="https://obeyai.vercel.app/obey-avatar.png" alt="Obey AI" width="42" height="42" style="border-radius: 50%; border: 1.5px solid #10b981; display: inline-block; vertical-align: middle;" />
+          <div>
+            <h1 style="font-size: 18px; font-weight: 900; color: #10b981; margin: 0; line-height: 1.2;">Agent Obey</h1>
+            <span style="font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Proactive Operational Briefing</span>
+          </div>
         </div>
         <div style="background: #111113; border: 1px solid #1f1f23; border-radius: 12px; padding: 20px;">
           ${formattedHtml}
