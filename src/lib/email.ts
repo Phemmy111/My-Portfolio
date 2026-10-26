@@ -4,13 +4,19 @@ import nodemailer from "nodemailer";
 // SMTP TRANSPORTER
 // Works with Gmail App Password (recommended) or any SMTP host
 // ==============================================================
+const smtpUser =
+  process.env.SMTP_USER && process.env.SMTP_USER !== "femiadeleke2020@gmail.com"
+    ? process.env.SMTP_USER
+    : process.env.GMAIL_USER || "obeyaibusiness@gmail.com";
+const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "npejlispqthpexwi";
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: Number(process.env.SMTP_PORT) || 587,
   secure: process.env.SMTP_SECURE === "true", // false for port 587 (TLS)
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: smtpUser,
+    pass: smtpPass,
   },
 });
 
