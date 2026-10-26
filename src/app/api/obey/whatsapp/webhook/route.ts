@@ -33,6 +33,7 @@ import {
   dbEnqueueWorkspaceMessage,
   dbUpdateWorkspaceMessageQueueStatus,
   dbRecordMissedIntent,
+  isValidE164Phone,
 } from "@/lib/db";
 import {
   getUserFullMemory,
@@ -1066,7 +1067,7 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Auto-capture non-owner incoming contact into workspace_leads (for auto-saving & status view boost)
-  if (!isOwner && currentWs && replyTo && replyTo.length >= 9 && replyTo.length <= 13) {
+  if (!isOwner && currentWs && replyTo && isValidE164Phone(replyTo)) {
     try {
       const isAutoSave = currentWs.auto_save_contacts !== false;
       const contactName = pushName || `WhatsApp User ${replyTo.slice(-4)}`;
@@ -1088,6 +1089,7 @@ async function processMessage(params: ProcessMessageParams) {
         const evoApiUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
         const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
         const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
+        const cleanReplyTo = replyTo.replace(/\D/g, "");
 
         fetch(`${evoApiUrl}/message/sendContact/${encodeURIComponent(sendInstance)}`, {
           method: "POST",
@@ -1100,8 +1102,8 @@ async function processMessage(params: ProcessMessageParams) {
             contact: [
               {
                 fullName: `${contactName} (${currentWs.name})`,
-                wuid: `${replyTo}@s.whatsapp.net`,
-                phoneNumber: replyTo,
+                wuid: cleanReplyTo,
+                phoneNumber: `+${cleanReplyTo}`,
               },
             ],
           }),

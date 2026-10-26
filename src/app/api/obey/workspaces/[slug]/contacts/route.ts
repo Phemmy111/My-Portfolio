@@ -299,10 +299,11 @@ export async function POST(
 
       const cards = validItems.map((c) => {
         const clean = sanitizePhone(c.phone);
+        const contactName = c.name?.trim() ? c.name.trim() : `Contact ${clean.slice(-4)}`;
         return {
-          fullName: `${c.name || `Contact ${clean.slice(-4)}`} (${ws.name})`,
-          wuid: `${clean}@s.whatsapp.net`,
-          phoneNumber: clean,
+          fullName: `${contactName} (${ws.name})`,
+          wuid: clean,
+          phoneNumber: `+${clean}`,
         };
       });
 
