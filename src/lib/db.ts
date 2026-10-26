@@ -2714,6 +2714,25 @@ export async function dbEnqueueWorkspaceMessage(params: {
 }): Promise<string | null> {
   const db = getSql();
   if (!db) return null;
+
+  // Persistent deduplication: drop retry webhooks with the same WhatsApp message ID
+  if (params.messageId) {
+    try {
+      const existing = await db`
+        SELECT id FROM workspace_message_queue
+        WHERE message_id = ${params.messageId}
+          AND created_at > NOW() - INTERVAL '15 minutes'
+        LIMIT 1
+      `;
+      if (existing && existing.length > 0) {
+        console.log(`[Queue] Dropping duplicate message ${params.messageId} (already enqueued: ${existing[0].id})`);
+        return null;
+      }
+    } catch (checkErr) {
+      console.warn("[Queue] Deduplication check warning:", checkErr);
+    }
+  }
+
   const id = params.id || `msgq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   try {
     await db`

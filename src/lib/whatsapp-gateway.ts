@@ -928,6 +928,7 @@ export async function sendWhatsAppStatusPost(params: {
             apikey: evoKey,
           },
           body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(20000),
         });
 
         if (statusRes.ok) {

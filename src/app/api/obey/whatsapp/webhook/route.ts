@@ -900,6 +900,17 @@ async function processMessage(params: ProcessMessageParams) {
           content: formatted,
         });
       } catch {}
+    } else {
+      try {
+        await dbAddGuestMessage({
+          id: `guest-asst-${Date.now()}`,
+          phone_number: replyTo,
+          sender_name: currentWs?.name || "Obey",
+          role: "assistant",
+          content: formatted,
+          workspace_id: currentWs?.id || wsId,
+        });
+      } catch {}
     }
   }
 
@@ -1082,33 +1093,6 @@ async function processMessage(params: ProcessMessageParams) {
         auto_save: isAutoSave,
         is_saved: isAutoSave,
       });
-
-      // Automatically dispatch native WhatsApp Contact Card to the business owner on WhatsApp
-      // This gives the owner a 1-tap "Save Contact" button directly inside their WhatsApp app!
-      if (isAutoSave && ownerClean && ownerClean !== replyTo && savedLead) {
-        const evoApiUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api.onrender.com";
-        const evoApiKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-        const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
-        const cleanReplyTo = replyTo.replace(/\D/g, "");
-
-        fetch(`${evoApiUrl}/message/sendContact/${encodeURIComponent(sendInstance)}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: evoApiKey,
-          },
-          body: JSON.stringify({
-            number: ownerClean,
-            contact: [
-              {
-                fullName: `${contactName} (${currentWs.name})`,
-                wuid: cleanReplyTo,
-                phoneNumber: `+${cleanReplyTo}`,
-              },
-            ],
-          }),
-        }).catch((cardErr) => console.warn("[WA Auto-Save] Contact card push warning:", cardErr));
-      }
     } catch (leadErr) {
       console.warn("[WA] Auto-save contact lead capture error:", leadErr);
     }
@@ -2521,10 +2505,17 @@ Output ONLY the comment text.`,
 
   console.log(`[WA Webhook] Incoming (${instanceName}) from ${senderNumber}: "${userText || (isAudio ? '[Audio]' : isImage ? '[Image]' : isSticker ? '[Sticker]' : '[Doc]')}"`);
 
-  let queueId: string | null = null;
   const msgId = msgObj.key?.id;
+
+  // 1. In-memory instant deduplication (drops rapid duplicate webhook deliveries within same container)
+  if (msgId && isDuplicateWebhookMessage(msgId)) {
+    console.log(`[WA Webhook] Dropping duplicate delivery for message ${msgId} (in-memory cache)`);
+    return NextResponse.json({ ok: true, duplicate: true });
+  }
+
+  // 2. Persistent database queue deduplication (drops duplicate deliveries across multiple containers/lambdas)
+  let queueId: string | null = null;
   try {
-    // Step 3B: Asynchronous Message Queue tracking
     queueId = await dbEnqueueWorkspaceMessage({
       instanceName,
       senderPhone: senderNumber,
@@ -2540,73 +2531,80 @@ Output ONLY the comment text.`,
       status: "processing",
     });
 
-    let activeText = userText;
-    let isVoiceNote = false;
-    let visionMedia: { base64: string; mimetype: string } | null = null;
-    let docMedia: { base64: string; mimetype: string } | null = null;
+    if (msgId && !queueId) {
+      console.log(`[WA Webhook] Dropping duplicate delivery for message ${msgId} (database queue deduplication)`);
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
+  } catch (qErr) {
+    console.warn("[WA Webhook] Message queue enqueue warning:", qErr);
+  }
 
-    // 1. Voice Note Transcription
-    if (isAudio) {
-      isVoiceNote = true;
-      try {
-        const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
-        if (media?.base64) {
-          const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
-          if (transRes.success && transRes.text) {
-            activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
+  // 3. Dispatch processing in Next.js after() background block so Evolution API receives an immediate
+  // HTTP 200 OK within 25ms and NEVER retries or re-dispatches the webhook!
+  after(async () => {
+    try {
+      let activeText = userText;
+      let isVoiceNote = false;
+      let visionMedia: { base64: string; mimetype: string } | null = null;
+      let docMedia: { base64: string; mimetype: string } | null = null;
+
+      // Voice Note Transcription
+      if (isAudio) {
+        isVoiceNote = true;
+        try {
+          const media = await fetchEvolutionMediaBase64(msgObj, instanceName);
+          if (media?.base64) {
+            const transRes = await transcribeAudio(media.base64, media.mimetype || "audio/ogg");
+            if (transRes.success && transRes.text) {
+              activeText = userText ? `${userText} ${transRes.text}` : transRes.text;
+            } else {
+              activeText = userText ? `${userText} [Voice note was unclear]` : "[Unclear Voice Note]";
+            }
           } else {
-            activeText = userText ? `${userText} [Voice note was unclear]` : "[Unclear Voice Note]";
+            activeText = userText || "[Unclear Voice Note]";
           }
-        } else {
+        } catch (audioErr) {
+          console.warn("[WA Webhook] Voice note handling notice:", audioErr);
           activeText = userText || "[Unclear Voice Note]";
         }
-      } catch (audioErr) {
-        console.warn("[WA Webhook] Voice note handling notice:", audioErr);
-        activeText = userText || "[Unclear Voice Note]";
+      }
+
+      // Multimodal Vision (Photos, Screenshots, Stickers)
+      if (isImage || isSticker) {
+        visionMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
+        if (!activeText) activeText = isSticker ? "[Sticker Received]" : "[Image Received]";
+      }
+
+      // Documents (PDFs, CVs, Invoices)
+      if (isDoc) {
+        docMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
+        if (!activeText) activeText = "[Document Received]";
+      }
+
+      await processMessage({
+        senderNumber,
+        userText: activeText,
+        pushName: msgObj.pushName,
+        isVoiceNote,
+        isSticker,
+        messageId: msgId,
+        visionMedia,
+        docMedia,
+        documentFileName: msgObj.message?.documentMessage?.fileName,
+        instanceName,
+        connectedOwner,
+      });
+
+      if (queueId) {
+        await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
+      }
+    } catch (err: any) {
+      console.error("[WA] processMessage execution error:", err);
+      if (queueId) {
+        await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
       }
     }
-
-    // 2. Multimodal Vision (Photos, Screenshots, Stickers)
-    if (isImage || isSticker) {
-      visionMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
-      if (!activeText) activeText = isSticker ? "[Sticker Received]" : "[Image Received]";
-    }
-
-    // 3. Documents (PDFs, CVs, Invoices)
-    if (isDoc) {
-      docMedia = await fetchEvolutionMediaBase64(msgObj, instanceName);
-      if (!activeText) activeText = "[Document Received]";
-    }
-
-    await processMessage({
-      senderNumber,
-      userText: activeText,
-      pushName: msgObj.pushName,
-      isVoiceNote,
-      isSticker,
-      messageId: msgId,
-      visionMedia,
-      docMedia,
-      documentFileName: msgObj.message?.documentMessage?.fileName,
-      instanceName,
-      connectedOwner,
-    });
-
-    if (queueId) {
-      await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
-    }
-  } catch (err: any) {
-    console.error("[WA] processMessage execution error:", err);
-    if (queueId) {
-      await dbUpdateWorkspaceMessageQueueStatus(queueId, "failed", err?.message || String(err));
-    }
-  } finally {
-    if (queueId) {
-      try {
-        await dbUpdateWorkspaceMessageQueueStatus(queueId, "completed");
-      } catch {}
-    }
-  }
+  });
 
   return NextResponse.json({ ok: true });
 }
