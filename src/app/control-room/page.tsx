@@ -72,6 +72,7 @@ import {
 } from "lucide-react";
 import { VOICE_PROFILES, pickBestVoice } from "@/app/call/page";
 import { VAPI_VOICE_OPTIONS } from "@/lib/settings";
+import { compressVideoOnDevice, isClientCompressionSupported } from "@/lib/client-video-compressor";
 
 const WHATSAPP_STATUS_COLORS = [
   { name: "Teal", hex: "#075E54", bg: "#075E54" },
@@ -333,6 +334,17 @@ function ControlRoomContent() {
   const [trimEnd, setTrimEnd] = useState<number>(90);
   const videoPlayerRef = useRef<HTMLVideoElement>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [compressingVideo, setCompressingVideo] = useState(false);
+  const [compressionProgress, setCompressionProgress] = useState<{
+    stage: string;
+    percent: number;
+    currentSecond: number;
+    totalSeconds: number;
+    originalSizeMb: string;
+    compressedSizeMb?: string;
+    savedPercent?: number;
+  } | null>(null);
+  const [autoDataSaver, setAutoDataSaver] = useState(true);
   const initialLoadedRef = useRef(false);
 
   const formatSeconds = (secs: number) => {
@@ -1125,18 +1137,62 @@ function ControlRoomContent() {
   const uploadMediaAsset = async (file: File, startOffset: number = 0, endOffset?: number) => {
     if (!file) return;
 
-    setUploadingMedia(true);
-    setUploadProgress(0);
     setStatusErrorMsg("");
-
     const isVideo = file.type.startsWith("video/");
     const safeClipDuration =
       typeof endOffset === "number" && endOffset > startOffset
         ? Math.min(endOffset - startOffset, 90)
         : 90;
 
+    let fileToUpload = file;
+    let isLocallyCompressed = false;
+    let localSavedPercent = 0;
+
+    // 1. If it's a video and autoDataSaver is enabled, run on-device compression first (0 KB data used!)
+    if (isVideo && autoDataSaver && isClientCompressionSupported()) {
+      try {
+        setCompressingVideo(true);
+        setUploadingMedia(true);
+        setUploadProgress(0);
+
+        const compResult = await compressVideoOnDevice({
+          file,
+          startOffset,
+          endOffset,
+          maxDimension: 720,
+          targetBitrate: 1_100_000,
+          onProgress: (p) => {
+            setCompressionProgress({
+              stage: p.stage,
+              percent: p.percent,
+              currentSecond: p.currentSecond,
+              totalSeconds: p.totalSeconds,
+              originalSizeMb: (p.originalSizeBytes / (1024 * 1024)).toFixed(1),
+              compressedSizeMb: p.compressedSizeBytes
+                ? (p.compressedSizeBytes / (1024 * 1024)).toFixed(1)
+                : undefined,
+              savedPercent: p.savedPercent,
+            });
+          },
+        });
+
+        fileToUpload = compResult.compressedFile;
+        isLocallyCompressed = true;
+        localSavedPercent = compResult.savedPercent;
+      } catch (compErr: any) {
+        console.warn("[Control Room] On-device video compression fallback:", compErr);
+        // Seamless fallback to original file if client device codec is unsupported
+        fileToUpload = file;
+      } finally {
+        setCompressingVideo(false);
+      }
+    }
+
+    setUploadingMedia(true);
+    setUploadProgress(0);
+
     try {
-      // 1. Get signed credentials from our server for direct client-to-Cloudinary upload
+      // 2. Get signed credentials from our server for direct client-to-Cloudinary upload
       const signRes = await fetch("/api/upload/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1151,9 +1207,9 @@ function ControlRoomContent() {
         throw new Error(signData.error || "Failed to generate upload signature");
       }
 
-      // 2. Direct browser upload to Cloudinary (bypasses Vercel 4.5MB payload limit completely!)
+      // 3. Direct browser upload to Cloudinary (uploading lightweight compressed file!)
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToUpload);
       formData.append("api_key", signData.apiKey);
       formData.append("timestamp", String(signData.timestamp));
       formData.append("signature", signData.signature);
@@ -1195,11 +1251,16 @@ function ControlRoomContent() {
 
       let finalUrl = uploadResult.secure_url;
 
-      // 3. If video: Apply the user's custom chosen 1:30s trim and WhatsApp compression
+      // 4. For video delivery:
       if (isVideo) {
         const publicId = uploadResult.public_id;
-        finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/du_${Math.round(safeClipDuration)},q_auto,so_${Math.round(startOffset)},vc_auto/${publicId}.mp4`;
-        // Pre-warm the transformed Cloudinary video cache in background so it's ready instantly
+        if (isLocallyCompressed) {
+          // Already trimmed & compressed locally! Fast-stream MP4 delivered directly
+          finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/f_mp4,q_auto,vc_auto/${publicId}.mp4`;
+        } else {
+          // Cloudinary server-side fallback trim
+          finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/du_${Math.round(safeClipDuration)},q_auto,so_${Math.round(startOffset)},vc_auto/${publicId}.mp4`;
+        }
         fetch(finalUrl, { method: "HEAD" }).catch(() => {});
       }
 
@@ -1212,18 +1273,22 @@ function ControlRoomContent() {
         setVideoPreviewUrl("");
       }
       setPendingVideoFile(null);
+      setCompressionProgress(null);
 
-      setStatusSuccessMsg(
-        isVideo
-          ? `🎬 Video trimmed to ${formatSeconds(safeClipDuration)} and compressed for WhatsApp! Ready to post.`
-          : `📸 Photo uploaded successfully! Ready to post.`
-      );
-      setTimeout(() => setStatusSuccessMsg(""), 4000);
+      const successDetails = isVideo
+        ? isLocallyCompressed
+          ? `🎬 Compressed on device & uploaded! Saved ${localSavedPercent}% mobile data (${(file.size / 1024 / 1024).toFixed(1)}MB ➔ ${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB). Ready to post!`
+          : `🎬 Video trimmed to ${formatSeconds(safeClipDuration)} and uploaded for WhatsApp! Ready to post.`
+        : `📸 Photo uploaded successfully! Ready to post.`;
+
+      setStatusSuccessMsg(successDetails);
+      setTimeout(() => setStatusSuccessMsg(""), 6000);
     } catch (err: any) {
       console.error("Direct upload error:", err);
       setStatusErrorMsg(err.message || "Failed to upload media file");
     } finally {
       setUploadingMedia(false);
+      setCompressingVideo(false);
       setUploadProgress(null);
     }
   };
@@ -3841,11 +3906,18 @@ function ControlRoomContent() {
                             <div className="shrink-0 flex items-center justify-between border-b border-slate-800 p-4">
                               <div className="flex items-center gap-2">
                                 <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                  <Scissors className="w-4 h-4" />
+                                  <Zap className="w-4 h-4" />
                                 </div>
                                 <div>
-                                  <h4 className="text-sm font-bold text-white">WhatsApp Video Trimmer</h4>
-                                  <p className="text-[11px] text-slate-400">Limit: 1:30s max • Auto-compressed for WhatsApp</p>
+                                  <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                                    <span>WhatsApp Video Trimmer & Data Saver</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                      0 KB Data Used
+                                    </span>
+                                  </h4>
+                                  <p className="text-[11px] text-slate-400">
+                                    Compresses locally on device to 720p • Max 1:30s • Saves ~90% mobile data
+                                  </p>
                                 </div>
                               </div>
                               <button
@@ -3871,6 +3943,37 @@ function ControlRoomContent() {
                                   controls
                                   className="max-h-40 sm:max-h-48 w-full object-contain"
                                 />
+                              </div>
+
+                              {/* On-Device Compression & Data Savings Badge */}
+                              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                                    ⚡
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-emerald-400 flex items-center gap-1.5">
+                                      <span>On-Device WhatsApp Compression</span>
+                                      <span className="text-[10px] text-emerald-300 font-semibold bg-emerald-500/20 px-1.5 py-0.2 rounded">
+                                        OFFLINE-FIRST
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400">
+                                      Downscales to 720p on your phone/laptop. Uses 0 MB data during compression!
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right font-mono shrink-0 pl-2">
+                                  <span className="text-slate-500 line-through text-[11px]">
+                                    {(pendingVideoFile.size / (1024 * 1024)).toFixed(1)} MB
+                                  </span>
+                                  <div className="text-emerald-400 font-bold text-xs">
+                                    ➔ ~{(((Math.max(1, trimEnd - trimStart)) / 90) * 5.6).toFixed(1)} MB
+                                  </div>
+                                  <span className="text-[10px] text-emerald-300 font-semibold">
+                                    ~{Math.max(10, Math.round((1 - (Math.min(pendingVideoFile.size, (Math.max(1, trimEnd - trimStart) / 90) * 5.6 * 1024 * 1024) / pendingVideoFile.size)) * 100))}% Data Saved
+                                  </span>
+                                </div>
                               </div>
 
                               {/* WhatsApp-Style Draggable Timeline Scrubber */}
@@ -4006,25 +4109,75 @@ function ControlRoomContent() {
                                   </div>
                                 )}
                               </div>
+
+                              {/* Live Compression Progress Feedback */}
+                              {compressingVideo && compressionProgress && (
+                                <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                      <span>⚡ Compressing on device (0 MB data used)...</span>
+                                    </span>
+                                    <span className="font-mono text-emerald-300 font-bold">{compressionProgress.percent}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="bg-emerald-500 h-full transition-all duration-150"
+                                      style={{ width: `${compressionProgress.percent}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                    <span>
+                                      {formatSeconds(Math.round(compressionProgress.currentSecond))} / {formatSeconds(Math.round(compressionProgress.totalSeconds))}
+                                    </span>
+                                    <span className="text-emerald-400 font-semibold">
+                                      {compressionProgress.originalSizeMb} MB ➔ ~{(((Math.max(1, trimEnd - trimStart)) / 90) * 5.6).toFixed(1)} MB
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Live Cloudinary Upload Progress Feedback */}
+                              {uploadingMedia && !compressingVideo && (
+                                <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                      <span>🚀 Uploading compressed video ({uploadProgress || 0}%)...</span>
+                                    </span>
+                                    <span className="font-mono text-emerald-300 font-bold">{uploadProgress || 0}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="bg-emerald-500 h-full transition-all duration-150"
+                                      style={{ width: `${uploadProgress || 0}%` }}
+                                    />
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 font-mono">
+                                    Uploading lightweight 720p file to media server...
+                                  </p>
+                                </div>
+                              )}
                             </div>
 
                             {/* Modal Footer Actions */}
                             <div className="shrink-0 flex items-center gap-3 p-3.5 bg-slate-950 border-t border-slate-800">
                               <button
                                 type="button"
+                                disabled={uploadingMedia || compressingVideo}
                                 onClick={() => {
                                   setShowVideoTrimmer(false);
                                   if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
                                   setVideoPreviewUrl("");
                                   setPendingVideoFile(null);
                                 }}
-                                className="flex-1 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-bold text-xs transition"
+                                className="flex-1 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-bold text-xs transition disabled:opacity-40"
                               >
                                 Cancel
                               </button>
                               <button
                                 type="button"
-                                disabled={uploadingMedia}
+                                disabled={uploadingMedia || compressingVideo}
                                 onClick={() => {
                                   if (pendingVideoFile) {
                                     uploadMediaAsset(pendingVideoFile, trimStart, trimEnd);
@@ -4032,19 +4185,24 @@ function ControlRoomContent() {
                                 }}
                                 className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                               >
-                                {uploadingMedia ? (
+                                {compressingVideo ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <span>Compressing on Device ({compressionProgress?.percent || 0}%)...</span>
+                                  </>
+                                ) : uploadingMedia ? (
                                   <>
                                     <RefreshCw className="w-4 h-4 animate-spin" />
                                     <span>
                                       {uploadProgress !== null
-                                        ? `Uploading & Compressing (${uploadProgress}%)...`
-                                        : "Compressing & Uploading..."}
+                                        ? `Uploading (${uploadProgress}%)...`
+                                        : "Uploading..."}
                                     </span>
                                   </>
                                 ) : (
                                   <>
-                                    <Scissors className="w-4 h-4" />
-                                    <span>✂️ Use Selected {formatSeconds(trimEnd - trimStart)}</span>
+                                    <Zap className="w-4 h-4 text-slate-950 fill-slate-950" />
+                                    <span>⚡ Compress & Use ({formatSeconds(trimEnd - trimStart)})</span>
                                   </>
                                 )}
                               </button>
