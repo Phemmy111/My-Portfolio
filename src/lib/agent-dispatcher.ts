@@ -68,7 +68,7 @@ export async function executePendingUserAction(
     // 2. Email Dispatch via Gmail / SMTP
     if (action.action_type === "email_send") {
       const mailOptions = {
-        from: `"Femi Adeleke · Obey AI" <${process.env.GMAIL_USER || "femiadeleke2020@gmail.com"}>`,
+        from: `"Obey AI Business" <${process.env.GMAIL_USER || process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
         to: action.target_recipient,
         subject: action.subject || "Important Update",
         text: action.payload,

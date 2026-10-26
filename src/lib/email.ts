@@ -25,11 +25,11 @@ export async function sendAdminInquiryAlert(params: {
   inquiryId: string;
 }) {
   const { clientName, clientEmail, service, message, inquiryId } = params;
-  const adminEmail = process.env.ADMIN_ALERT_EMAIL || process.env.SMTP_USER;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://yoursite.com";
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || "femiadeleke2020@gmail.com";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || `"Femi Adeleke Portfolio" <${process.env.SMTP_USER}>`,
+    from: process.env.SMTP_FROM || `"Obey AI" <${process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
     to: adminEmail,
     subject: `🔔 New Inquiry from ${clientName} — ${service}`,
     html: `
@@ -92,7 +92,7 @@ export async function sendClientAutoReply(params: {
   const firstName = clientName.split(" ")[0];
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || `"Femi Adeleke" <${process.env.SMTP_USER}>`,
+    from: process.env.SMTP_FROM || `"Femi Adeleke · Obey AI" <${process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
     to: clientEmail,
     subject: `Got your message, ${firstName}! — Femi Adeleke`,
     html: `
@@ -127,7 +127,7 @@ export async function sendColdEmail(params: {
   body: string;
 }) {
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || `"Femi Adeleke" <${process.env.SMTP_USER}>`,
+    from: process.env.SMTP_FROM || `"Obey AI Business" <${process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
     to: params.to,
     subject: params.subject,
     text: params.body,
@@ -143,14 +143,14 @@ export async function sendProactiveBriefingEmail(params: {
   subject: string;
   markdownContent: string;
 }) {
-  const adminEmail = process.env.ADMIN_ALERT_EMAIL || process.env.SMTP_USER || "femiadeleke2020@gmail.com";
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || "femiadeleke2020@gmail.com";
   const formattedHtml = params.markdownContent
     .split("\n\n")
     .map((p) => `<p style="margin: 0 0 12px; font-size: 14px; line-height: 1.7; color: #e4e4e7;">${p.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #ffffff;">$1</strong>').replace(/\n/g, "<br/>")}</p>`)
     .join("");
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || `"Agent Obey" <${process.env.SMTP_USER}>`,
+    from: process.env.SMTP_FROM || `"Agent Obey" <${process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
     to: adminEmail,
     subject: params.subject,
     html: `
@@ -176,7 +176,7 @@ export async function sendOtpEmail(params: {
 }) {
   const { to, code, purpose = "login" } = params;
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || `"Obey Business" <${process.env.SMTP_USER}>`,
+    from: process.env.SMTP_FROM || `"Obey Business" <${process.env.SMTP_USER || "obeyaibusiness@gmail.com"}>`,
     to,
     subject: `🔐 Your Obey Verification Code: ${code}`,
     html: `
