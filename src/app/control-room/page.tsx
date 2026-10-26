@@ -1145,11 +1145,51 @@ function ControlRoomContent() {
         ? Math.min(endOffset - startOffset, 29)
         : 29;
 
+    let fileToUpload = file;
+    let isLocallyCompressed = false;
+    let localSavedPercent = 0;
+
     setUploadingMedia(true);
     setUploadProgress(0);
 
     try {
-      // 1. Get signed credentials from our server for direct client-to-Cloudinary upload
+      // 1. If it's a video, run our hardware-accelerated compressor (0 KB data used, ~2.5 MB output)
+      // This prevents uploading raw 80-120MB camera video over mobile data, eliminating timeouts & loops!
+      if (isVideo && isClientCompressionSupported()) {
+        try {
+          setCompressingVideo(true);
+          const compResult = await compressVideoOnDevice({
+            file,
+            startOffset,
+            endOffset,
+            maxDimension: 540,
+            targetBitrate: 900_000,
+            onProgress: (p) => {
+              setCompressionProgress({
+                stage: p.stage,
+                percent: p.percent,
+                currentSecond: p.currentSecond,
+                totalSeconds: p.totalSeconds,
+                originalSizeMb: (p.originalSizeBytes / (1024 * 1024)).toFixed(1),
+                compressedSizeMb: p.compressedSizeBytes
+                  ? (p.compressedSizeBytes / (1024 * 1024)).toFixed(1)
+                  : undefined,
+                savedPercent: p.savedPercent,
+              });
+            },
+          });
+
+          fileToUpload = compResult.compressedFile;
+          isLocallyCompressed = true;
+          localSavedPercent = compResult.savedPercent;
+        } catch (compErr: any) {
+          console.warn("[Upload] Hardware compression fallback:", compErr);
+        } finally {
+          setCompressingVideo(false);
+        }
+      }
+
+      // 2. Get signed credentials from our server for direct client-to-Cloudinary upload
       const signRes = await fetch("/api/upload/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1164,11 +1204,11 @@ function ControlRoomContent() {
         throw new Error(signData.error || "Failed to generate upload signature");
       }
 
-      // 2. Direct browser upload to Cloudinary with 3-attempt resilient retry
+      // 3. Direct browser upload to Cloudinary (zero timeout so it never prematurely cancels!)
       const doDirectUpload = (): Promise<any> => {
         return new Promise((resolve, reject) => {
           const formData = new FormData();
-          formData.append("file", file);
+          formData.append("file", fileToUpload);
           formData.append("api_key", signData.apiKey);
           formData.append("timestamp", String(signData.timestamp));
           formData.append("signature", signData.signature);
@@ -1178,7 +1218,8 @@ function ControlRoomContent() {
 
           const xhr = new XMLHttpRequest();
           xhr.open("POST", endpoint);
-          xhr.timeout = 120_000; // 120 seconds timeout for larger mobile uploads
+          // Zero timeout: prevents premature aborting on mobile networks
+          xhr.timeout = 0;
 
           xhr.upload.onprogress = (evt) => {
             if (evt.lengthComputable) {
@@ -1205,7 +1246,6 @@ function ControlRoomContent() {
           };
 
           xhr.onerror = () => reject(new Error("Network connection error during media upload"));
-          xhr.ontimeout = () => reject(new Error("Upload timed out"));
           xhr.send(formData);
         });
       };
@@ -1230,7 +1270,7 @@ function ControlRoomContent() {
       if (!uploadResult) {
         try {
           const serverFormData = new FormData();
-          serverFormData.append("file", file);
+          serverFormData.append("file", fileToUpload);
           serverFormData.append("type", isVideo ? "video" : "image");
           const serverRes = await fetch("/api/upload", {
             method: "POST",
@@ -1249,12 +1289,11 @@ function ControlRoomContent() {
 
       let finalUrl = uploadResult.secure_url;
 
-      // 3. For video delivery:
-      // Cloudinary server transcode creates buttery-smooth 30fps H.264 + AAC audio with ZERO dropped frames!
-      // Enforces the strict <= 29-second WhatsApp status limit so WhatsApp never marks it as "Failed"!
+      // 4. For video delivery:
+      // WhatsApp requires H.264 + AAC audio with strict <= 29-second limit
       if (isVideo) {
         const publicId = uploadResult.public_id;
-        finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good,w_720,so_${Math.round(startOffset)},du_${Math.min(29, Math.round(safeClipDuration))}/${publicId}.mp4`;
+        finalUrl = `https://res.cloudinary.com/${signData.cloudName}/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good,w_720,so_0,du_29/${publicId}.mp4`;
         fetch(finalUrl, { method: "HEAD" }).catch(() => {});
       }
 
@@ -1269,9 +1308,13 @@ function ControlRoomContent() {
       setPendingVideoFile(null);
       setCompressionProgress(null);
 
+      const savedInfo = isLocallyCompressed
+        ? ` (0 MB mobile data used to compress • Saved ${localSavedPercent}%)`
+        : "";
+
       setStatusSuccessMsg(
         isVideo
-          ? `🎬 Buttery-smooth 30fps HD video trimmed to ${formatSeconds(safeClipDuration)}! Ready to post to WhatsApp Status.`
+          ? `🎬 Smooth 30fps HD video trimmed to ${formatSeconds(safeClipDuration)}!${savedInfo} Ready to post to WhatsApp Status.`
           : `📸 Photo uploaded successfully! Ready to post.`
       );
       setTimeout(() => setStatusSuccessMsg(""), 6000);

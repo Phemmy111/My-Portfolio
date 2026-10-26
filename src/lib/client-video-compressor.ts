@@ -199,6 +199,11 @@ export async function compressVideoOnDevice(params: {
         video.pause();
         video.removeAttribute("src");
         video.load();
+        if (video.parentNode) {
+          try {
+            video.parentNode.removeChild(video);
+          } catch {}
+        }
       }
     };
 
@@ -207,6 +212,17 @@ export async function compressVideoOnDevice(params: {
     video.muted = false; // Muted via AudioContext destination instead of element
     video.playsInline = true;
     (video as any).crossOrigin = "anonymous";
+    // Crucial for Chromium: video element MUST be attached to DOM for hardware captureStream to function without dropping frames!
+    video.style.position = "fixed";
+    video.style.top = "-9999px";
+    video.style.left = "-9999px";
+    video.style.width = "4px";
+    video.style.height = "4px";
+    video.style.opacity = "0";
+    video.style.pointerEvents = "none";
+    try {
+      document.body.appendChild(video);
+    } catch {}
 
     objectUrl = URL.createObjectURL(file);
     video.src = objectUrl;
@@ -226,8 +242,8 @@ export async function compressVideoOnDevice(params: {
       try {
         const fullDuration = video.duration || 0;
         const safeStart = Math.max(0, Math.min(startOffset, fullDuration));
-        // WhatsApp Status strict duration: 30 seconds maximum
-        const maxAllowedEnd = safeStart + 30;
+        // WhatsApp Status strict duration: 29 seconds maximum to prevent WhatsApp rejection
+        const maxAllowedEnd = safeStart + 29;
         const safeEnd =
           typeof endOffset === "number" && endOffset > safeStart
             ? Math.min(endOffset, Math.min(maxAllowedEnd, fullDuration))
