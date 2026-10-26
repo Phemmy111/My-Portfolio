@@ -149,6 +149,65 @@ function isDuplicateWebhookMessage(messageId: string): boolean {
   return false;
 }
 
+// ============================================================================
+// ANTI-BOT SHIELD: PLATFORM BOT REGISTRY & EXTERNAL AUTO-RESPONDER DETECTOR
+// Prevents bot-to-bot infinite loops (e.g. Obey chatting with AutoLearn Spot)
+// ============================================================================
+let platformBotNumbersCache: { set: Set<string>; lastFetch: number } = {
+  set: new Set(["2349161488564", "2349074027451", "2349071965770"]),
+  lastFetch: 0,
+};
+
+async function refreshPlatformBotNumbers(): Promise<Set<string>> {
+  const now = Date.now();
+  if (now - platformBotNumbersCache.lastFetch < 300000 && platformBotNumbersCache.set.size > 0) {
+    return platformBotNumbersCache.set;
+  }
+  const newSet = new Set(["2349161488564", "2349074027451", "2349071965770"]);
+  try {
+    if (sql) {
+      const rows = await sql`
+        SELECT "ownerJid" FROM evolution."Instance" WHERE "ownerJid" IS NOT NULL
+      `;
+      for (const r of rows) {
+        if (r.ownerJid) {
+          const clean = r.ownerJid.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
+          if (clean.length >= 10) newSet.add(clean);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[Platform Bot Cache] Error loading instances:", e);
+  }
+  platformBotNumbersCache = { set: newSet, lastFetch: now };
+  return newSet;
+}
+
+function isPlatformBotNumber(phone: string | undefined | null): boolean {
+  if (!phone) return false;
+  const clean = phone.replace(/\D/g, "");
+  if (!clean || clean.length < 8) return false;
+  // NEVER classify Femi's personal phone as a bot!
+  if (clean === FEMI_PERSONAL_NUMBER || clean.endsWith(FEMI_PERSONAL_NUMBER.slice(-10))) {
+    return false;
+  }
+  for (const botNum of platformBotNumbersCache.set) {
+    if (clean === botNum || clean.endsWith(botNum.slice(-10)) || botNum.endsWith(clean.slice(-10))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isExternalAutoResponder(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase().trim();
+  return (
+    /\b(thank you for contacting|thanks for reaching out|we are currently away|our business hours are|we will get back to you shortly|automated message|auto-reply|auto reply|please choose from the menu|reply with [0-9]|type [0-9] for|press [0-9] for)\b/i.test(lower) ||
+    /^(thank you for contacting|hi! thank you for contacting|hello! thank you for contacting)/i.test(lower)
+  );
+}
+
 interface ProcessMessageParams {
   senderNumber: string;
   userText: string;
@@ -1136,6 +1195,12 @@ async function processMessage(params: ProcessMessageParams) {
       }
       return;
     }
+  }
+
+  // 1a-3. External Chatbot & Away Auto-Responder Detector (Never reply to automated bots)
+  if (!isOwner && isExternalAutoResponder(userText)) {
+    console.log(`[WA Anti-Bot Loop] Suppressed reply to automated auto-responder from ${replyTo}: "${userText.slice(0, 50)}"`);
+    return;
   }
 
   // 2. Load conversation history early (Fetch recent 40 messages, strictly isolated to current workspace)
@@ -2225,6 +2290,12 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
             posterPhone === FEMI_PERSONAL_NUMBER ||
             posterPhone.endsWith(FEMI_PERSONAL_NUMBER.slice(-10));
 
+          // Guard: Don't comment if poster is a platform bot (prevents inter-bot status comment loops)
+          if (isPlatformBotNumber(posterPhone)) {
+            console.log(`[WA Status] Skipping status comment for ${posterPhone}: Poster is a platform bot.`);
+            return;
+          }
+
           // Guard: Don't comment if contact is in the status comment exclusion list
           const isExcluded = await dbIsPhoneExcludedFromStatusComments(currentWs?.id, posterPhone);
           if (isExcluded) {
@@ -2430,6 +2501,13 @@ Output ONLY the comment text.`,
     return NextResponse.json({ ok: true });
   }
 
+  // Inter-Bot Loop Shield: Drop incoming direct messages from other bots on the platform
+  await refreshPlatformBotNumbers();
+  if (senderNumber && isPlatformBotNumber(senderNumber)) {
+    console.log(`[WA Inter-Bot Shield] Suppressed message from platform bot (${senderNumber}) on instance ${instanceName}`);
+    return NextResponse.json({ ok: true, isPlatformBot: true });
+  }
+
   // 1. Explicitly trigger blue ticks (Read receipt) for the sender
   if (msgObj.key?.id && senderJid) {
     markWhatsAppMessageRead(instanceName, senderJid, msgObj.key.id).catch(() => {});
@@ -2507,13 +2585,7 @@ Output ONLY the comment text.`,
 
   const msgId = msgObj.key?.id;
 
-  // 1. In-memory instant deduplication (drops rapid duplicate webhook deliveries within same container)
-  if (msgId && isDuplicateWebhookMessage(msgId)) {
-    console.log(`[WA Webhook] Dropping duplicate delivery for message ${msgId} (in-memory cache)`);
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
-
-  // 2. Persistent database queue deduplication (drops duplicate deliveries across multiple containers/lambdas)
+  // Persistent database queue deduplication (drops duplicate deliveries across multiple containers/lambdas)
   let queueId: string | null = null;
   try {
     queueId = await dbEnqueueWorkspaceMessage({
