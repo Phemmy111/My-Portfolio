@@ -6865,6 +6865,13 @@ async function handleRequest(request) {
                     ) : (
                       filteredContacts.map((contact) => {
                         const isTicked = selectedPhones.includes(contact.phone);
+                        const displayName = (() => {
+                          const n = (contact.name || "").trim();
+                          if (!n || n.length <= 1 || /^[.\-_~`!@#$%^&*()+=/\\|:;'"<>?♡\s]+$/.test(n)) {
+                            return `Contact ${(contact.phone || "").slice(-4)}`;
+                          }
+                          return n;
+                        })();
                         return (
                           <tr
                             key={contact.id || contact.phone}
@@ -6894,17 +6901,17 @@ async function handleRequest(request) {
                                 {contact.profile_pic_url ? (
                                   <img
                                     src={contact.profile_pic_url}
-                                    alt={contact.name}
+                                    alt={displayName}
                                     className="w-7 h-7 rounded-full object-cover border border-slate-700 shrink-0"
                                   />
                                 ) : (
                                   <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-[11px] text-emerald-400 shrink-0">
-                                    {(contact.name || "C").slice(0, 1).toUpperCase()}
+                                    {(displayName || "C").slice(0, 1).toUpperCase()}
                                   </div>
                                 )}
                                 <div>
                                   <div className="font-bold text-slate-200 flex items-center gap-1.5 flex-wrap">
-                                    <span>{contact.name || `Contact ${contact.phone.slice(-4)}`}</span>
+                                    <span>{displayName}</span>
                                     {isPhoneExcludedFromStatus(contact.phone) && (
                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
                                         🚫 No Status Comments

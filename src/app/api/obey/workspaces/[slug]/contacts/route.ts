@@ -34,12 +34,22 @@ function isValidPhoneNumber(phone: string): boolean {
   return isValidE164Phone(phone);
 }
 
+function cleanContactName(name: string | null | undefined, fallbackPhone: string): string {
+  const last4 = sanitizePhone(fallbackPhone).slice(-4) || "Lead";
+  if (!name) return `Contact ${last4}`;
+  const trimmed = name.trim();
+  if (trimmed.length <= 1 || /^[.\-_~`!@#$%^&*()+=/\\|:;'"<>?♡\s]+$/.test(trimmed)) {
+    return `Contact ${last4}`;
+  }
+  return trimmed;
+}
+
 function generateVCard(contacts: ContactItem[], businessName: string): string {
   const validContacts = contacts.filter((c) => isValidPhoneNumber(c.phone));
   const cards = validContacts.map((c) => {
     const cleanPhone = sanitizePhone(c.phone);
     const phoneWithPlus = cleanPhone.startsWith("+") ? cleanPhone : `+${cleanPhone}`;
-    const rawName = (c.name || `Contact ${cleanPhone.slice(-4)}`).replace(/[\r\n;,]/g, " ").trim();
+    const rawName = cleanContactName(c.name, cleanPhone).replace(/[\r\n;,]/g, " ").trim();
     const displayName = `${rawName} (${businessName})`;
 
     return [
@@ -137,8 +147,8 @@ export async function GET(
 
             const dbLead = leadsMap.get(phone);
             const isSaved = item.isSaved !== undefined ? Boolean(item.isSaved) : Boolean(dbLead?.is_saved);
-            const pushName = item.name || item.pushName || item.verifiedName || item.notify || dbLead?.name || "";
-            const finalName = pushName || `Contact ${phone.slice(-4)}`;
+            const rawName = item.name || item.pushName || item.verifiedName || item.notify || dbLead?.name || "";
+            const finalName = cleanContactName(rawName, phone);
             const profilePicUrl = item.profilePicUrl || dbLead?.profile_pic_url || null;
 
             contactsMap.set(phone, {
@@ -182,7 +192,7 @@ export async function GET(
         contactsMap.set(phone, {
           id: dbLead.id,
           phone,
-          name: dbLead.name || `Contact ${phone.slice(-4)}`,
+          name: cleanContactName(dbLead.name, phone),
           is_saved: Boolean(dbLead.is_saved),
           auto_save: dbLead.auto_save ?? true,
           profile_pic_url: dbLead.profile_pic_url || null,
@@ -299,7 +309,7 @@ export async function POST(
 
       const cards = validItems.map((c) => {
         const clean = sanitizePhone(c.phone);
-        const contactName = c.name?.trim() ? c.name.trim() : `Contact ${clean.slice(-4)}`;
+        const contactName = cleanContactName(c.name, clean);
         return {
           fullName: `${contactName} (${ws.name})`,
           wuid: clean,
