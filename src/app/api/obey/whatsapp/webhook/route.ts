@@ -474,8 +474,13 @@ async function handleObeyBusinessOwnerTurn(params: {
   ]);
   const businessBio = wsSettings?.business_bio || currentWs.bio_context || "Professional services and products.";
   const catalog = currentWs.catalog_items || wsSettings?.catalog_summary || [];
-  const voiceCallLink = `https://obeyai.vercel.app/call?biz=${currentWs.slug}&phone=${replyTo}`;
-  const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|can (?:we|i) call)\b/i.test(userText);
+  const isImageOrVisualPromptTurn =
+    /\b(?:make|create|generate|draw|design|paint|produce|build|render|give me)\b[\w\s,–—-]{0,80}\b(?:image|photo|picture|artwork|illustration|flyer|poster|banner|logo|graphic|portrait|scene|character|visual|thumbnail|render|reference)\b/i.test(userText) ||
+    (/\b(?:aspect\s*ratio|9:16|16:9|cinematic\s+cgi|photorealistic|hyperrealistic)\b/i.test(userText) && /\b(?:create|make|generate|render|draw|character|scene)\b/i.test(userText));
+  const asksVoiceCall =
+    !isImageOrVisualPromptTurn &&
+    /\b(?:voice call with you|call (?:you|me|link)|talk on phone with you|voice link|call link|speak on phone with you|can (?:we|i) call(?: you)?)\b/i.test(userText) &&
+    !/\b(?:ended|after|during|finished|missed|received)\s+(?:a\s+)?phone call\b/i.test(userText);
   const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
 
   const cleanHistory = (historyText || "")

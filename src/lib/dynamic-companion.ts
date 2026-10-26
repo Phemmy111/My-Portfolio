@@ -482,7 +482,7 @@ REASONING GUIDELINES:
   NEVER GUESS OR FABRICATE! If the user asks about ANY song, song lyrics, music artist, real person's full name, biography, acronyms, quotes, current news, sports, or factual trivia:
   ALWAYS select "search_live_web" with a specific "search_query" (e.g. "BBO gospel artist full name" or "BBO Amin lyrics Nigerian gospel")!
   NEVER select "none" for queries that require specific factual knowledge or lyrics you might not have 100% verified.
-- NEVER choose "direct_voice_call" unless the user's current message explicitly contains words like "call me", "voice call", or "phone call".
+- NEVER choose "direct_voice_call" when the user is telling a story, giving a scene description, creating characters, or requesting an image/artwork/flyer! Only choose "direct_voice_call" if the user explicitly asks to speak on the phone or call with you (e.g. "call me", "can we speak on call", "let's have a call").
 - NEVER confuse visual artwork adjustments with website/artifact changes. If the user mentions fonts, buttons, sections, forms, or HTML, it is ALWAYS a website artifact!
 - If the user asks whether a message was delivered, what you told someone, who it was sent to, or questions about a recent dispatch, ALWAYS choose "check_action_status".
 - If the user wants to text someone but hasn't provided the phone number yet and no number exists in recent history, choose "none" and ask warmly for their phone number in "conversational_response".
@@ -546,8 +546,21 @@ Respond ONLY with a valid JSON object matching this schema:
   // Check if previous delegation task was already completed / closed:
   const lastTaskAlreadyClosed = /\b(successfully sent your message|already delivered your message|message dispatched|action cancelled)\b/i.test(lastObeyLine);
 
+  // Check if user's prompt is an image generation / artistic scene description
+  const isImageOrVisualPrompt =
+    !/\b(your\s+image|image\s+(gen|creat|capab|upgrad|qualit|feature|abilit|engine|function|tool)|upgrade.*image|improve.*image|image.*upgrade|image.*improve|how.*image|image.*work|image.*system)\b/i.test(userText.trim()) &&
+    (
+      /\b(?:make|create|generate|draw|design|paint|produce|build|render|give me)\b[\w\s,–—-]{0,80}\b(?:image|photo|picture|artwork|illustration|flyer|poster|banner|logo|graphic|portrait|scene|character|visual|thumbnail|render|reference)\b/i.test(userText.trim()) ||
+      (/\b(?:aspect\s*ratio|9:16|16:9|cinematic\s+cgi|photorealistic|hyperrealistic)\b/i.test(userText.trim()) && /\b(?:create|make|generate|render|draw|character|scene)\b/i.test(userText.trim())) ||
+      (/\b(?:flyer|poster|logo|banner)\s+(?:for|of)\b/i.test(userText.trim()) && /\b(?:work|business|services|brand|salon|school|church|shop|product|event|nails|beauty|promo|launch)\b/i.test(userText.trim()))
+    );
+
   // NATIVE AI VOICE CALL REASONING & BROAD INTENT:
-  const naturalCallIntent = /\b(call me|voice call|phone call|call you|speak on call|talk on call|call your line|ring me|let'?s call|want to call|make a call|get on a call|can we call|can we speak|can i call|talk to you on phone|speak to you live|hear your voice|give me a call)\b/i.test(userText);
+  // Must be an active request to call/speak WITH Obey, NOT narrative text like "ended a phone call" or image scene descriptions.
+  const naturalCallIntent =
+    !isImageOrVisualPrompt &&
+    /\b(?:call me|voice call with you|call you|speak on (?:a\s+)?call|talk on (?:a\s+)?call|call your line|ring me|let'?s call|want to call you|make a call with you|get on a call|can we call|can we speak live|can i call you|talk to you on phone|speak to you live|hear your voice|give me a call)\b/i.test(userText) &&
+    !/\b(?:ended|after|during|finished|missed|received)\s+(?:a\s+)?phone call\b/i.test(userText);
   const explicitlyRequestsCall = naturalCallIntent;
   const isShortAffirmation = /^(yes|yeah|sure|ok|okay|1|proceed|do it)\b/i.test(userText.trim());
 
@@ -996,14 +1009,16 @@ ${bookletSpec.slice(0, 3000)}`,
   const requestsImageOrFlyer =
     !isMetaImageDiscussion &&
     (
-      // Explicit "make/create/generate/draw/design/paint" + visual noun
-      /\b(make|create|generate|draw|design|paint|produce|build|give me)\s+(me\s+)?(an?\s+)?(image|photo|picture|artwork|illustration|flyer|poster|banner|logo|graphic|portrait|scene|visual|thumbnail)\b/i.test(userText.trim()) ||
+      // Explicit "make/create/generate/draw/design/paint/render" + optional descriptors (up to 80 chars) + visual nouns
+      /\b(?:make|create|generate|draw|design|paint|produce|build|render|give me)\b[\w\s,–—-]{0,80}\b(?:image|photo|picture|artwork|illustration|flyer|poster|banner|logo|graphic|portrait|scene|character|visual|thumbnail|render|reference)\b/i.test(userText.trim()) ||
+      // Aspect ratio mentioned with creative terms:
+      (/\b(?:aspect\s*ratio|9:16|16:9|cinematic\s+cgi|photorealistic|hyperrealistic)\b/i.test(userText.trim()) && /\b(?:create|make|generate|render|draw|character|scene)\b/i.test(userText.trim())) ||
       // "flyer for/of", "poster for/of", "logo for" — but must have a business/topic context
-      (/\b(flyer|poster|logo|banner)\s+(for|of)\b/i.test(userText.trim()) && /\b(work|business|services|brand|salon|school|church|shop|product|event|nails|beauty|promo|launch)\b/i.test(userText.trim())) ||
+      (/\b(?:flyer|poster|logo|banner)\s+(?:for|of)\b/i.test(userText.trim()) && /\b(?:work|business|services|brand|salon|school|church|shop|product|event|nails|beauty|promo|launch)\b/i.test(userText.trim())) ||
       // "create a flyer", "make a banner", "design a logo" — explicit imperatives
-      /\b(create|make|design|build|produce)\s+(a|an)\s+(flyer|poster|banner|logo|graphic|artwork|visual)\b/i.test(userText.trim()) ||
+      /\b(?:create|make|design|build|produce)\s+(?:a|an)\s+(?:flyer|poster|banner|logo|graphic|artwork|visual)\b/i.test(userText.trim()) ||
       // "draw me", "paint me" — classic image creation
-      /\b(draw|paint)\s+(me\s+)?[a-z]/i.test(userText.trim())
+      /\b(?:draw|paint)\s+(?:me\s+)?[a-z]/i.test(userText.trim())
     );
 
   if (
