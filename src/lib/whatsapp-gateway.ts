@@ -653,22 +653,30 @@ export async function getEvolutionPairingCode(
       ? `${process.env.NEXT_PUBLIC_APP_URL}/api/obey/whatsapp/webhook/${instanceName}`
       : `https://obeyai.vercel.app/api/obey/whatsapp/webhook/${instanceName}`;
 
-    // 1. Fast path: If instance is already spawned in number mode, connect directly
+    // 1. Fast path: Only reuse if instance is healthy, has NO disconnection error, and matches target number
     try {
-      const fastRes = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+      const fetchRes = await fetch(`${evoUrl}/instance/fetchInstances`, {
         headers: { apikey: evoKey },
       });
-      if (fastRes.ok) {
-        const fastData = await fastRes.json();
-        if (fastData?.pairingCode && typeof fastData.pairingCode === "string" && fastData.pairingCode.length >= 6) {
-          // Fire and forget settings & webhook attach
-          setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
-          setEvolutionInstanceSettings(instanceName, { readStatus: true, readMessages: true, alwaysOnline: true }).catch(() => {});
-          return { success: true, pairingCode: fastData.pairingCode };
+      if (fetchRes.ok) {
+        const list = await fetchRes.json();
+        const found = Array.isArray(list) ? list.find((i: any) => i.name === instanceName) : null;
+        if (found && !found.disconnectionReasonCode && found.number === cleaned) {
+          const fastRes = await fetch(`${evoUrl}/instance/connect/${instanceName}?number=${cleaned}`, {
+            headers: { apikey: evoKey },
+          });
+          if (fastRes.ok) {
+            const fastData = await fastRes.json();
+            if (fastData?.pairingCode && typeof fastData.pairingCode === "string" && fastData.pairingCode.length >= 6) {
+              setEvolutionInstanceWebhook(instanceName, webhookUrl).catch(() => {});
+              setEvolutionInstanceSettings(instanceName, { readStatus: true, readMessages: true, alwaysOnline: true }).catch(() => {});
+              return { success: true, pairingCode: fastData.pairingCode };
+            }
+          }
         }
       }
     } catch (e: any) {
-      console.warn(`[Evolution] Fast path connect error for ${instanceName}:`, e.message);
+      console.warn(`[Evolution] Fast path connect check error for ${instanceName}:`, e.message);
     }
 
     // 2. Clean recreate path: Wipe old credentials/QR mode so Baileys generates a clean pairing code

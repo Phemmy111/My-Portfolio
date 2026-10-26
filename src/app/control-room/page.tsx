@@ -3562,6 +3562,9 @@ function ControlRoomContent() {
                               <p className="text-[11px] text-slate-400">
                                 WhatsApp &gt; Linked Devices &gt; Link with phone number instead &gt; enter above code.
                               </p>
+                              <p className="text-[10px] text-amber-400/90 font-medium">
+                                ⏳ Enter code into WhatsApp immediately (WhatsApp codes expire in 60 seconds).
+                              </p>
                             </div>
 
                             <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -3588,6 +3591,20 @@ function ControlRoomContent() {
                                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition"
                               >
                                 Request New Code
+                              </button>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-800/80">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWaConnectMethod("qr");
+                                  handleInitWhatsApp();
+                                }}
+                                className="w-full text-center py-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>Have another screen? Switch to QR Code (Plan A)</span>
                               </button>
                             </div>
                           </div>
