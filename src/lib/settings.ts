@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 
-const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_JjwKqG1xtk4W@ep-dawn-feather-b5pjlp0o.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require";
+const dbUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_aT9yHdvzhRL3@ep-ancient-water-b45hpwr0-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require";
 const sql = neon(dbUrl);
 
 export interface SystemSetting {
@@ -11,7 +11,7 @@ export interface SystemSetting {
 
 export interface AIProviderConfig {
   id: string;
-  provider: "gemini" | "openrouter" | "grok" | "groq" | "openai";
+  provider: "gemini" | "openrouter" | "grok" | "groq" | "openai" | "huggingface";
   name: string;
   apiKey: string;
   model: string;
