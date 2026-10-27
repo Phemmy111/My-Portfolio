@@ -62,6 +62,20 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
     });
   }
 
+  // Auto-inject Hugging Face custom Obey model (Phemmy/obey-llama3-8b)
+  const hasHF = activeProviders.some((p) => p.provider === "huggingface");
+  const hfToken = process.env.HUGGINGFACE_API_KEY?.trim() || process.env.HF_TOKEN?.trim() || "hf_KeHSTOBsVhspgNeBcwjhKjI1ipYvcZHDSY";
+  if (!hasHF && hfToken) {
+    activeProviders.push({
+      id: "hf-obey-custom",
+      provider: "huggingface",
+      name: "Obey-8B (Hugging Face)",
+      apiKey: hfToken,
+      model: process.env.HF_MODEL || "Phemmy/obey-llama3-8b",
+      enabled: true,
+    });
+  }
+
   for (let i = 0; i < activeProviders.length; i++) {
     const p = activeProviders[i];
 
@@ -240,6 +254,44 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
             ],
             temperature,
             max_tokens: maxTokens,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            return {
+              text: content.trim(),
+              provider: p.name,
+              model: targetModel,
+              fallbackTriggered: i > 0,
+              errorsEncountered: errors,
+            };
+          }
+        } else {
+          const errText = await res.text();
+          errors.push(`${p.name} HTTP ${res.status}: ${errText.slice(0, 100)}`);
+        }
+      }
+
+      // 6. Hugging Face (Custom Obey-8B model or Serverless Hub)
+      if (p.provider === "huggingface") {
+        const targetModel = p.model?.trim() || "Phemmy/obey-llama3-8b";
+        const res = await fetch("https://router.huggingface.co/hf-inference/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${p.apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature,
+            max_tokens: Math.min(maxTokens, 2048),
           }),
         });
 
