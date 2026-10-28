@@ -732,6 +732,25 @@ async function testProviderConnection(
       return { success: false, message: `OpenAI rejected test (HTTP ${res.status}).` };
     }
 
+    if (prov === "huggingface" || prov === "hf") {
+      const targetModel = model?.trim() || "Phemmy/obey-llama3-8b";
+      const res = await fetch(`https://huggingface.co/api/models/${targetModel}`, {
+        headers: {
+          Authorization: `Bearer ${cleanKey}`,
+        },
+      });
+
+      const latencyMs = Date.now() - start;
+      if (res.ok) {
+        return {
+          success: true,
+          message: `Connected to Hugging Face model (${targetModel}) successfully (${latencyMs}ms)!`,
+          latencyMs,
+        };
+      }
+      return { success: false, message: `Hugging Face rejected key or model (${res.status}).` };
+    }
+
     return { success: true, message: "Key saved." };
   } catch (err: any) {
     return { success: false, message: `Connection error: ${err.message}` };

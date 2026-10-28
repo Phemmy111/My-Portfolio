@@ -35,7 +35,7 @@ interface AISettingsModalProps {
 }
 
 const PROVIDER_OPTIONS: Array<{
-  id: "gemini" | "openrouter" | "grok" | "groq" | "openai";
+  id: "gemini" | "openrouter" | "grok" | "groq" | "openai" | "huggingface";
   name: string;
   defaultModel: string;
   docUrl: string;
@@ -45,6 +45,12 @@ const PROVIDER_OPTIONS: Array<{
     name: "Google Gemini",
     defaultModel: "gemini-flash-lite-latest",
     docUrl: "https://aistudio.google.com/app/apikey",
+  },
+  {
+    id: "huggingface",
+    name: "Hugging Face",
+    defaultModel: "Phemmy/obey-llama3-8b",
+    docUrl: "https://huggingface.co/settings/tokens",
   },
   {
     id: "openrouter",
@@ -497,7 +503,7 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
   }, [isOpen, initialTab]);
 
   // Pool management
-  const handleAddProvider = (providerType: "gemini" | "openrouter" | "grok" | "groq" | "openai" = "gemini") => {
+  const handleAddProvider = (providerType: "gemini" | "openrouter" | "grok" | "groq" | "openai" | "huggingface" = "gemini") => {
     const option = PROVIDER_OPTIONS.find((o) => o.id === providerType) || PROVIDER_OPTIONS[0];
     const count = providersPool.filter((p) => p.provider === providerType).length + 1;
     const newEntry: AIProviderConfig = {
@@ -1120,6 +1126,13 @@ export default function AISettingsModal({ isOpen, onClose, onSaved, initialTab =
                       className="px-2.5 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-xs flex items-center gap-1 transition-all"
                     >
                       <Plus size={13} /> Add Groq
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddProvider("huggingface")}
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center gap-1 transition-all"
+                    >
+                      <Plus size={13} /> Add Hugging Face
                     </button>
                   </div>
                 </div>
