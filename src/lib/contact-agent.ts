@@ -10,7 +10,7 @@ import {
   ContactBucket,
   ContactMatch,
 } from "./db";
-import { sendWhatsAppMessage } from "./whatsapp-gateway";
+import { sendWhatsAppMessage, sendWhatsAppDocument } from "./whatsapp-gateway";
 
 export interface ContactAgentTurnResult {
   handled: boolean;
@@ -28,6 +28,11 @@ export async function handleOwnerContactOrBucketTurn(params: {
   userText: string;
   historyText?: string;
   ownerName?: string;
+  attachment?: {
+    base64: string;
+    mimetype: string;
+    fileName: string;
+  } | null;
 }): Promise<ContactAgentTurnResult> {
   const { workspaceId, instanceName, userPhone, userText, historyText = "", ownerName = "Boss" } = params;
   const lower = userText.toLowerCase().trim();
@@ -37,9 +42,81 @@ export async function handleOwnerContactOrBucketTurn(params: {
   // -------------------------------------------------------------
   const pendingAction = await dbGetPendingUserAction(userPhone);
 
-  const isAffirmative = /^(yes|yeah|yep|y|proceed|send|dispatch|deliver|ok|okay|1|sure|confirm)$/i.test(lower);
+  const isAffirmative = /^(yes|yeah|yep|y|proceed|send|dispatch|deliver|ok|okay|sure|confirm)$/i.test(lower);
   const isNegative = /^(no|nah|cancel|stop|abort|don't|dont|0)$/i.test(lower);
 
+  // 1a. Handle Recipient Disambiguation (e.g. Boss chooses 1, 2, 3 or specifies name)
+  if (pendingAction && pendingAction.action_type === ("select_recipient" as any)) {
+    if (isNegative) {
+      await dbUpdateUserActionStatus(pendingAction.id, "cancelled");
+      return {
+        handled: true,
+        reply: `❌ *Cancelled.* No document or message was dispatched, ${ownerName}.`,
+      };
+    }
+
+    try {
+      const data = JSON.parse(pendingAction.payload);
+      const options: Array<{ name: string; phone: string; formattedPhone: string }> = data.options || [];
+      let selectedOption: { name: string; phone: string; formattedPhone: string } | null = null;
+
+      const numMatch = lower.match(/\b([1-9])\b/);
+      if (numMatch) {
+        const idx = parseInt(numMatch[1], 10) - 1;
+        if (idx >= 0 && idx < options.length) {
+          selectedOption = options[idx];
+        }
+      }
+
+      if (!selectedOption) {
+        for (const opt of options) {
+          if (lower.includes(opt.name.toLowerCase()) || lower.includes(opt.phone.slice(-6))) {
+            selectedOption = opt;
+            break;
+          }
+        }
+      }
+
+      if (selectedOption) {
+        if (data.attachment?.base64) {
+          const sendRes = await sendWhatsAppDocument(
+            data.attachment.base64,
+            data.attachment.fileName || "Document.pdf",
+            selectedOption.phone,
+            data.attachment.caption || `📄 Attached from ${ownerName}`,
+            data.attachment.mimetype || "application/pdf",
+            instanceName
+          );
+          if (sendRes.success) {
+            await dbUpdateUserActionStatus(pendingAction.id, "executed");
+            return {
+              handled: true,
+              reply: `✅ *Document Dispatched!* 🚀\n\nI have successfully sent "${data.attachment.fileName}" to *${selectedOption.name}* (${selectedOption.formattedPhone}).`,
+            };
+          } else {
+            await dbUpdateUserActionStatus(pendingAction.id, "failed");
+            return {
+              handled: true,
+              reply: `⚠️ *Delivery Failed:* ${sendRes.error || "Evolution gateway error"}. Please check your connection in Control Room.`,
+            };
+          }
+        } else if (data.textMessage) {
+          const sendRes = await sendWhatsAppMessage(data.textMessage, selectedOption.phone, instanceName);
+          if (sendRes.success) {
+            await dbUpdateUserActionStatus(pendingAction.id, "executed");
+            return {
+              handled: true,
+              reply: `✅ *Message Dispatched!* 🚀\n\nSuccessfully sent your message to *${selectedOption.name}* (${selectedOption.formattedPhone}).`,
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("[Contact Agent] Disambiguation selection error:", e);
+    }
+  }
+
+  // 1b. Standard YES / NO Confirmation
   if (pendingAction && (isAffirmative || isNegative)) {
     if (isNegative) {
       await dbUpdateUserActionStatus(pendingAction.id, "cancelled");
@@ -50,7 +127,41 @@ export async function handleOwnerContactOrBucketTurn(params: {
     }
 
     if (isAffirmative) {
-      // Execute pending action!
+      // Execute Document Dispatch
+      if (pendingAction.action_type === ("whatsapp_document" as any)) {
+        try {
+          const data = JSON.parse(pendingAction.payload);
+          const res = await sendWhatsAppDocument(
+            data.base64,
+            data.fileName || "Document.pdf",
+            pendingAction.target_recipient,
+            data.caption || `📄 Attached from ${ownerName}`,
+            data.mimetype || "application/pdf",
+            instanceName
+          );
+          if (res.success) {
+            await dbUpdateUserActionStatus(pendingAction.id, "executed");
+            return {
+              handled: true,
+              reply: `✅ *Document Dispatched!* 🚀\n\nI have successfully sent "${data.fileName}" to *+${pendingAction.target_recipient}*.`,
+            };
+          } else {
+            await dbUpdateUserActionStatus(pendingAction.id, "failed");
+            return {
+              handled: true,
+              reply: `⚠️ *Delivery Failed:* ${res.error || "Evolution gateway error"}. Please check your connection in Control Room.`,
+            };
+          }
+        } catch (err: any) {
+          await dbUpdateUserActionStatus(pendingAction.id, "failed");
+          return {
+            handled: true,
+            reply: `⚠️ *Delivery Error:* ${err.message}`,
+          };
+        }
+      }
+
+      // Execute Text Message Dispatch
       if (pendingAction.action_type === "whatsapp_message") {
         const res = await sendWhatsAppMessage(pendingAction.payload, pendingAction.target_recipient, instanceName);
         if (res.success) {
@@ -321,15 +432,144 @@ export async function handleOwnerContactOrBucketTurn(params: {
   }
 
   // -------------------------------------------------------------
+  // 4.5 Contact Capability Queries ("Cant he search contact through the control room again", "Can you search contact")
+  // -------------------------------------------------------------
+  const isContactCapabilityQuery =
+    /\b(can(?:'t| not)?\s+(?:he|you)|why\s+can(?:'t| not)?\s+(?:he|you)|is\s+it\s+possible\s+to|able\s+to)\b.*\b(search\s+contact|find\s+contact|access\s+contact|look\s+up\s+contact|control\s+room|address\s+book)\b/i.test(
+      lower
+    ) ||
+    /\b(search\s+contact\s+through\s+the\s+control\s+room|search\s+contact\s+in\s+control\s+room)\b/i.test(lower);
+
+  if (isContactCapabilityQuery) {
+    const overview = await dbGetContactsOverview({ workspaceId, instanceName });
+    return {
+      handled: true,
+      reply:
+        `Yes ${ownerName}, absolutely! 🚀 I have full, live access to search and message all contacts synced in your Control Room and WhatsApp address book (*${overview.totalContacts}* contacts saved, *${overview.totalLeads}* CRM leads).\n\n` +
+        `💡 *Here is what you can do anytime:*\n` +
+        `• *Search any contact:* \`search contact Ola\` or \`find contact Seyi\`\n` +
+        `• *Send documents:* Attach any PDF/Word doc with caption \`send this document to [Contact Name]\`\n` +
+        `• *Send message:* \`message [Contact Name]: [Your message]\`\n` +
+        `• *Broadcast to groups:* \`list buckets\` or \`deliver to bucket [Name]: [Message]\``,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 4.8 Document & Media Forwarding to Contacts ("help me send this document to Ola Cla", "send this document to Ola", "forward this file to Seyi")
+  // -------------------------------------------------------------
+  const isDocumentOrMediaSend =
+    /\b(?:send|forward|deliver|dispatch|give|share)\b.*\b(?:to|with)\b/i.test(userText) &&
+    (/\b(?:this\s+)?(?:document|file|doc|docx|pdf|paper|attachment|media|image|photo)\b/i.test(userText) || Boolean(params.attachment?.base64));
+
+  if (isDocumentOrMediaSend) {
+    const targetMatch = userText.match(/\b(?:to|with)\s+([a-zA-Z0-9_\-\s@❤️]+?)(?:[:.,!?]|$)/i);
+    let targetName = targetMatch ? targetMatch[1].trim() : "";
+    targetName = targetName.replace(/\b(you won't|you wont|will you|can you|would you|could you|please|now|first|later)\b/gi, "").trim();
+
+    if (
+      targetName &&
+      !/^(status|broadcast|everyone|all|bucket|me|you|him|her|them|someone|person|people|number|lead|leads|group|now|later)$/i.test(targetName)
+    ) {
+      const matches = await dbFindContactsByNameOrPhone({
+        workspaceId,
+        query: targetName,
+        instanceName,
+      });
+
+      const currentAttachment = params.attachment;
+
+      if (matches.length === 1) {
+        const match = matches[0];
+        if (currentAttachment?.base64) {
+          await dbCreateUserPendingAction({
+            userIdentifier: userPhone,
+            actionType: "whatsapp_document" as any,
+            targetRecipient: match.phone,
+            subject: currentAttachment.fileName,
+            payload: JSON.stringify({
+              base64: currentAttachment.base64,
+              fileName: currentAttachment.fileName,
+              mimetype: currentAttachment.mimetype,
+              caption: `📄 Attached from ${ownerName}`,
+            }),
+          });
+
+          return {
+            handled: true,
+            reply:
+              `📋 *Ready to Send Document:* \n\n` +
+              `• *File:* ${currentAttachment.fileName}\n` +
+              `• *Recipient:* *${match.name}* (${match.formattedPhone})\n\n` +
+              `👉 Reply *YES* to dispatch immediately, or *NO* to cancel.`,
+          };
+        } else {
+          return {
+            handled: true,
+            reply:
+              `👤 I found *${match.name}* (${match.formattedPhone}) in your address book!\n\n` +
+              `Please send or attach the document here on WhatsApp, and I will dispatch it to ${match.name} immediately.`,
+          };
+        }
+      } else if (matches.length > 1) {
+        const topMatches = matches
+          .slice(0, 5)
+          .map((m, i) => `   *${i + 1}.* *${m.name}* (${m.formattedPhone})`)
+          .join("\n");
+
+        if (currentAttachment?.base64) {
+          await dbCreateUserPendingAction({
+            userIdentifier: userPhone,
+            actionType: "select_recipient" as any,
+            targetRecipient: userPhone,
+            subject: currentAttachment.fileName,
+            payload: JSON.stringify({
+              options: matches.slice(0, 5),
+              attachment: currentAttachment,
+            }),
+          });
+
+          return {
+            handled: true,
+            reply:
+              `🔍 Found *${matches.length}* contacts matching "*${targetName}*":\n\n` +
+              `${topMatches}\n\n` +
+              `Which contact should I send *"${currentAttachment.fileName}"* to? Reply with *1*, *2*, or *3* (or *cancel*).`,
+          };
+        } else {
+          return {
+            handled: true,
+            reply:
+              `🔍 Found *${matches.length}* contacts matching "*${targetName}*":\n\n` +
+              `${topMatches}\n\n` +
+              `Which one would you like me to send to? Once you pick, send the document and I'll deliver it.`,
+          };
+        }
+      } else {
+        return {
+          handled: true,
+          reply:
+            `🔍 ${ownerName}, I searched your saved WhatsApp contacts and CRM for "*${targetName}*", but found no matching contact.\n\n` +
+            `💡 Please share their phone number (e.g. 080... or +234...) so I can dispatch "${currentAttachment?.fileName || "your document"}" to them!`,
+        };
+      }
+    }
+  }
+
+  // -------------------------------------------------------------
   // 5. Contact Name Search & Actual Messaging ("help me message Femi", "message Olajide: Good morning")
   // -------------------------------------------------------------
   // Strict guard: if the user is discussing content generation, automations, workflows, integrations, creative assets, prompts, code, images, video, n8n, or asking for written text, DO NOT treat as contact outreach!
+  const isDocumentOrMediaForward =
+    /\b(?:send|forward|deliver)\s+(?:this\s+)?(?:document|file|doc|pdf)\s+to\b/i.test(userText);
+
   const isCreativeOrTechnical =
-    /\b(give\s+me|write\s+me|send\s+me|show\s+me|generate|draft|compose|prepare|create|suggest|copy|paste|copy\s+and\s+paste|intro|introduction|pitch|template|sample|marketing|sales\s+pitch|script|explanation)\b/i.test(userText) ||
-    /\b(a|the|some|any|this|that|my|your|clean|short|quick|simple)\s+(?:text|message)\b/i.test(userText) ||
-    /\b(automation|pipeline|workflow|n8n|bot|chatbot|webhook|integration|paystack|airtable|supabase|sheets|google\s+sheets|stripe|crm|database|api|endpoint|auto-responder|invoice|prompt|image|video|clip|script|code|json|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
-    /\b(i want an automation|build an automation|create an automation|automate|when someone pays|when a user|records the transaction)\b/i.test(userText) ||
-    /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text|text\s+that\s+i\s+can)\b/i.test(userText);
+    !isDocumentOrMediaForward && (
+      /\b(give\s+me|write\s+me|send\s+me|show\s+me|generate|draft|compose|prepare|create|suggest|copy|paste|copy\s+and\s+paste|intro|introduction|pitch|template|sample|marketing|sales\s+pitch|script|explanation)\b/i.test(userText) ||
+      /\b(a|the|some|any|this|that|my|your|clean|short|quick|simple)\s+(?:text|message)\b/i.test(userText) ||
+      /\b(automation|pipeline|workflow|n8n|bot|chatbot|webhook|integration|paystack|airtable|supabase|sheets|google\s+sheets|stripe|crm|database|api|endpoint|auto-responder|invoice|prompt|image|video|clip|script|code|json|scene|story|artifact|document|file|audio|voice\s+note|html|css|preview|link)\b/i.test(userText) ||
+      /\b(i want an automation|build an automation|create an automation|automate|when someone pays|when a user|records the transaction)\b/i.test(userText) ||
+      /\b(want\s+text|plain\s+text|raw\s+text|text\s+prompt|body\s+text|some\s+text|text\s+that\s+i\s+can)\b/i.test(userText)
+    );
 
   // Command must be an intentional action to message/text someone, not a random occurrence of "text" or "message"
   const messageContactTrigger = !isCreativeOrTechnical

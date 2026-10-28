@@ -1282,16 +1282,31 @@ export async function dbGetContactsOverview(params: {
   try {
     await createWorkspaceTables();
 
-    // 1. Count distinct WhatsApp contacts for the instance
-    const waCountRows = await db`
-      SELECT COUNT(DISTINCT c."remoteJid")::int as total
-      FROM evolution."Contact" c
-      JOIN evolution."Instance" i ON c."instanceId" = i.id
-      WHERE i.name = ${instName}
-        AND c."remoteJid" LIKE '%@s.whatsapp.net'
-        AND c."remoteJid" NOT LIKE '0@%'
-    `;
-    const totalContacts = waCountRows?.[0]?.total || 0;
+    // 1. Count distinct WhatsApp contacts for the instance (try public."Contact" then fallback to evolution."Contact")
+    let totalContacts = 0;
+    try {
+      const waCountRows = await db`
+        SELECT COUNT(DISTINCT c."remoteJid")::int as total
+        FROM "Contact" c
+        LEFT JOIN "Instance" i ON c."instanceId" = i.id
+        WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'} OR i.name IS NULL)
+          AND c."remoteJid" LIKE '%@s.whatsapp.net'
+          AND c."remoteJid" NOT LIKE '0@%'
+      `;
+      totalContacts = waCountRows?.[0]?.total || 0;
+    } catch {
+      try {
+        const waCountRows = await db`
+          SELECT COUNT(DISTINCT c."remoteJid")::int as total
+          FROM evolution."Contact" c
+          JOIN evolution."Instance" i ON c."instanceId" = i.id
+          WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'})
+            AND c."remoteJid" LIKE '%@s.whatsapp.net'
+            AND c."remoteJid" NOT LIKE '0@%'
+        `;
+        totalContacts = waCountRows?.[0]?.total || 0;
+      } catch {}
+    }
 
     // 2. Count CRM leads
     const leadCountRows = await db`
@@ -1302,22 +1317,44 @@ export async function dbGetContactsOverview(params: {
     const totalLeads = leadCountRows?.[0]?.total || 0;
 
     // 3. Fetch recent named contacts
-    const sampleRows = await db`
-      SELECT c."remoteJid", c."pushName"
-      FROM (
-        SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
-        FROM evolution."Contact" c
-        JOIN evolution."Instance" i ON c."instanceId" = i.id
-        WHERE i.name = ${instName}
-          AND c."remoteJid" LIKE '%@s.whatsapp.net'
-          AND c."remoteJid" NOT LIKE '0@%'
-          AND c."pushName" IS NOT NULL
-          AND TRIM(c."pushName") != ''
-        ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
-      ) c
-      ORDER BY c."updatedAt" DESC NULLS LAST
-      LIMIT 10
-    `;
+    let sampleRows: any[] = [];
+    try {
+      sampleRows = await db`
+        SELECT c."remoteJid", c."pushName"
+        FROM (
+          SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+          FROM "Contact" c
+          LEFT JOIN "Instance" i ON c."instanceId" = i.id
+          WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'} OR i.name IS NULL)
+            AND c."remoteJid" LIKE '%@s.whatsapp.net'
+            AND c."remoteJid" NOT LIKE '0@%'
+            AND c."pushName" IS NOT NULL
+            AND TRIM(c."pushName") != ''
+          ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+        ) c
+        ORDER BY c."updatedAt" DESC NULLS LAST
+        LIMIT 10
+      `;
+    } catch {
+      try {
+        sampleRows = await db`
+          SELECT c."remoteJid", c."pushName"
+          FROM (
+            SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+            FROM evolution."Contact" c
+            JOIN evolution."Instance" i ON c."instanceId" = i.id
+            WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'})
+              AND c."remoteJid" LIKE '%@s.whatsapp.net'
+              AND c."remoteJid" NOT LIKE '0@%'
+              AND c."pushName" IS NOT NULL
+              AND TRIM(c."pushName") != ''
+            ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+          ) c
+          ORDER BY c."updatedAt" DESC NULLS LAST
+          LIMIT 10
+        `;
+      } catch {}
+    }
 
     const sampleContacts: ContactMatch[] = sampleRows.map((r: any) => {
       const phone = (r.remoteJid || "").replace(/\D/g, "");
@@ -1366,41 +1403,103 @@ export async function dbFindContactsByNameOrPhone(params: {
     const cleanDigits = q.replace(/\D/g, "");
     const isWildcard = !q || q === "*" || q === "all" || q === "list";
 
-    // 1. Direct query into evolution."Contact" (Neon Postgres)
+    // 1. Direct query into "Contact" / evolution."Contact" (Neon Postgres)
     try {
       let evoRows: any[] = [];
-      if (isWildcard) {
-        evoRows = await db`
-          SELECT c."remoteJid", c."pushName"
-          FROM (
-            SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
-            FROM evolution."Contact" c
-            JOIN evolution."Instance" i ON c."instanceId" = i.id
-            WHERE i.name = ${instName}
+      const words = q.split(/\s+/).filter((w) => w.length >= 2);
+
+      // Attempt public."Contact" first
+      try {
+        if (isWildcard) {
+          evoRows = await db`
+            SELECT c."remoteJid", c."pushName"
+            FROM (
+              SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+              FROM "Contact" c
+              LEFT JOIN "Instance" i ON c."instanceId" = i.id
+              WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'} OR i.name IS NULL)
+                AND c."remoteJid" LIKE '%@s.whatsapp.net'
+                AND c."remoteJid" NOT LIKE '0@%'
+                AND c."pushName" IS NOT NULL
+                AND TRIM(c."pushName") != ''
+              ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+            ) c
+            ORDER BY c."updatedAt" DESC NULLS LAST
+            LIMIT 25
+          `;
+        } else {
+          evoRows = await db`
+            SELECT c."remoteJid", c."pushName"
+            FROM "Contact" c
+            LEFT JOIN "Instance" i ON c."instanceId" = i.id
+            WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'} OR i.name IS NULL)
               AND c."remoteJid" LIKE '%@s.whatsapp.net'
               AND c."remoteJid" NOT LIKE '0@%'
-              AND c."pushName" IS NOT NULL
-              AND TRIM(c."pushName") != ''
-            ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
-          ) c
-          ORDER BY c."updatedAt" DESC NULLS LAST
-          LIMIT 25
-        `;
-      } else {
-        evoRows = await db`
-          SELECT c."remoteJid", c."pushName"
-          FROM evolution."Contact" c
-          JOIN evolution."Instance" i ON c."instanceId" = i.id
-          WHERE i.name = ${instName}
-            AND c."remoteJid" LIKE '%@s.whatsapp.net'
-            AND c."remoteJid" NOT LIKE '0@%'
-            AND (
-              LOWER(COALESCE(c."pushName", '')) LIKE ${`%${q}%`}
-              OR (${cleanDigits.length >= 3} AND c."remoteJid" LIKE ${`%${cleanDigits}%`})
-            )
-          ORDER BY c."updatedAt" DESC NULLS LAST
-          LIMIT 25
-        `;
+              AND (
+                LOWER(COALESCE(c."pushName", '')) LIKE ${`%${q}%`}
+                OR (${cleanDigits.length >= 3} AND c."remoteJid" LIKE ${`%${cleanDigits}%`})
+              )
+            ORDER BY c."updatedAt" DESC NULLS LAST
+            LIMIT 25
+          `;
+
+          // If no exact match and multiple words, search by individual words (e.g. "Ola Cla" -> "Ola")
+          if (evoRows.length === 0 && words.length > 1) {
+            for (const w of words) {
+              const wordRows = await db`
+                SELECT c."remoteJid", c."pushName"
+                FROM "Contact" c
+                LEFT JOIN "Instance" i ON c."instanceId" = i.id
+                WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'} OR i.name IS NULL)
+                  AND c."remoteJid" LIKE '%@s.whatsapp.net'
+                  AND c."remoteJid" NOT LIKE '0@%'
+                  AND LOWER(COALESCE(c."pushName", '')) LIKE ${`%${w}%`}
+                ORDER BY c."updatedAt" DESC NULLS LAST
+                LIMIT 10
+              `;
+              for (const r of wordRows) {
+                if (!evoRows.some((existing) => existing.remoteJid === r.remoteJid)) {
+                  evoRows.push(r);
+                }
+              }
+            }
+          }
+        }
+      } catch (pubErr) {
+        // Fallback to evolution schema if public."Contact" doesn't exist
+        if (isWildcard) {
+          evoRows = await db`
+            SELECT c."remoteJid", c."pushName"
+            FROM (
+              SELECT DISTINCT ON (c."remoteJid") c."remoteJid", c."pushName", c."updatedAt"
+              FROM evolution."Contact" c
+              JOIN evolution."Instance" i ON c."instanceId" = i.id
+              WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'})
+                AND c."remoteJid" LIKE '%@s.whatsapp.net'
+                AND c."remoteJid" NOT LIKE '0@%'
+                AND c."pushName" IS NOT NULL
+                AND TRIM(c."pushName") != ''
+              ORDER BY c."remoteJid", c."updatedAt" DESC NULLS LAST
+            ) c
+            ORDER BY c."updatedAt" DESC NULLS LAST
+            LIMIT 25
+          `;
+        } else {
+          evoRows = await db`
+            SELECT c."remoteJid", c."pushName"
+            FROM evolution."Contact" c
+            JOIN evolution."Instance" i ON c."instanceId" = i.id
+            WHERE (i.name = ${instName} OR i.name ILIKE ${'%' + instName + '%'} OR ${instName === 'obey'})
+              AND c."remoteJid" LIKE '%@s.whatsapp.net'
+              AND c."remoteJid" NOT LIKE '0@%'
+              AND (
+                LOWER(COALESCE(c."pushName", '')) LIKE ${`%${q}%`}
+                OR (${cleanDigits.length >= 3} AND c."remoteJid" LIKE ${`%${cleanDigits}%`})
+              )
+            ORDER BY c."updatedAt" DESC NULLS LAST
+            LIMIT 25
+          `;
+        }
       }
 
       for (const row of evoRows) {
@@ -1805,15 +1904,26 @@ export async function dbGetWorkspaceByInstanceName(instanceName: string): Promis
     `;
     if (rows && rows.length > 0) return rows[0] as Workspace;
 
-    // 2. Check if clean instanceName is an Evolution instance UUID, name, or phone number in evolution."Instance"
+    // 2. Check if clean instanceName is an Evolution instance UUID, name, or phone number in "Instance"
     try {
-      const evoInstances = await db`
-        SELECT name, "ownerJid" FROM evolution."Instance"
-        WHERE id = ${clean} 
-           OR LOWER(name) = ${clean} 
-           OR "ownerJid" LIKE ${`%${clean}%`}
-        LIMIT 1
-      `;
+      let evoInstances: any[] = [];
+      try {
+        evoInstances = await db`
+          SELECT name, "ownerJid" FROM "Instance"
+          WHERE id = ${clean} 
+             OR LOWER(name) = ${clean} 
+             OR "ownerJid" LIKE ${`%${clean}%`}
+          LIMIT 1
+        `;
+      } catch {
+        evoInstances = await db`
+          SELECT name, "ownerJid" FROM evolution."Instance"
+          WHERE id = ${clean} 
+             OR LOWER(name) = ${clean} 
+             OR "ownerJid" LIKE ${`%${clean}%`}
+          LIMIT 1
+        `;
+      }
       if (evoInstances && evoInstances.length > 0) {
         const evoName = evoInstances[0].name.toLowerCase().trim();
         rows = await db`
@@ -2837,22 +2947,46 @@ export async function dbGetAllWorkspaceInstancesHealth(): Promise<WorkspaceInsta
   const db = getSql();
   if (!db) return [];
   try {
-    const rows = await db`
-      SELECT 
-        i."name" AS instance_name,
-        COALESCE(i."connectionStatus"::text, 'unknown') AS connection_status,
-        i."ownerJid" AS owner_jid,
-        i."updatedAt"::text AS updated_at,
-        w.id AS workspace_id,
-        w.name AS workspace_name,
-        w.owner_name,
-        w.owner_phone
-      FROM evolution."Instance" i
-      LEFT JOIN workspaces w 
-        ON (i.name = 'obey' AND (w.id = 'ws_femi_default' OR w.slug = 'femi' OR w.slug = 'femi-adeleke'))
-        OR (i.name = 'obey-' || w.slug)
-      ORDER BY i."updatedAt" DESC
-    `;
+    let rows: any[] = [];
+    try {
+      rows = await db`
+        SELECT 
+          i."name" AS instance_name,
+          COALESCE(i."connectionStatus"::text, 'unknown') AS connection_status,
+          i."ownerJid" AS owner_jid,
+          i."updatedAt"::text AS updated_at,
+          w.id AS workspace_id,
+          w.name AS workspace_name,
+          w.owner_name,
+          w.owner_phone
+        FROM "Instance" i
+        LEFT JOIN workspaces w 
+          ON (i.name = 'obey' AND (w.id = 'ws_femi_default' OR w.slug = 'femi' OR w.slug = 'femi-adeleke'))
+          OR (i.name = 'obey-' || w.slug)
+          OR (i.name = w.whatsapp_instance_name)
+        ORDER BY i."updatedAt" DESC
+      `;
+    } catch {
+      try {
+        rows = await db`
+          SELECT 
+            i."name" AS instance_name,
+            COALESCE(i."connectionStatus"::text, 'unknown') AS connection_status,
+            i."ownerJid" AS owner_jid,
+            i."updatedAt"::text AS updated_at,
+            w.id AS workspace_id,
+            w.name AS workspace_name,
+            w.owner_name,
+            w.owner_phone
+          FROM evolution."Instance" i
+          LEFT JOIN workspaces w 
+            ON (i.name = 'obey' AND (w.id = 'ws_femi_default' OR w.slug = 'femi' OR w.slug = 'femi-adeleke'))
+            OR (i.name = 'obey-' || w.slug)
+            OR (i.name = w.whatsapp_instance_name)
+          ORDER BY i."updatedAt" DESC
+        `;
+      } catch {}
+    }
 
     return rows.map((r) => {
       const status = (r.connection_status || "unknown").toLowerCase();

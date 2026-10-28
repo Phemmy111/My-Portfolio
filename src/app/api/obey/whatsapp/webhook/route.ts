@@ -458,6 +458,19 @@ async function handleObeyBusinessOwnerTurn(params: {
       userText,
       historyText,
       ownerName: currentWs.owner_name || "Boss",
+      attachment: docMedia?.base64
+        ? {
+            base64: docMedia.base64,
+            mimetype: docMedia.mimetype || "application/pdf",
+            fileName: documentFileName || "Document.pdf",
+          }
+        : visionMedia?.base64
+        ? {
+            base64: visionMedia.base64,
+            mimetype: visionMedia.mimetype || "image/jpeg",
+            fileName: "Image.jpg",
+          }
+        : null,
     });
     if (contactTurn.handled) {
       await reply(contactTurn.reply);
@@ -1404,6 +1417,40 @@ async function processMessage(params: ProcessMessageParams) {
       userName: pushName,
       isOwner,
     }).catch((memErr) => console.warn("[Memory Auto-Learn Error]:", memErr));
+  }
+
+  // Owner Contact Search, Disambiguation & Document Forwarding Commands
+  if (isOwner) {
+    try {
+      const { handleOwnerContactOrBucketTurn } = await import("@/lib/contact-agent");
+      const contactTurn = await handleOwnerContactOrBucketTurn({
+        workspaceId: currentWs?.id || "ws_femi_default",
+        instanceName: instanceName || "obey-femi-adeleke",
+        userPhone: replyTo,
+        userText,
+        historyText,
+        ownerName: currentWs?.owner_name || "Boss",
+        attachment: docMedia?.base64
+          ? {
+              base64: docMedia.base64,
+              mimetype: docMedia.mimetype || "application/pdf",
+              fileName: documentFileName || "Document.pdf",
+            }
+          : visionMedia?.base64
+          ? {
+              base64: visionMedia.base64,
+              mimetype: visionMedia.mimetype || "image/jpeg",
+              fileName: "Image.jpg",
+            }
+          : null,
+      });
+      if (contactTurn.handled) {
+        await reply(contactTurn.reply);
+        return;
+      }
+    } catch (err) {
+      console.warn("[WA Webhook Main Obey] contact handler warning:", err);
+    }
   }
 
   // Dedicated Multimodal WhatsApp Sticker Decoding & Vision Banter

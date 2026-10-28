@@ -509,7 +509,16 @@ export async function sendWhatsAppDocument(
       cleaned = "2348120934828";
     }
 
-    const base64Data = Buffer.from(fileContent, "utf-8").toString("base64");
+    let base64Data: string;
+    const trimmedContent = (fileContent || "").trim();
+    if (trimmedContent.startsWith("data:")) {
+      const parts = trimmedContent.split(",");
+      base64Data = parts.length > 1 ? parts[1].trim() : trimmedContent;
+    } else if (/^[A-Za-z0-9+/=\r\n]+$/.test(trimmedContent) && trimmedContent.length > 100) {
+      base64Data = trimmedContent.replace(/[\r\n]/g, "");
+    } else {
+      base64Data = Buffer.from(fileContent, "utf-8").toString("base64");
+    }
 
     let finalFileName = fileName.trim();
     if (!/\.[a-zA-Z0-9]{2,5}$/.test(finalFileName)) {
