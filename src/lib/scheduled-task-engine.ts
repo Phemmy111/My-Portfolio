@@ -476,15 +476,7 @@ export async function handleScheduledTaskConversation(params: {
   const { userText, historyText = "", recipientPhone, workspaceId, instanceName, senderName } = params;
   const lower = userText.toLowerCase().trim();
 
-  // 1. Check if user is querying tasks/reminders list (e.g. "Do we have any scheduled task?", "what tasks do i have", "show scheduled tasks")
-  const isListQuery =
-    /\b(?:what(?:'s|\s+are)?\s+(?:all\s+|the\s+|my\s+|our\s+)?(?:scheduled\s+|active\s+|pending\s+)?(?:tasks|reminders)|show\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|list\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|do\s+(?:we|i|you)\s+have\s+any\s+(?:reminders?|scheduled\s+tasks?|tasks?)|(?:are\s+there|is\s+there|any)\s+(?:scheduled\s+|pending\s+)?(?:tasks?|reminders?)|tasks?\s+(?:that\s+)?(?:i|we)(?:'ve|\s+have)\s+given\s+(?:to\s+)?you|what\s+tasks?\s+do\s+(?:i|we)\s+have|check\s+(?:my\s+|our\s+)?(?:scheduled\s+)?(?:tasks?|reminders?))\b/i.test(lower);
-
-  // 2. Check if user wants to cancel a task
-  const isCancelQuery =
-    /\b(cancel|delete|remove|clear)\s+(?:all\s+)?(?:my\s+)?(?:tasks?|reminders?|scheduled\s+tasks?)\b/i.test(lower);
-
-  // 3. Time trigger expressions (e.g. "in the next 3 minutes", "in 5 minutes", "at 4:30 pm", "tomorrow", "later")
+  // 1. Time trigger expressions (e.g. "in the next 3 minutes", "in 5 minutes", "at 4:30 pm", "tomorrow", "later")
   const hasTimeTrigger =
     /\b(?:in\s+(?:the\s+next\s+)?\d+|after\s+\d+)\s*(?:mins?|minutes?|hours?|hrs?|days?|secs?|seconds?)\b/i.test(lower) ||
     /\b(?:at|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/i.test(lower) ||
@@ -492,23 +484,46 @@ export async function handleScheduledTaskConversation(params: {
     /\b(?:tomorrow|tonight|today|this\s+morning|this\s+afternoon|this\s+evening|later|sometime\s+later)\b/i.test(lower) ||
     /\b(?:get\s+back\s+to\s+me|send\s+(?:it\s+to\s+)?me|drop\s+(?:it\s+for\s+)?me|ping\s+me)\b/i.test(lower);
 
-  // 4. Task action triggers (remind, research, search, wake up, ping, message me, etc.)
-  const hasTaskAction =
-    /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
-    /\b(wake\s+(?:me\s+)?up|wake\s*up|wake-up|send\s+(?:me\s+)?(?:a\s+)?(?:message|msg|dm|ping|text|alert|notification)|ping\s+me|alert\s+me|notify\s+me|call\s+me|message\s+me|text\s+me|write\s+me)\b/i.test(lower) ||
-    /\b(go\s+online|search|research|look\s+up|find\s+out|check|browse)\b/i.test(lower);
+  // 0. If user is asking to recall a fact, forgotten name, or information (e.g. "Can you remind me of the website", "remind me what...", "remind me how..."), this is pure conversational Q&A — NEVER hijack with a scheduled task!
+  const isInformationRecallInquiry =
+    /\b(?:can\s+you\s+)?remind\s+me\s+(?:of|what|who|where|how|which|why|the|about\s+the|that)\b/i.test(lower) ||
+    (/\b(?:can\s+you\s+)?remind\s+me\b/i.test(lower) && !hasTimeTrigger && !/\b(?:to\s+[a-z]+)\b/i.test(lower));
 
-  // 5. Follow-up correction triggers (e.g. "Wait, I mean this morning jàre", "change it to today")
+  if (isInformationRecallInquiry) {
+    return { handled: false };
+  }
+
+  // 2. Check if user is querying tasks/reminders list (e.g. "Do we have any scheduled task?", "what tasks do i have", "show scheduled tasks")
+  const isListQuery =
+    /\b(?:what(?:'s|\s+are)?\s+(?:all\s+|the\s+|my\s+|our\s+)?(?:scheduled\s+|active\s+|pending\s+)?(?:tasks|reminders)|show\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|list\s+(?:my\s+|our\s+)?(?:scheduled\s+|pending\s+)?(?:tasks|reminders)|do\s+(?:we|i|you)\s+have\s+any\s+(?:reminders?|scheduled\s+tasks?|tasks?)|(?:are\s+there|is\s+there|any)\s+(?:scheduled\s+|pending\s+)?(?:tasks?|reminders?)|tasks?\s+(?:that\s+)?(?:i|we)(?:'ve|\s+have)\s+given\s+(?:to\s+)?you|what\s+tasks?\s+do\s+(?:i|we)\s+have|check\s+(?:my\s+|our\s+)?(?:scheduled\s+)?(?:tasks?|reminders?))\b/i.test(lower);
+
+  // 3. Check if user wants to cancel a task
+  const isCancelQuery =
+    /\b(cancel|delete|remove|clear)\s+(?:all\s+)?(?:my\s+)?(?:tasks?|reminders?|scheduled\s+tasks?)\b/i.test(lower);
+
+  // 4. Task action triggers (remind to [action], wake up, ping, message me with a time trigger)
+  const hasTaskAction =
+    /\b(remind\s+me\s+to|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
+    /\b(wake\s+(?:me\s+)?up|wake\s*up|wake-up|send\s+(?:me\s+)?(?:a\s+)?(?:message|msg|dm|ping|text|alert|notification)|ping\s+me|alert\s+me|notify\s+me|call\s+me|message\s+me|text\s+me|write\s+me)\b/i.test(lower) ||
+    (/\b(go\s+online|search|research|look\s+up|find\s+out|check|browse)\b/i.test(lower) && hasTimeTrigger);
+
+  // 5. Follow-up correction triggers (e.g. "Wait, I mean this morning", "change time to 5pm") - MUST have a time trigger and prior asking
   const isTimeCorrection =
-    /\b(?:wait\s*,?\s*)?(?:i\s+mean|change\s+(?:it\s+to|time\s+to)|make\s+it|reschedule\s+to)\b/i.test(lower);
+    hasTimeTrigger &&
+    /\b(?:wait\s*,?\s*)?(?:change\s+(?:it\s+to|time\s+to)|make\s+it|reschedule\s+to|i\s+mean)\b/i.test(lower) &&
+    (historyText.toLowerCase().includes("when should i") || historyText.toLowerCase().includes("scheduled"));
 
   const isAnsweringFollowupTime =
     hasTimeTrigger &&
     (historyText.toLowerCase().includes("when should i remind you") ||
       historyText.toLowerCase().includes("when should i ping"));
 
+  const isExplicitScheduleCommand =
+    /\b(?:set|schedule|create|put)\s+(?:a\s+)?(?:reminder|alarm|timer|scheduled\s+task)\b/i.test(lower);
+
   const isTaskOrReminderRequest =
-    /\b(remind|reminder|set\s+a\s+reminder|put\s+a\s+reminder|schedule\s+a\s+task|scheduled\s+task)\b/i.test(lower) ||
+    isExplicitScheduleCommand ||
+    (/\bremind\s+me\s+to\b/i.test(lower) && (hasTimeTrigger || /\blater\b/i.test(lower))) ||
     (hasTaskAction && hasTimeTrigger) ||
     isAnsweringFollowupTime ||
     isTimeCorrection;
