@@ -20,6 +20,12 @@ function cleanWhatsAppFormatting(text: string): string {
   return clean.trim();
 }
 
+export function resolveEvolutionInstance(customInstance?: string): string {
+  const inst = (customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey-femi-adeleke").trim();
+  if (inst === "obey") return "obey-femi-adeleke";
+  return inst;
+}
+
 export async function sendWhatsAppMessage(
   text: string,
   recipient?: string,
@@ -31,8 +37,7 @@ export async function sendWhatsAppMessage(
       process.env.EVOLUTION_API_URL ||
       "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName =
-      customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    let instanceName = resolveEvolutionInstance(customInstance);
 
     if (!recipient) {
       recipient = process.env.BOSS_WHATSAPP_PHONE || "2348120934828";
@@ -80,6 +85,24 @@ export async function sendWhatsAppMessage(
         if (attempts >= 2) throw fetchErr;
         await new Promise((r) => setTimeout(r, 800));
       }
+    }
+
+    if (res && !res.ok && res.status === 404) {
+      const altInst = instanceName === "obey" ? "obey-femi-adeleke" : "obey";
+      try {
+        const altRes = await fetch(`${evoUrl}/message/sendText/${altInst}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoKey,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (altRes.ok) {
+          return { success: true };
+        }
+      } catch {}
     }
 
     if (res && res.ok) {
@@ -500,7 +523,7 @@ export async function sendWhatsAppDocument(
       process.env.EVOLUTION_API_URL ||
       "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    let instanceName = resolveEvolutionInstance(customInstance);
 
     let cleaned = (recipient || "2348120934828")
       .replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "")
@@ -535,7 +558,7 @@ export async function sendWhatsAppDocument(
       }
     }
 
-    const res = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
+    let res = await fetch(`${evoUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -550,6 +573,24 @@ export async function sendWhatsAppDocument(
         caption: caption || `📄 ${finalFileName}`,
       }),
     });
+
+    if (!res.ok && res.status === 404 && instanceName === "obey") {
+      res = await fetch(`${evoUrl}/message/sendMedia/obey-femi-adeleke`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: evoKey,
+        },
+        body: JSON.stringify({
+          number: cleaned,
+          media: base64Data,
+          mediatype: "document",
+          mimetype: mimetype,
+          fileName: finalFileName,
+          caption: caption || `📄 ${finalFileName}`,
+        }),
+      });
+    }
 
     if (res.ok) {
       return { success: true };
