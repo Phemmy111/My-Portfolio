@@ -2587,6 +2587,30 @@ Output ONLY the comment text.`,
   if (contactCard) {
     const contactTag = `[Shared Contact Card: ${contactCard.name} (Phone: +${contactCard.phone})]`;
     userText = userText ? `${contactTag} ${userText}` : contactTag;
+
+    // Immediately sync shared contact to database
+    const cleanCardPhone = (contactCard.phone || "").replace(/\D/g, "");
+    if (cleanCardPhone && cleanCardPhone.length >= 8) {
+      (async () => {
+        try {
+          const { sql: neonSql, dbGetWorkspaceByInstanceName } = await import("@/lib/db");
+          const ws = (await dbGetWorkspaceByInstanceName(instanceName)) || { id: "ws_femi_default" };
+          const wsId = ws.id || "ws_femi_default";
+          await neonSql`
+            UPDATE "Contact"
+            SET "pushName" = ${contactCard.name}
+            WHERE "remoteJid" LIKE ${`${cleanCardPhone}@%`}
+          `;
+          await neonSql`
+            INSERT INTO workspace_leads (id, workspace_id, phone, name, source, status, is_saved, auto_save)
+            VALUES (${`lead_${cleanCardPhone}_${wsId}`}, ${wsId}, ${cleanCardPhone}, ${contactCard.name}, 'whatsapp_vcard', 'saved', true, true)
+            ON CONFLICT (id) DO UPDATE SET name = ${contactCard.name}, is_saved = true, updated_at = NOW()
+          `;
+        } catch (e) {
+          console.warn("[WA Webhook] Syncing shared contact card notice:", e);
+        }
+      })().catch(() => {});
+    }
   }
 
   const isAudio = Boolean(msgObj.message?.audioMessage);

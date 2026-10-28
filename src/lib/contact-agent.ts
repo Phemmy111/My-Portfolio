@@ -466,9 +466,71 @@ export async function handleOwnerContactOrBucketTurn(params: {
     let targetName = targetMatch ? targetMatch[1].trim() : "";
     targetName = targetName.replace(/\b(you won't|you wont|will you|can you|would you|could you|please|now|first|later)\b/gi, "").trim();
 
+    const isPronounTarget = !targetName || /^(him|her|them|this\s+person|the\s+contact|that\s+person)$/i.test(targetName);
+    let pronounResolvedMatch: ContactMatch | null = null;
+
+    if (isPronounTarget && historyText) {
+      const cardMatch = historyText.match(/\[Shared Contact Card:\s*([^()]+)\s*\(Phone:\s*\+?(\d+)\)\]/i);
+      const contactMentionMatch = historyText.match(/contact for \*?([^*()]+?)\*?\s*\(\+?(\d+)\)/i);
+
+      if (cardMatch) {
+        const cName = cardMatch[1].trim();
+        const cPhone = cardMatch[2].trim();
+        pronounResolvedMatch = {
+          name: cName,
+          phone: cPhone,
+          formattedPhone: `+${cPhone}`,
+          source: "whatsapp_vcard" as any,
+        };
+      } else if (contactMentionMatch) {
+        const cName = contactMentionMatch[1].trim();
+        const cPhone = contactMentionMatch[2].trim();
+        pronounResolvedMatch = {
+          name: cName,
+          phone: cPhone,
+          formattedPhone: `+${cPhone}`,
+          source: "whatsapp_vcard" as any,
+        };
+      }
+    }
+
+    if (pronounResolvedMatch) {
+      const currentAttachment = params.attachment;
+      if (currentAttachment?.base64) {
+        await dbCreateUserPendingAction({
+          userIdentifier: userPhone,
+          actionType: "whatsapp_document" as any,
+          targetRecipient: pronounResolvedMatch.phone,
+          subject: currentAttachment.fileName,
+          payload: JSON.stringify({
+            base64: currentAttachment.base64,
+            fileName: currentAttachment.fileName,
+            mimetype: currentAttachment.mimetype,
+            caption: `📄 Attached from ${ownerName}`,
+          }),
+        });
+
+        return {
+          handled: true,
+          reply:
+            `📋 *Ready to Send Document:* \n\n` +
+            `• *File:* ${currentAttachment.fileName}\n` +
+            `• *Recipient:* *${pronounResolvedMatch.name}* (${pronounResolvedMatch.formattedPhone})\n\n` +
+            `👉 Reply *YES* to dispatch immediately, or *NO* to cancel.`,
+        };
+      } else {
+        return {
+          handled: true,
+          reply:
+            `👤 I have *${pronounResolvedMatch.name}* (${pronounResolvedMatch.formattedPhone}) ready!\n\n` +
+            `Please attach the document or file here on WhatsApp, and I will dispatch it to ${pronounResolvedMatch.name} immediately.`,
+        };
+      }
+    }
+
     if (
       targetName &&
-      !/^(status|broadcast|everyone|all|bucket|me|you|him|her|them|someone|person|people|number|lead|leads|group|now|later)$/i.test(targetName)
+      !/^(status|broadcast|everyone|all|bucket|me|you|someone|person|people|number|lead|leads|group|now|later)$/i.test(targetName)
     ) {
       const matches = await dbFindContactsByNameOrPhone({
         workspaceId,
