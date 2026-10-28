@@ -1883,6 +1883,18 @@ function ControlRoomContent() {
     };
   }, [activeTab, currentWs?.slug, waState]);
 
+  // Restore saved bot phone number for this workspace
+  useEffect(() => {
+    if (!waPhoneNumber && currentWs?.id) {
+      try {
+        const saved =
+          localStorage.getItem(`obey_bot_phone_${currentWs.id}`) ||
+          localStorage.getItem("obey_last_bot_phone");
+        if (saved) setWaPhoneNumber(saved);
+      } catch {}
+    }
+  }, [currentWs?.id, waPhoneNumber]);
+
   const handleSelectWorkspace = (slug: string) => {
     router.replace(`/control-room?biz=${slug}`);
     loadWorkspaceDetails(slug);
@@ -3460,11 +3472,11 @@ function ControlRoomContent() {
                             )}
                           </div>
 
-                          {/* Mobile-Friendly Input + Country Code Group */}
-                          <div className="flex flex-col sm:flex-row gap-2.5">
-                            <div className="relative flex-1 flex rounded-xl border border-slate-700 bg-slate-950/80 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/40 transition overflow-hidden">
+                          {/* Spacious Full-Width Input + Prominent Button so the entire 10-digit number is seen at once */}
+                          <div className="space-y-3">
+                            <div className="relative w-full flex items-center rounded-xl border-2 border-slate-700 bg-slate-950 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-400/30 transition shadow-inner overflow-hidden">
                               {/* Constant Country Code Badge */}
-                              <div className="flex items-center gap-1.5 px-3.5 bg-slate-800/90 border-r border-slate-700/80 text-amber-300 font-bold font-mono text-xs sm:text-sm select-none shrink-0">
+                              <div className="flex items-center gap-1.5 px-3.5 sm:px-4 py-3.5 bg-slate-800/90 border-r border-slate-700 text-amber-300 font-black font-mono text-sm sm:text-base select-none shrink-0">
                                 <span>🇳🇬 +{waCountryCode}</span>
                               </div>
                               <input
@@ -3478,15 +3490,29 @@ function ControlRoomContent() {
                                     val = val.slice(waCountryCode.length);
                                   }
                                   setWaPhoneNumber(val);
+                                  try {
+                                    if (currentWs?.id) {
+                                      localStorage.setItem(`obey_bot_phone_${currentWs.id}`, val);
+                                    }
+                                    localStorage.setItem("obey_last_bot_phone", val);
+                                  } catch {}
                                 }}
-                                placeholder="812 093 4828 (10 digits)"
-                                className="w-full bg-transparent px-3.5 py-3 text-sm sm:text-base text-white font-mono placeholder:text-slate-500 focus:outline-none"
+                                placeholder="916 148 8564 (10 digits)"
+                                className="w-full min-w-0 bg-transparent px-3 sm:px-4 py-3.5 text-base sm:text-lg font-mono font-bold text-white tracking-widest placeholder:tracking-normal placeholder:font-normal placeholder:text-slate-600 focus:outline-none"
                               />
                               {waPhoneNumber && (
                                 <button
                                   type="button"
-                                  onClick={() => setWaPhoneNumber("")}
-                                  className="px-3 text-slate-500 hover:text-slate-300 text-xs transition"
+                                  onClick={() => {
+                                    setWaPhoneNumber("");
+                                    try {
+                                      if (currentWs?.id) {
+                                        localStorage.removeItem(`obey_bot_phone_${currentWs.id}`);
+                                      }
+                                    } catch {}
+                                  }}
+                                  className="px-3.5 py-3.5 text-slate-400 hover:text-white text-sm font-bold transition shrink-0"
+                                  title="Clear phone number"
                                 >
                                   ✕
                                 </button>
@@ -3495,28 +3521,32 @@ function ControlRoomContent() {
 
                             <button
                               onClick={() => handleGeneratePairingCode()}
-                              disabled={waPairingLoading}
-                              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shrink-0 shadow-lg shadow-amber-500/20 cursor-pointer"
+                              disabled={waPairingLoading || !waPhoneNumber}
+                              className="w-full py-3.5 px-5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2.5 transition disabled:opacity-50 shadow-lg shadow-amber-500/25 cursor-pointer"
                             >
                               {waPairingLoading ? (
                                 <>
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  <span>Generating Code...</span>
+                                  <RefreshCw className="w-5 h-5 animate-spin" />
+                                  <span>Generating 8-Digit Pairing Code...</span>
                                 </>
                               ) : (
                                 <>
-                                  <Zap className="w-4 h-4" />
-                                  <span>Get 8-Digit Code</span>
+                                  <Zap className="w-5 h-5 fill-slate-950" />
+                                  <span>Get 8-Digit Pairing Code</span>
                                 </>
                               )}
                             </button>
                           </div>
 
-                          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-1 pt-0.5">
-                            <span>Country code (+234) is fixed in front. Just enter the local 10 digits.</span>
+                          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 gap-1.5 pt-0.5">
+                            <span className="text-[11px] text-slate-400">
+                              Country code (+234) is fixed in front. Just enter the local 10 digits.
+                            </span>
                             {waPhoneNumber && (
-                              <span className="font-mono text-amber-400/90 text-[10px]">
-                                Bot Number: +{waCountryCode}{waPhoneNumber}
+                              <span className="font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Full Number:</span>
+                                <strong className="text-white">+{waCountryCode} {waPhoneNumber}</strong>
                               </span>
                             )}
                           </div>

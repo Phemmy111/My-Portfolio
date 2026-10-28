@@ -36,6 +36,22 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   const pool = await getAIProvidersPool();
   const activeProviders = pool.filter((p) => p.enabled && p.apiKey?.trim());
 
+  // Auto-inject verified Google Gemini fallback if not already present or if empty
+  const hasGemini = activeProviders.some((p) => p.provider === "gemini");
+  if (!hasGemini) {
+    const defaultGeminiKey =
+      process.env.GEMINI_API_KEY?.trim() ||
+      "AIzaSyC5PwhrAvod0oKY8Z6t9Xnrw_S-AYv6-H8";
+    activeProviders.unshift({
+      id: "gemini-verified-primary",
+      provider: "gemini",
+      name: "Google Gemini (Verified)",
+      apiKey: defaultGeminiKey,
+      model: "gemini-2.5-flash",
+      enabled: true,
+    });
+  }
+
   // Auto-inject OpenAI fallback from environment if not explicitly in pool
   const hasOpenAI = activeProviders.some((p) => p.provider === "openai");
   if (!hasOpenAI && process.env.OPENAI_API_KEY?.trim()) {
@@ -83,20 +99,26 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
       // 1. Google Gemini (Multimodal Native: Audio, Images, Documents, Text)
       if (p.provider === "gemini") {
         const isAudioMedia = Boolean(mediaBase64 && mimeType?.startsWith("audio/"));
-        const targetModel = p.model?.trim() || "gemini-flash-latest";
+        const targetModel = p.model?.trim() || "gemini-flash-lite-latest";
         const candidateModels = isAudioMedia
           ? [
+              "gemini-flash-lite-latest",
+              "gemini-3.1-flash-lite",
+              "gemini-3.5-flash",
+              "gemini-3.6-flash",
               "gemini-2.5-flash",
               "gemini-flash-latest",
-              "gemini-2.5-flash-lite",
-              "gemini-3.8-flash",
+              "gemma-4-26b-a4b-it",
             ]
           : [
               targetModel,
+              "gemini-flash-lite-latest",
+              "gemini-3.1-flash-lite",
+              "gemini-3.5-flash",
+              "gemini-3.6-flash",
               "gemini-2.5-flash",
               "gemini-flash-latest",
-              "gemini-flash-lite-latest",
-              "gemini-3.8-flash",
+              "gemma-4-26b-a4b-it",
             ];
         const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
