@@ -211,6 +211,68 @@ export async function sendOtpEmail(params: {
   });
 }
 
+export async function sendNewRegistrationAlertEmail(params: {
+  businessName: string;
+  slug: string;
+  ownerName: string;
+  ownerPhone: string;
+  ownerEmail?: string;
+  plan?: string;
+}) {
+  const { businessName, slug, ownerName, ownerPhone, ownerEmail, plan = "trial" } = params;
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL || "femiadeleke2020@gmail.com";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://obeyai.vercel.app";
+
+  await transporter.sendMail({
+    from: `"Obey Business AI" <${smtpUser}>`,
+    to: adminEmail,
+    subject: `🚀 New Business Registration: ${businessName} (${ownerName})`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background: #09090b; color: #e4e4e7; border-radius: 16px; border: 1px solid #27272a;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="font-size: 22px; font-weight: 800; color: #10b981; margin: 0;">🎉 New Obey Business Registration!</h1>
+          <p style="color: #a1a1aa; font-size: 13px; margin: 6px 0 0;">A new client just registered on your Obey AI platform.</p>
+        </div>
+
+        <div style="background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600; width: 140px;">Business:</td>
+              <td style="padding: 8px 0; color: #ffffff; font-weight: 700;">${businessName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600;">Handle:</td>
+              <td style="padding: 8px 0; color: #10b981; font-weight: 700;">/call?biz=${slug}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600;">Owner:</td>
+              <td style="padding: 8px 0; color: #ffffff; font-weight: 700;">${ownerName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600;">WhatsApp:</td>
+              <td style="padding: 8px 0; color: #ffffff; font-weight: 700;">+${ownerPhone}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600;">Email:</td>
+              <td style="padding: 8px 0; color: #ffffff; font-weight: 700;">${ownerEmail || "Not provided"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #a1a1aa; font-weight: 600;">Plan:</td>
+              <td style="padding: 8px 0; color: #38bdf8; font-weight: 700; text-transform: uppercase;">${plan}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="text-align: center; margin-top: 24px;">
+          <a href="${appUrl}/admin" style="background: #10b981; color: #000000; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;">
+            Open Master Control Room →
+          </a>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export { transporter };
 
 

@@ -73,6 +73,12 @@ export async function POST(req: Request) {
       }
     }
 
+    // 3. Notify Femi Adeleke if a prospective client is verifying or signing up
+    if (cleanPhone !== "2348120934828" && cleanEmail !== "femiadeleke2020@gmail.com") {
+      const adminNotice = `🔔 *Obey Onboarding Alert*\n\nA prospective client requested an authentication code on Obey Business:\n📱 Phone: +${cleanPhone || "N/A"}\n📧 Email: ${cleanEmail || "N/A"}\n🎯 Flow: ${purpose}`;
+      sendWhatsAppMessage(adminNotice, "2348120934828").catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       message: `Verification code sent to ${dispatchedChannels.join(" & ")}.`,

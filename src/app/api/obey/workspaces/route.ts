@@ -10,7 +10,8 @@ import {
   dbClaimWorkspaceForClerkUser,
   dbCreateWorkspaceRule,
 } from "@/lib/db";
-import { createEvolutionInstance } from "@/lib/whatsapp-gateway";
+import { createEvolutionInstance, sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { sendNewRegistrationAlertEmail } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
   try {
@@ -184,6 +185,31 @@ export async function POST(req: NextRequest) {
 
     // Pre-provision Evolution API instance in background so it exists immediately
     createEvolutionInstance(`obey-${cleanSlug}`).catch(() => {});
+
+    // Notify Femi Adeleke immediately via WhatsApp and Email upon any new registration
+    const waAlert = `🎉 *New Obey Business Registration!*\n\n` +
+      `🏢 *Business:* ${name}\n` +
+      `🔗 *Handle:* /call?biz=${cleanSlug}\n` +
+      `👤 *Owner:* ${owner_name}\n` +
+      `📱 *Phone:* +${owner_phone}\n` +
+      `📧 *Email:* ${owner_email || "Not provided"}\n` +
+      `💼 *Plan:* ${(plan || "trial").toUpperCase()}\n\n` +
+      `⚡ *View in Master Control Room:*\nhttps://obeyai.vercel.app/admin`;
+
+    sendWhatsAppMessage(waAlert, "2348120934828").catch((err) =>
+      console.warn("[Registration Alert] WhatsApp dispatch warning:", err)
+    );
+
+    sendNewRegistrationAlertEmail({
+      businessName: name,
+      slug: cleanSlug,
+      ownerName: owner_name,
+      ownerPhone: owner_phone,
+      ownerEmail: owner_email,
+      plan: plan || "trial",
+    }).catch((err) =>
+      console.warn("[Registration Alert] Email dispatch warning:", err)
+    );
 
     // Seed default smart rules for this workspace
     await dbCreateWorkspaceRule({
