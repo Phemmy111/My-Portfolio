@@ -60,6 +60,7 @@ import {
   markWhatsAppMessageRead,
   sendWhatsAppPresence,
   sendWhatsAppReaction,
+  resolveEvolutionInstance,
 } from "@/lib/whatsapp-gateway";
 import { generateSpeechAudio } from "@/lib/tts-engine";
 import { logToGoogleSheet } from "@/lib/sheets-logger";
@@ -530,9 +531,9 @@ Your role and personality:
     "To post this live to your WhatsApp status story, simply reply with:
     Post: [Your text here]"
   You have the complete Obey Manual memorized. Guide Boss on how to use every feature: connecting WhatsApp with Plan B pairing code, saving leads with 1-click VCF export, creating Contact Buckets, running status broadcasts, and setting up keyword triggers.
-- MAIN OBEY & ADVANCED CUSTOM ENGINEERING:
-  You are fully aware of Main Obey (Femi Adeleke's flagship personal AI engineer & executive companion).
-  If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Main Obey / Femi Adeleke directly, introduce Main Obey and provide Femi's verified direct clickable WhatsApp link:
+- OBEY FLAGSHIP & ADVANCED CUSTOM ENGINEERING:
+  You are fully aware of Obey (Femi Adeleke's flagship personal AI engineer & companion).
+  If Boss asks for custom full-stack software development, bespoke enterprise bot setups, mobile app engineering, or wants to connect with Obey / Femi Adeleke directly, introduce Obey and provide Femi's verified direct clickable WhatsApp link:
   • Direct WhatsApp: https://wa.me/2348120934828 (+2348120934828)
   • Obey Platform: https://obeyai.vercel.app
   • Femi's Portfolio: https://obeyai.vercel.app/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
@@ -931,11 +932,12 @@ async function processMessage(params: ProcessMessageParams) {
     : (ownerClean ? (replyTo.endsWith(ownerClean.slice(-10)) || replyTo === ownerClean) : false);
 
   const isFemi = isDefaultFemi && (replyTo === FEMI_PERSONAL_NUMBER);
+  const publicBotName = (currentWs?.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
 
   // Helper: send reply via WhatsApp + save to DB
   async function reply(text: string) {
     const formatted = cleanWhatsAppFormatting(text);
-    const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
+    const sendInstance = resolveEvolutionInstance(currentWs?.whatsapp_instance_name || instanceName || "obey");
     await sendWhatsAppMessage(formatted, replyTo, sendInstance);
     if (isOwner && isDefaultFemi) {
       try {
@@ -950,7 +952,7 @@ async function processMessage(params: ProcessMessageParams) {
         await dbAddGuestMessage({
           id: `guest-asst-${Date.now()}`,
           phone_number: replyTo,
-          sender_name: currentWs?.name || "Obey",
+          sender_name: publicBotName,
           role: "assistant",
           content: formatted,
           workspace_id: currentWs?.id || wsId,
@@ -961,7 +963,7 @@ async function processMessage(params: ProcessMessageParams) {
 
   // Helper: synthesize & send native WhatsApp Voice Note (PTT) + companion text
   async function replyVoiceNote(spokenText: string, companionText?: string, suppressCompanionText: boolean = false) {
-    const sendInstance = currentWs?.whatsapp_instance_name || instanceName || "obey";
+    const sendInstance = resolveEvolutionInstance(currentWs?.whatsapp_instance_name || instanceName || "obey");
     let voiceSent = false;
     const cleanSpoken = stripAudioStageDirections(spokenText);
     const cleanCompanion = stripAudioStageDirections(companionText || spokenText);
@@ -1193,7 +1195,7 @@ async function processMessage(params: ProcessMessageParams) {
   const pastMessages = await dbGetGuestMessages(replyTo, 40, wsId);
   const historyText = pastMessages
     .slice(-25)
-    .map((m) => `${m.role === "user" ? (pushName || "User") : (currentWs?.name || "Obey")}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? (pushName || "User") : publicBotName}: ${m.content}`)
     .join("\n");
 
   // Check if recent assistant messages explicitly engaged with a WhatsApp status story
@@ -1264,7 +1266,7 @@ async function processMessage(params: ProcessMessageParams) {
       await dbAddGuestMessage({
         id: `guest-optout-${Date.now()}`,
         phone_number: replyTo,
-        sender_name: currentWs?.name || "Obey",
+        sender_name: publicBotName,
         role: "assistant",
         content: optOutReply,
         workspace_id: wsId,
@@ -1485,11 +1487,17 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
     }
 
     if (!stickerVisualResponse) {
-      const stickerReplies = [
-        "Haha, nice sticker! 😄 Wetin we dey tackle today, Boss?",
-        "Love the sticker vibe! 🔥 Tell me what you'd like to work on.",
-        "Sharp sticker! ⚡ How can I assist you right now?",
-      ];
+      const stickerReplies = isOwner
+        ? [
+            "Haha, nice sticker! 😄 Wetin we dey tackle today, Boss?",
+            "Love the sticker vibe! 🔥 Tell me what you'd like to work on.",
+            "Sharp sticker! ⚡ How can I assist you right now?",
+          ]
+        : [
+            "Haha, nice sticker! 😄 Wetin we dey tackle today?",
+            "Love the sticker vibe! 🔥 What's on your mind?",
+            "Sharp sticker! ⚡ How can I help you today?",
+          ];
       stickerVisualResponse = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
     }
 
@@ -1499,7 +1507,7 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
       await dbAddGuestMessage({
         id: `guest-stk-${Date.now()}`,
         phone_number: replyTo,
-        sender_name: currentWs?.name || "Obey",
+        sender_name: publicBotName,
         role: "assistant",
         content: formattedReply,
       });
@@ -1533,7 +1541,7 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
       // If the user attached an image AND gave an explicit command to edit/modify/transform it:
       if (isImageEditIntent) {
         console.log(`[WA Webhook] Image edit request detected on user photo: "${cleanInstruction}"`);
-        await reply("🎨 *On it, Boss!* Locking facial identity and applying your requested styling... ⚡");
+        await reply(isOwner ? "🎨 *On it, Boss!* Locking facial identity and applying your requested styling... ⚡" : "🎨 *On it!* Locking facial identity and applying your requested styling... ⚡");
 
         // Convert image base64 to dataUri or upload to Cloudinary for Fal.ai / Segmind
         let photoUrl = "";
@@ -1609,10 +1617,11 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
             `🎨 *Edited Artwork:*\n"${cleanInstruction}"`,
             currentWs?.whatsapp_instance_name || instanceName || "obey"
           );
+          const artworkSalutation = isOwner ? ", Boss!" : "!";
           await reply(
             isFaceLocked
-              ? `🎨 *Here is your revised artwork, Boss!* \n\n🔒 *Image-to-Image Identity Lock:* Preserved facial geometry and composition while applying your requested styling: "${cleanInstruction}".`
-              : `🎨 *Here is your revised artwork, Boss!* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo. To lock her exact facial features with 100% precision, activate your Fal.ai key in Settings!`
+              ? `🎨 *Here is your revised artwork${artworkSalutation}* \n\n🔒 *Image-to-Image Identity Lock:* Preserved facial geometry and composition while applying your requested styling: "${cleanInstruction}".`
+              : `🎨 *Here is your revised artwork${artworkSalutation}* \n\n📌 *Identity Note:* This was synthesized using high-resolution diffusion based on your photo. To lock exact facial features with 100% precision, activate your Fal.ai key in Settings!`
           );
           return;
         } else {
@@ -1630,7 +1639,9 @@ ${isFemiOwner ? "You are speaking directly with your boss and creator, Femi Adel
 Analyze this image thoroughly in relation to our ongoing conversation, extract any key details or text, diagnose any error or workflow stage shown, and assist them directly with clarity, engineering precision, and warmth.`;
 
       const aiRes = await executeAICompletionWithMedia({
-        systemPrompt: "You are Obey, an autonomous AI executive companion, senior engineer, and automation architect for Femi Adeleke. You are equipped with computer vision. Analyze user screenshots, photos, n8n workflow canvases, node errors, receipts, and diagrams with high precision, human warmth, and actionable clarity, connecting them directly with your ongoing conversation context. If you spot an n8n error, diagnose the exact node and provide the immediate fix. Speak naturally and directly as Obey without rigid headers.",
+        systemPrompt: isOwner
+          ? "You are Obey, an autonomous AI executive companion, senior engineer, and automation architect for Femi Adeleke. You are equipped with computer vision. Analyze user screenshots, photos, n8n workflow canvases, node errors, receipts, and diagrams with high precision, human warmth, and actionable clarity, connecting them directly with your ongoing conversation context. If you spot an n8n error, diagnose the exact node and provide the immediate fix. Speak naturally and directly as Obey without rigid headers."
+          : "You are Obey, an autonomous AI companion and dedicated problem solver. You are equipped with computer vision. Analyze user screenshots, photos, error screens, receipts, diagrams, or questions with high precision, human warmth, empathy, and actionable clarity, connecting them directly with your ongoing conversation context. Speak naturally and directly as their supportive companion and problem solver without rigid headers.",
         userPrompt: visionPrompt,
         mediaBase64: visionMedia.base64,
         mimeType: visionMedia.mimetype || "image/jpeg",
@@ -1696,7 +1707,7 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
       const timeWAT = formatToWAT(new Date());
       const notifyPhone = isDefaultFemi ? FEMI_PERSONAL_NUMBER : (currentWs?.owner_phone || FEMI_PERSONAL_NUMBER);
       const firstContactAlert =
-        `👋 *New Lead Initiated Chat with ${currentWs?.name || "Obey"}!*\n\n` +
+        `👋 *New Lead Initiated Chat with ${publicBotName}!*\n\n` +
         `• *Contact:* +${replyTo} ${pushName ? `(${pushName})` : ""}\n` +
         `• *Time:* ${timeWAT} (WAT)\n` +
         `• *First Message:* "${userText}"\n\n` +
@@ -1716,24 +1727,24 @@ Analyze this image thoroughly in relation to our ongoing conversation, extract a
         welcomeText =
           `👋 *Hello${welcomeName}! I am Obey.*
 
-I am your 24/7 personal AI companion and executive assistant, right here inside WhatsApp! ⚡
+I am an autonomous AI executive companion built by *Femi Adeleke*. I am here to assist, entertain, and make life easier for you across WhatsApp, Web, and Voice!
 
-🚀 *Here is what we can do together:*
+🚀 *Here are my superpowers:*
 🎙️ *Voice Notes:* Send me any voice note in English or Pidgin — I listen, analyze, and execute your instructions.
-📁 *Instant Documents & Plans:* Ask me to turn any idea, pitch, or meeting notes into a Word Doc, Google Doc, or PDF.
-⚙️ *n8n Automation Workflows:* Ask me to design ready-made n8n JSON workflows you can import with 1 click.
-🌐 *Web Apps & Tools:* Ask me to create or update interactive HTML pages, calculators, and dashboards with live links.
-🎨 *AI Image Generation:* Describe any artwork or image you want, and I'll generate it instantly.
-📞 *Live Voice Calls:* Tap my voice link anytime for a 100% free voice call — we can talk and brainstorm live!
-👥 *Contacts & Messaging:* Ask me to find numbers, message contacts, or broadcast to contact buckets.
+📞 *Live Voice Calls:* Tap my call link anytime for a 100% free WebRTC voice chat — we fit gist about anything!
+🌐 *Instant Websites & Tools:* Ask me to build a website, landing page, or dashboard, and I'll send you the live preview link and code.
+🎨 *AI Image Generation:* Describe any artwork or photo, and I'll generate it instantly.
+📄 *Documents & Vision:* Send screenshots, PDFs, invoices, or contracts — I read and extract key insights.
+🔎 *Live Web Search:* Ask me for real-time news, facts, and trends across Nigeria and the world.
+📲 *Smart Delegation:* Ask me to message someone, and I'll format and dispatch it for you.
 
-How can I assist you right now?`;
+How can I assist you today?`;
       } else {
         const wsSettings = await dbGetWorkspaceSettings(wsId);
         if (wsSettings?.whatsapp_welcome) {
           welcomeText = wsSettings.whatsapp_welcome.replace(/\{name\}/g, pushName || "there");
         } else {
-          welcomeText = `👋 *Hello${welcomeName}! Welcome to ${currentWs?.name || "our business"}.*
+          welcomeText = `👋 *Hello${welcomeName}! Welcome to ${publicBotName}.*
 
 I am your 24/7 AI business assistant powered by Obey. I can answer questions about our catalog, pricing, services, and take your orders or bookings anytime!
 
@@ -1746,7 +1757,7 @@ How can I help you today?`;
         await dbAddGuestMessage({
           id: `guest-welcome-${Date.now()}`,
           phone_number: replyTo,
-          sender_name: currentWs?.name || "Obey",
+          sender_name: publicBotName,
           role: "assistant",
           content: welcomeText,
         });
@@ -1918,7 +1929,7 @@ How can I help you today?`;
           await dbAddGuestMessage({
             id: `guest-asst-${Date.now()}`,
             phone_number: replyTo,
-            sender_name: currentWs?.name || "Obey",
+            sender_name: publicBotName,
             role: "assistant",
             content: rule.response_text,
           });
@@ -2011,7 +2022,7 @@ How can I help you today?`;
     await dbAddGuestMessage({
       id: `guest-asst-${Date.now()}`,
       phone_number: replyTo,
-      sender_name: currentWs?.name || "Obey",
+      sender_name: publicBotName,
       role: "assistant",
       content: finalReply,
       workspace_id: wsId,
@@ -2412,7 +2423,7 @@ export async function handleWhatsAppWebhook(req: NextRequest, forcedInstance?: s
             const hasVisual = Boolean(msgObj.message?.imageMessage || msgObj.message?.videoMessage);
 
             if (statusText.length >= 2 || hasVisual) {
-              const commenterRole = currentWs?.name || "Obey";
+              const commenterRole = (currentWs?.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
               const promptContext = statusText ? `STATUS TEXT/CAPTION: "${statusText}"` : "STATUS PHOTO: [Visual Story]";
 
               const aiRes = await executeAICompletion({
@@ -2473,7 +2484,7 @@ Output ONLY the comment text.`,
                   await dbAddGuestMessage({
                     id: `guest-status-cmt-${Date.now()}`,
                     phone_number: posterPhone,
-                    sender_name: currentWs?.name || "Obey",
+                    sender_name: commenterRole,
                     role: "assistant",
                     content: `[Obey replied to your WhatsApp Status "${statusText || (hasVisual ? "Media Story" : "Status Update")}"]: "${comment}"`,
                   });

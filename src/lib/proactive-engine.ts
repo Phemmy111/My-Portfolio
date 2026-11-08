@@ -2,7 +2,8 @@ import { dbGetStats, dbAddChatMessage } from "@/lib/db";
 import { getAgentTasks } from "@/lib/obey-agent";
 import { executeAICompletion } from "@/lib/ai-orchestrator";
 import { sendTelegramMessage } from "@/lib/telegram-bot";
-import { sendWhatsAppMessage } from "@/lib/whatsapp-gateway";
+import { sendWhatsAppMessage, sendWhatsAppAudio } from "@/lib/whatsapp-gateway";
+import { generateSpeechAudio } from "@/lib/tts-engine";
 import { sendProactiveBriefingEmail } from "@/lib/email";
 import { getSetting } from "@/lib/settings";
 
@@ -56,6 +57,26 @@ This is your proactive 8:00 AM WAT Morning Briefing that you send directly to Fe
 
     // 2. Dispatch to WhatsApp (phone)
     await sendWhatsAppMessage(briefText, bossPhone);
+
+    // 2b. Dispatch Native Voice Note (VN) to WhatsApp
+    try {
+      const cleanSpoken = briefText
+        .replace(/[*_#`~•]/g, "")
+        .replace(/\b(?:pending authorizations|CRM|WebRTC|n8n)\b/gi, (m) => m)
+        .slice(0, 320)
+        .trim();
+      const speech = await generateSpeechAudio({
+        text: cleanSpoken,
+        voice: "en-NG-AbeoNeural",
+        gender: "male",
+        personality: "nigerian_pidgin",
+      });
+      if (speech?.base64) {
+        await sendWhatsAppAudio(speech.base64, bossPhone, undefined, "obey-femi-adeleke");
+      }
+    } catch (voiceErr) {
+      console.warn("[Morning Briefing] Voice note dispatch notice:", voiceErr);
+    }
 
     // 3. Dispatch to Gmail SMTP (inbox)
     try {

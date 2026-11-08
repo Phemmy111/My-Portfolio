@@ -134,7 +134,7 @@ DO NOT use markdown, emojis, asterisks, or bullet points in the spoken script. W
         audioBase64,
         targetPhone,
         undefined,
-        "obey"
+        "obey-femi-adeleke"
       );
       audioSent = audioSendRes.success;
     }
@@ -152,7 +152,7 @@ DO NOT use markdown, emojis, asterisks, or bullet points in the spoken script. W
       `📋 *Agenda Today:*\n${pendingTasksSummary}\n\n` +
       audioNotice;
 
-    await sendWhatsAppMessage(summaryCard, targetPhone, "obey");
+    await sendWhatsAppMessage(summaryCard, targetPhone, "obey-femi-adeleke");
 
     // 8. Record in DB so it doesn't duplicate
     if (sql) {
