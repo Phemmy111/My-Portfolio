@@ -63,7 +63,7 @@ This is your proactive 8:00 AM WAT Morning Briefing that you send directly to Fe
       const cleanSpoken = briefText
         .replace(/[*_#`~•]/g, "")
         .replace(/\b(?:pending authorizations|CRM|WebRTC|n8n)\b/gi, (m) => m)
-        .slice(0, 320)
+        .slice(0, 2500)
         .trim();
       const speech = await generateSpeechAudio({
         text: cleanSpoken,

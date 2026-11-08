@@ -1983,13 +1983,8 @@ How can I help you today?`;
     );
     if (lastAssistantMsg && lastAssistantMsg.content.trim()) {
       const cleanContent = stripAudioStageDirections(lastAssistantMsg.content);
-      const sentences = cleanContent.split(/(?<=[.!?])\s+/);
-      const spokenExcerpt =
-        sentences.length <= 2 || cleanContent.split(/\s+/).length <= 45
-          ? cleanContent
-          : sentences.slice(0, 2).join(" ");
-
-      await replyVoiceNote(spokenExcerpt, cleanContent, true);
+      // Speak the entire message in the voice note
+      await replyVoiceNote(cleanContent, cleanContent, true);
       return;
     }
   }
@@ -2021,14 +2016,11 @@ How can I help you today?`;
         );
 
       if (userAskedForVN) {
-        // If the reply is concise, speak all of it in the voice note.
-        // If it's a longer breakdown, speak the first 2 punchy sentences in the VN and provide the full transcript below!
-        const sentences = finalReply.split(/(?<=[.!?])\s+/);
-        const spokenExcerpt =
-          sentences.length <= 2 || finalReply.split(/\s+/).length <= 45
-            ? finalReply
-            : sentences.slice(0, 2).join(" ");
-        await replyVoiceNote(spokenExcerpt, finalReply);
+        // Speak everything in the voice note up to 2500 characters
+        const spokenContent = finalReply.length <= 2500
+          ? finalReply
+          : finalReply.split(/(?<=[.!?])\s+/).slice(0, 6).join(" ");
+        await replyVoiceNote(spokenContent, finalReply, true);
       } else {
         await reply(finalReply);
       }
