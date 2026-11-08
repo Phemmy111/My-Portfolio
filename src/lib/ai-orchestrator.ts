@@ -39,17 +39,17 @@ export async function executeAICompletion(options: PromptOptions): Promise<AICom
   // Auto-inject verified Google Gemini fallback if not already present or if empty
   const hasGemini = activeProviders.some((p) => p.provider === "gemini");
   if (!hasGemini) {
-    const defaultGeminiKey =
-      process.env.GEMINI_API_KEY?.trim() ||
-      "AIzaSyC5PwhrAvod0oKY8Z6t9Xnrw_S-AYv6-H8";
-    activeProviders.unshift({
-      id: "gemini-verified-primary",
-      provider: "gemini",
-      name: "Google Gemini (Verified)",
-      apiKey: defaultGeminiKey,
-      model: "gemini-2.5-flash",
-      enabled: true,
-    });
+    const defaultGeminiKey = (process.env.GEMINI_API_KEY || "").trim();
+    if (defaultGeminiKey) {
+      activeProviders.unshift({
+        id: "gemini-verified-primary",
+        provider: "gemini",
+        name: "Google Gemini (Verified)",
+        apiKey: defaultGeminiKey,
+        model: "gemini-2.5-flash",
+        enabled: true,
+      });
+    }
   }
 
   // Auto-inject OpenAI fallback from environment if not explicitly in pool

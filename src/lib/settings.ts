@@ -268,13 +268,6 @@ export async function getAIProvidersPool(): Promise<AIProviderConfig[]> {
     }
   } catch {}
 
-  // Prioritize active Google keys starting with "AIzaSy" at the top
-  pool.sort((a, b) => {
-    const aIsAi = (a.apiKey || "").startsWith("AIzaSy") ? 1 : 0;
-    const bIsAi = (b.apiKey || "").startsWith("AIzaSy") ? 1 : 0;
-    return bIsAi - aIsAi;
-  });
-
   if (pool.length > 0) {
     return pool;
   }
