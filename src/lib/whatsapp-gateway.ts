@@ -149,7 +149,7 @@ export async function sendWhatsAppButtons(params: {
   try {
     const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = resolveEvolutionInstance(customInstance);
 
     if (!recipient) return { success: false, error: "Recipient phone is required" };
     const cleaned = recipient.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
@@ -223,7 +223,7 @@ export async function sendWhatsAppList(params: {
   try {
     const evoUrl = process.env.EVOLUTION_API_URL || "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = customInstance || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instanceName = resolveEvolutionInstance(customInstance);
 
     if (!recipient) return { success: false, error: "Recipient phone is required" };
     const cleaned = recipient.replace(/@s\.whatsapp\.net|@lid|@g\.us/g, "").replace(/\D/g, "");
@@ -334,11 +334,11 @@ export async function fetchEvolutionMediaBase64(
       process.env.EVOLUTION_API_URL ||
       "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instanceName = instanceOverride || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    let instanceName = resolveEvolutionInstance(instanceOverride);
 
     if (!msgObj.key?.id) return null;
 
-    const res = await fetch(
+    let res = await fetch(
       `${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
       {
         method: "POST",
@@ -353,6 +353,26 @@ export async function fetchEvolutionMediaBase64(
         signal: AbortSignal.timeout(10000),
       }
     );
+
+    // Auto-retry with obey-femi-adeleke if 404
+    if (res.status === 404 && instanceName !== "obey-femi-adeleke") {
+      instanceName = "obey-femi-adeleke";
+      res = await fetch(
+        `${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: evoKey,
+          },
+          body: JSON.stringify({
+            message: msgObj,
+            convertToMp4: false,
+          }),
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -904,7 +924,7 @@ export async function sendWhatsAppStatusPost(params: {
       process.env.EVOLUTION_API_URL ||
       "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instance = resolveEvolutionInstance(params.instanceName);
 
     // Clean media URL (ensure clean extension for video/image without query params)
     let cleanMediaUrl = params.mediaUrl ? params.mediaUrl.trim() : undefined;
@@ -1146,7 +1166,7 @@ export async function sendWhatsAppReaction(params: {
       process.env.EVOLUTION_API_URL ||
       "https://obey-whatsapp-api-2.onrender.com";
     const evoKey = process.env.EVOLUTION_API_KEY || "FemiObey2026!";
-    const instance = params.instanceName || process.env.EVOLUTION_INSTANCE_NAME || "obey";
+    const instance = resolveEvolutionInstance(params.instanceName);
 
     let cleanJid = params.remoteJid.trim();
     if (!cleanJid.includes("@")) {
