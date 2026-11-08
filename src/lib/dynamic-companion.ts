@@ -606,7 +606,9 @@ Respond ONLY with a valid JSON object matching this schema:
 
   const asksForControlRoom = /\b(?:control[\s-]?room|workspace dashboard|admin dashboard|dashboard link)\b/i.test(userText);
   const asksForManual = /\b(?:user[\s-]?manual|obey manual|platform manual|documentation link)\b/i.test(userText);
-  const asksForPortfolio = /\b(?:(?:my|femi(?:'s)?)\s+portfolio|portfolio\s+link|link to (?:my\s+)?portfolio)\b/i.test(userText);
+  const asksForPortfolio =
+    /\b(?:(?:my|femi(?:'s)?|fem(?:'s)?|fems|creator(?:'s)?)\s+portfolio|portfolio\s+link|portfolio\s+website|link\s+to\s+(?:(?:my|femi(?:'s)?)\s+)?portfolio|show\s+(?:me\s+)?(?:the\s+)?portfolio)\b/i.test(userText) ||
+    /^\s*(?:can\s+you\s+)?(?:send|give|drop|share|show)\s+(?:me\s+)?(?:femi(?:'s)?\s+|fems\s+|my\s+)?portfolio\s*[.?!]*$/i.test(userText.trim());
 
   if (asksForObeyWebsite && !asksForControlRoom && !asksForPortfolio) {
     const bossGreeting = isFemi ? ", Boss" : "";
@@ -2206,7 +2208,8 @@ CONCISENESS & NATURAL CONVERSATION (CRITICAL RULES):
    - Femi Adeleke Creator Contact: Direct WhatsApp Link: https://wa.me/2348120934828 (+2348120934828)
    - Femi's Official Portfolio: https://obeyai.vercel.app/portfolio (Title: Femi Adeleke | AI Systems Architect & Full-Stack Developer)
    - Obey Official Website (Homepage): https://obeyai.vercel.app
-   - CRITICAL PORTFOLIO RULE: Whenever Boss (Femi) or anyone asks for "my portfolio", "portfolio link", "give me link to my portfolio", or requests Femi's personal software case studies, ALWAYS provide: https://obeyai.vercel.app/portfolio
+   - CRITICAL PORTFOLIO RULE: Whenever Boss (Femi) or anyone asks for "my portfolio", "portfolio link", "femi's portfolio", "send me fems portfolio", or requests Femi's software case studies, ALWAYS provide: https://obeyai.vercel.app/portfolio
+   - STRICT PROHIBITION ON FAKE DOMAINS: NEVER output or hallucinate "femiadeleke.com" or any other domain! Femi's portfolio is strictly hosted at https://obeyai.vercel.app/portfolio.
    - CRITICAL WEBSITE & HOMEPAGE RULE:
      * When anyone asks for "obey website", "website", "link to obey", "your website", "website link", "landing page", ALWAYS provide the clean, direct homepage link: https://obeyai.vercel.app
      * NEVER send the Control Room link (https://obeyai.vercel.app/control-room) unless they explicitly ask for "control room", "dashboard", or "manage workspace"!
@@ -2232,7 +2235,9 @@ ${getObeyBusinessManualKnowledge(platformPricing)}
    - YOU HAVE FULL NATIVE WHATSAPP VOICE NOTE (AUDIO NOTE) CAPABILITY!
    - When the user asks you to "send a voice note", "send vn", "record a vn", "talk to me", or when they send you a voice note:
      * NEVER say your voice module is resting, in text mode, or disabled!
+     * NEVER say "Even though I am your text-based co-pilot" or claim you are only text-based!
      * NEVER claim you cannot send audio or that you only speak on the website hotline!
+     * NEVER deflect a voice note request to a WebRTC call link unless they explicitly asked for a 2-way phone call!
      * Respond naturally with a warm, sharp conversational answer. The platform automatically converts your words into a real spoken WhatsApp Voice Note!
    - STRICT PROHIBITION ON META STAGE DIRECTIONS & AUDIO MARKERS:
      * NEVER write meta stage directions, commentary, or bracketed markers in text, such as:
@@ -2285,6 +2290,12 @@ CRITICAL DISTINCTION & PRICING RULES:
 - If the user asks in conversation to post something to status, provide the suggested text and instruct them:
   "To publish this live to your WhatsApp status story, simply reply with:
   Post: [Your status text here]"
+
+15. STRICT COPY-AND-PASTE ONLY RULE:
+- When the user asks for "copy and paste", "paste it only", "paste only the captions", "just the text", "no explanation", "raw copy", or repeats "paste only":
+  * Output ONLY the raw caption / text!
+  * Do NOT include conversational preamble like "Here is your clean, ready-to-copy text, Boss:", greetings, or closing commentary!
+  * The user wants to press 1-tap copy in WhatsApp and immediately paste it into their Facebook ad, Instagram caption, or tweet without manually deleting your intro text.
 
 ${workspaceCatalogContext ? `${workspaceCatalogContext}\n` : ""}${liveSearchFindings ? `\nLIVE WEB SEARCH RESULTS:\n${liveSearchFindings}\n` : ""}`;
 

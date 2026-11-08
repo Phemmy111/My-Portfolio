@@ -318,10 +318,11 @@ async function handleObeyBusinessOwnerTurn(params: {
 
   // Sticker reaction for owner
   if (isSticker) {
+    const wsDisplayName = (currentWs.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
     const stickerReplies = [
-      `Haha, nice sticker Boss! 😄 Wetin we dey tackle for ${currentWs.name} today?`,
-      `Love the sticker vibe, Boss! 🔥 How can I assist you with ${currentWs.name} right now?`,
-      `Sharp sticker, Boss! ⚡ What would you like to work on for ${currentWs.name}?`,
+      `Haha, nice sticker Boss! 😄 Wetin we dey tackle today?`,
+      `Love the sticker vibe, Boss! 🔥 How can I assist you right now?`,
+      `Sharp sticker, Boss! ⚡ What would you like to work on today?`,
     ];
     const replyTxt = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
     await reply(replyTxt);
@@ -329,7 +330,7 @@ async function handleObeyBusinessOwnerTurn(params: {
       await dbAddGuestMessage({
         id: `guest-stk-${Date.now()}`,
         phone_number: replyTo,
-        sender_name: currentWs.name,
+        sender_name: wsDisplayName,
         role: "assistant",
         content: replyTxt,
         workspace_id: currentWs.id,
@@ -503,7 +504,9 @@ async function handleObeyBusinessOwnerTurn(params: {
     .replace(/\b(?:It'?s|It is|Currently|As of)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*WAT.*?(?:\.|\n|$)/gi, "")
     .replace(/\n{3,}/g, "\n\n");
 
-  const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${currentWs.name}".
+  const wsDisplayName = (currentWs.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
+
+  const systemPrompt = `You are Obey Business AI, the private 24/7 autonomous operations assistant and business manager for "${wsDisplayName}".
 You are chatting directly with your business owner/boss (${currentWs.owner_name || "Boss"}).
 
 INTERNAL CLOCK (FOR CONTEXT ONLY):
@@ -619,9 +622,10 @@ async function handleObeyBusinessCustomerTurn(params: {
 
   // Sticker reaction for customer
   if (isSticker) {
+    const wsDisplayName = (currentWs.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
     const stickerReplies = [
-      `Thanks for the sticker! 😊 How can I help you today with ${currentWs.name}?`,
-      `Nice sticker! 👍 Let me know if you have any questions about our products or services!`,
+      `Thanks for the sticker! 😊 How can I help you today?`,
+      `Nice sticker! 👍 Let me know if you have any questions!`,
       `Great vibe! ✨ How can I assist you today?`,
     ];
     const replyTxt = stickerReplies[Math.floor(Math.random() * stickerReplies.length)];
@@ -630,7 +634,7 @@ async function handleObeyBusinessCustomerTurn(params: {
       await dbAddGuestMessage({
         id: `guest-stk-${Date.now()}`,
         phone_number: replyTo,
-        sender_name: currentWs.name,
+        sender_name: wsDisplayName,
         role: "assistant",
         content: replyTxt,
         workspace_id: currentWs.id,
@@ -683,14 +687,16 @@ async function handleObeyBusinessCustomerTurn(params: {
   const asksVoiceCall = /\b(voice call|call (?:you|me|link)|talk on phone|on phone|phone call|voice link|call link|speak on phone|speak to (?:you|someone)|can (?:we|i) call)\b/i.test(userText);
   const { timeStr: currentWatTime, dateStr: currentWatDate } = getNigerianTime();
 
-  const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${currentWs.name}".
+  const wsDisplayName = (currentWs.name && currentWs.name !== "Main Obey" && currentWs.name !== "Default") ? currentWs.name : "Obey";
+
+  const systemPrompt = `You are Obey Business AI, the human-like WhatsApp sales and customer assistant for "${wsDisplayName}".
 You are chatting with ${customerName}.
 
 INTERNAL REAL-TIME CLOCK (FOR CONTEXT ONLY):
 • Current Time: ${currentWatTime} WAT | Date: ${currentWatDate}
 • 🚨 STRICT RULE: NEVER state, announce, or append the current time, date, or timestamps to any message UNLESS the customer explicitly asked "what time is it?" or "what date is it?". Mentioning the time unprompted is strictly forbidden.
 
-About "${currentWs.name}":
+About "${wsDisplayName}":
 ${businessBio}
 
 Product & Service Catalog:
@@ -907,7 +913,12 @@ async function processMessage(params: ProcessMessageParams) {
   }
 
   // Resolve Workspace by Evolution instance name or connected bot phone
-  let isMainObeyInstance = !instanceName || instanceName === "obey" || instanceName === "default" || instanceName === "obey_default";
+  let isMainObeyInstance =
+    !instanceName ||
+    instanceName === "obey" ||
+    instanceName === "obey-femi-adeleke" ||
+    instanceName === "default" ||
+    instanceName === "obey_default";
   let currentWs: any = null;
   if (!isMainObeyInstance) {
     currentWs = await dbGetWorkspaceByInstanceName(instanceName);
@@ -923,8 +934,12 @@ async function processMessage(params: ProcessMessageParams) {
     currentWs = (await dbGetWorkspaceById("ws_femi_default")) || (await dbGetWorkspaceBySlug("femi-adeleke"));
   }
 
+  if (currentWs && (currentWs.slug === "femi-adeleke" || currentWs.id === "ws_femi_default" || currentWs.name === "Main Obey")) {
+    isMainObeyInstance = true;
+  }
+
   const wsId = currentWs ? currentWs.id : (isMainObeyInstance ? "ws_femi_default" : "default");
-  const isDefaultFemi = isMainObeyInstance && (!currentWs || currentWs.slug === "femi-adeleke" || currentWs.id === "ws_femi_default");
+  const isDefaultFemi = isMainObeyInstance && (!currentWs || currentWs.slug === "femi-adeleke" || currentWs.id === "ws_femi_default" || currentWs.name === "Main Obey");
 
   const ownerClean = (currentWs?.owner_phone || (isDefaultFemi ? FEMI_PERSONAL_NUMBER : "")).replace(/\D/g, "");
   const isOwner = isDefaultFemi
@@ -1958,7 +1973,8 @@ How can I help you today?`;
   // Instantly take the previous assistant response, synthesize it, and dispatch as a native WhatsApp PTT voice note!
   const isResendAsVN =
     /\b(?:send\s+(?:it|that|this)|said\s+.*(?:send\s+it|voice\s*notes?|vn)|convert\s+(?:it|that|this)|speak\s+(?:it|that|this)|repeat\s+(?:it|that|this)|make\s+(?:it|that|this))\b[\s\S]{0,45}\b(?:voice\s*note|voice\s*notes|vn|vns|audio)\b/i.test(userText) ||
-    /^\s*(?:send\s+it\s+as\s+vn|send\s+as\s+vn|make\s+it\s+vn|in\s+vn|as\s+vn|voice\s*note|vn)\s*[.!?]?\s*$/i.test(userText);
+    /^\s*(?:send\s+it\s+as\s+vn|send\s+as\s+vn|make\s+it\s+vn|in\s+vn|as\s+vn|voice\s*note|vn)\s*[.!?]?\s*$/i.test(userText) ||
+    /^(?:all\s+right|okay|ok|thanks?|thank\s+you|alright)?[,\s]*(?:please\s+)?(?:send|drop|record|give|reply\s+with)\s+(?:me\s+)?(?:a\s+)?(?:voice\s*note|vn|audio)[.!?]?\s*$/i.test(userText.trim());
 
   if (isResendAsVN && pastMessages && pastMessages.length > 0) {
     // Find the latest assistant message by searching backwards from the end of history

@@ -1029,6 +1029,7 @@ export async function createWorkspaceTables() {
     await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_status_created ON workspace_message_queue(status, created_at ASC)`;
     await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_instance ON workspace_message_queue(instance_name)`;
     await db`CREATE INDEX IF NOT EXISTS idx_msg_queue_msgid ON workspace_message_queue(message_id)`;
+    await db`CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_queue_unique_msgid ON workspace_message_queue(message_id) WHERE message_id IS NOT NULL`;
   } catch (err) {
     console.warn("createWorkspaceTables warning:", err);
   }
@@ -2825,8 +2826,38 @@ export async function dbEnqueueWorkspaceMessage(params: {
   const db = getSql();
   if (!db) return null;
 
-  // Persistent deduplication: drop retry webhooks with the same WhatsApp message ID
+  const id = params.id || `msgq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  // Atomic database deduplication across containers/lambdas using UNIQUE index on message_id
   if (params.messageId) {
+    try {
+      const inserted = await db`
+        INSERT INTO workspace_message_queue (
+          id, workspace_id, instance_name, sender_phone, message_id, payload, status, attempts, created_at
+        ) VALUES (
+          ${id},
+          ${params.workspaceId || null},
+          ${params.instanceName},
+          ${params.senderPhone},
+          ${params.messageId},
+          ${JSON.stringify(params.payload || {})}::jsonb,
+          ${params.status || "processing"},
+          1,
+          NOW()
+        )
+        ON CONFLICT (message_id) DO NOTHING
+        RETURNING id
+      `;
+      if (!inserted || inserted.length === 0) {
+        console.log(`[Queue] Atomically dropped duplicate delivery for message ${params.messageId}`);
+        return null;
+      }
+      return inserted[0].id;
+    } catch (insertErr) {
+      console.warn("[Queue] Atomic insert notice:", insertErr);
+    }
+
+    // Secondary fallback check if table schema differs
     try {
       const existing = await db`
         SELECT id FROM workspace_message_queue
@@ -2835,15 +2866,11 @@ export async function dbEnqueueWorkspaceMessage(params: {
         LIMIT 1
       `;
       if (existing && existing.length > 0) {
-        console.log(`[Queue] Dropping duplicate message ${params.messageId} (already enqueued: ${existing[0].id})`);
         return null;
       }
-    } catch (checkErr) {
-      console.warn("[Queue] Deduplication check warning:", checkErr);
-    }
+    } catch {}
   }
 
-  const id = params.id || `msgq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   try {
     await db`
       INSERT INTO workspace_message_queue (
